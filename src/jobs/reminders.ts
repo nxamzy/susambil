@@ -2,9 +2,8 @@ import type { Api } from "grammy";
 import { sql } from "../db/index.js";
 import { config } from "../config.js";
 import { faolNavbat, kechikkanKun } from "../core/rotation.js";
-import { pul } from "../core/kassa.js";
 import { guruhgaYubor, shaxsiy } from "../bot/group.js";
-import { esc, ismlar, sana } from "../bot/text.js";
+import { esc, ismlar, pul, sana } from "../bot/text.js";
 
 const KUN_MS = 86_400_000;
 

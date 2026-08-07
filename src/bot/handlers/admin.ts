@@ -2,7 +2,6 @@ import type { Bot } from "grammy";
 import { sql, type Room, type User } from "../../db/index.js";
 import { config } from "../../config.js";
 import { faolNavbat, navbatniOzgartirish, xonaAzolari } from "../../core/rotation.js";
-import { tolovQoshish, pul } from "../../core/kassa.js";
 import { kim } from "../group.js";
 import { esc, ismlar, navbatXabari } from "../text.js";
 
@@ -19,39 +18,34 @@ async function odamTop(ism: string): Promise<User | null> {
 }
 
 export function register(bot: Bot) {
+  /** Faqat admin uchun — boshqalar panel bilan ishlaydi, buyruq yozmaydi. */
   bot.command("yordam", async (ctx) => {
-    const u = await kim(ctx.from?.id);
-    const satrlar = [
-      "<b>Buyruqlar</b>",
-      "/navbat — kim navbatda, kim keyingi",
-      "/kassa — kim qancha qarzdor",
-      "/reyting — shu oylik reyting",
-      "/tarix — oxirgi navbatlar",
-      "/xarajat — xarajat qo'shish (shaxsiy yozing)",
-    ];
-    if (u?.admin) {
-      satrlar.push(
+    if (!(await adminmi(ctx))) return;
+    await ctx.reply(
+      [
+        "<b>Admin buyruqlari</b>",
         "",
-        "<b>Admin</b>",
-        "/panel — guruhga panel qo'yish",
+        "/panel — guruhga panel qo'yish va pin qilish",
+        "/id — chat ID va guruhni saqlash",
+        "/royxat — kim ulangan, kim yo'q",
         "/qosh Ism 2 — odam qo'shish (2 = xona)",
-        "/ochir Ism — odamni ro'yxatdan chiqarish",
+        "/ochir Ism — ro'yxatdan chiqarish",
         "/xona Ism 3 — xonasini o'zgartirish",
         "/navbatber 2 — navbatni 2-xonaga o'tkazish",
-        "/navbatboshla — navbatni boshlash",
-        "/tolov Ism 50000 — kassaga to'lov yozish",
-      );
-    }
-    await ctx.reply(satrlar.join("\n"), { parse_mode: "HTML" });
+        "/navbatboshla — navbat yo'q bo'lsa boshlash",
+        "",
+        "<i>Oddiy a'zolar uchun buyruq kerak emas — hammasi panel tugmalarida.</i>",
+      ].join("\n"),
+      { parse_mode: "HTML" },
+    );
   });
 
   bot.command("qosh", async (ctx) => {
     if (!(await adminmi(ctx))) return;
     const [ism, xonaStr] = ctx.match.trim().split(/\s+(?=\d+$)/);
     const xona = Number(xonaStr);
-    if (!ism || !Number.isInteger(xona)) {
-      return ctx.reply("Format: /qosh Ism 2");
-    }
+    if (!ism || !Number.isInteger(xona)) return ctx.reply("Format: /qosh Ism 2");
+
     const [room] = await sql<Room[]>`SELECT * FROM rooms WHERE raqam = ${xona}`;
     if (!room) return ctx.reply(`${xona}-xona topilmadi.`);
 
@@ -108,19 +102,6 @@ export function register(bot: Bot) {
     await ctx.reply(navbatXabari(birinchi, await xonaAzolari(birinchi.id), muddat), {
       parse_mode: "HTML",
     });
-  });
-
-  bot.command("tolov", async (ctx) => {
-    if (!(await adminmi(ctx))) return;
-    const [ism, summaStr] = ctx.match.trim().split(/\s+(?=\d[\d\s]*$)/);
-    const summa = Number((summaStr ?? "").replace(/\D/g, ""));
-    if (!ism || !summa) return ctx.reply("Format: /tolov Ism 50000");
-
-    const u = await odamTop(ism);
-    if (!u) return ctx.reply("Bunday odam topilmadi.");
-
-    await tolovQoshish(u.id, summa);
-    await ctx.reply(`✅ ${esc(u.ism)} — ${pul(summa)} to'lov yozildi.`, { parse_mode: "HTML" });
   });
 
   bot.command("royxat", async (ctx) => {

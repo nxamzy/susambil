@@ -75,23 +75,6 @@ export async function navbatniYopish(
       WHERE id = ${turn.id}
     `;
 
-    if (jarima > 0) {
-      const azolar = await tx<User[]>`
-        SELECT * FROM users WHERE room_id = ${room.id} AND faol
-      `;
-      if (azolar.length > 0) {
-        // Jarima xonaga yoziladi, a'zolar o'rtasida teng bo'linadi.
-        const ulush = Math.round(jarima / azolar.length);
-        for (const a of azolar) {
-          await tx`
-            INSERT INTO kassa_entries (user_id, summa, tur, ref_id, izoh)
-            VALUES (${a.id}, ${-ulush}, 'jarima', ${turn.id},
-                    ${`${room.raqam}-xona ${kechikdi} kun kechikdi`})
-          `;
-        }
-      }
-    }
-
     // Chala qolgan rasmlar keyingi navbatga o'tib ketmasin
     await tx`DELETE FROM pending_photos WHERE turn_id = ${turn.id}`;
 

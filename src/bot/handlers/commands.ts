@@ -1,16 +1,48 @@
 import type { Bot, Api } from "grammy";
-import { sql } from "../../db/index.js";
-import { config } from "../../config.js";
+import { sql, type Room } from "../../db/index.js";
+import { config, ISH_TURLARI, BALLAR } from "../../config.js";
 import { faolNavbat, keyingiXona, xonaAzolari } from "../../core/rotation.js";
-import { balanslar, pul } from "../../core/kassa.js";
-import { odamReytingi, xonaReytingi, tarix } from "../../core/rating.js";
+import { reyting, xonaHolati, tarix } from "../../core/rating.js";
+import { oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
 import { guruhId, guruhIdOrnat, kim } from "../group.js";
-import { ismTanlashKeyboard, panelKeyboard } from "../keyboards.js";
-import { esc, ismlar, navbatXabari, qisqaSana, sana } from "../text.js";
+import {
+  ismTanlashKeyboard,
+  panelKeyboard,
+  xonaTanlashKeyboard,
+  xarajatQoshishKeyboard,
+} from "../keyboards.js";
+import { esc, ismlar, navbatXabari, pul, qisqaSana } from "../text.js";
+import { holatOrnat, holatTozala } from "../state.js";
+import { xarajatniBoshla } from "./expense.js";
+
+const CHIZIQ = "━━━━━━━━━━━━━━";
+
+function oyBoshi(): Date {
+  const d = new Date();
+  d.setDate(1);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+export async function panelMatni(): Promise<string> {
+  const n = await faolNavbat();
+  const bosh = n
+    ? `🧹 Hozir navbat: <b>${n.room.raqam}-xona</b> — ${esc(ismlar(n.azolar))}`
+    : "🧹 Hozircha navbat boshlanmagan.";
+
+  return [
+    "🏠 <b>Uy paneli</b>",
+    "",
+    bosh,
+    "",
+    "Biror ish qilsangiz pastdagi tugmani bosing — rasm so'rayman va ball qo'shaman.",
+    `Tozalash navbatingiz kelsa guruhga <b>${config.minRasm} ta rasm</b> tashlang.`,
+  ].join("\n");
+}
 
 async function navbatMatni(): Promise<string> {
   const n = await faolNavbat();
-  if (!n) return "Hozircha navbat boshlanmagan. Admin /navbatboshla buyrug'ini bersin.";
+  if (!n) return "Hozircha navbat boshlanmagan. Admin /navbatboshla bersin.";
 
   const keyingi = await keyingiXona(n.room);
   const keyingiAzolar = await xonaAzolari(keyingi.id);
@@ -21,119 +53,176 @@ async function navbatMatni(): Promise<string> {
   );
 }
 
-async function kassaMatni(): Promise<string> {
-  const b = await balanslar();
-  if (b.length === 0) return "Kassa bo'sh.";
+async function xarajatMatni(): Promise<string> {
+  const top = await xarajatReytingi(oyBoshi());
+  const oxirgi = await oxirgiXarajatlar(8);
 
-  const qatorlar = b.map((x) => {
-    const belgi = x.balans > 0 ? "🟢" : x.balans < 0 ? "🔴" : "⚪️";
-    const izoh = x.balans > 0 ? "olishi kerak" : x.balans < 0 ? "qarzdor" : "tenglik";
-    return `${belgi} ${esc(x.ism)} (${x.xona ?? "?"}-xona) — ${pul(Math.abs(x.balans))} ${izoh}`;
-  });
+  const satrlar = ["🛒 <b>Uyga olib kelinganlar</b>", ""];
 
-  const jami = b.reduce((s, x) => s + x.balans, 0);
-  return [
-    "💰 <b>Kassa holati</b>",
+  if (top.length === 0) {
+    satrlar.push("<i>Shu oyda hali hech kim hech narsa olib kelmagan.</i>");
+  } else {
+    satrlar.push("<b>Shu oylik reyting:</b>");
+    for (const [i, x] of top.entries()) {
+      const medal = ["🥇", "🥈", "🥉"][i] ?? "▫️";
+      satrlar.push(`${medal} ${esc(x.ism)} — ${x.soni} marta (${x.soni * BALLAR.xarajat} ball)`);
+    }
+  }
+
+  if (oxirgi.length > 0) {
+    satrlar.push("", "<b>Oxirgi olib kelinganlar:</b>");
+    for (const x of oxirgi) {
+      satrlar.push(`• ${esc(x.izoh)} — ${esc(x.ism)}, ${qisqaSana(x.created_at)}`);
+    }
+  }
+
+  satrlar.push(
     "",
-    ...qatorlar,
-    "",
-    `<i>Umumiy farq: ${pul(jami)}</i>`,
-    `<i>🔴 = kassaga qarzdor, 🟢 = kassadan olishi kerak</i>`,
-  ].join("\n");
+    CHIZIQ,
+    `<b>Nimadir sotib oldingizmi?</b>`,
+    `Pastdagi tugmani bosing — rasm va nomini so'rayman, <b>+${BALLAR.xarajat} ball</b> qo'shiladi.`,
+  );
+  return satrlar.join("\n");
 }
 
 async function reytingMatni(): Promise<string> {
-  const oyBoshi = new Date();
-  oyBoshi.setDate(1);
-  oyBoshi.setHours(0, 0, 0, 0);
+  const dan = oyBoshi();
+  const odamlar = await reyting(dan);
+  const xonalar = await xonaHolati(dan);
 
-  const odamlar = await odamReytingi(oyBoshi);
-  const xonalar = await xonaReytingi(oyBoshi);
+  const s: string[] = ["🏆 <b>REYTING</b> — shu oy", ""];
 
-  const qoshimcha = odamlar
-    .map((o) => ({ ...o, jami: o.musor + o.hammom + o.oshxona }))
-    .sort((a, b) => b.jami - a.jami);
-
-  const eng = qoshimcha.filter((o) => o.jami > 0).slice(0, 5);
-
-  const satrlar = ["🏆 <b>Shu oylik reyting</b>", "", "<b>Qo'shimcha ishlar:</b>"];
-  if (eng.length === 0) {
-    satrlar.push("<i>hali hech kim belgilamagan</i>");
+  // 1) Umumiy ball
+  const jamiBoyicha = [...odamlar].sort((a, b) => b.jami - a.jami);
+  s.push(`${CHIZIQ}\n<b>Umumiy ball</b>\n${CHIZIQ}`);
+  if ((jamiBoyicha[0]?.jami ?? 0) === 0) {
+    s.push("<i>Shu oyda hali ball yig'ilmagan.</i>");
   } else {
-    for (const [i, o] of eng.entries()) {
-      const medal = ["🥇", "🥈", "🥉"][i] ?? "▫️";
-      satrlar.push(
-        `${medal} ${esc(o.ism)} — ${o.jami} ta ` +
-          `(♻️${o.musor} 🚿${o.hammom} 🍽${o.oshxona})`,
+    for (const [i, o] of jamiBoyicha.entries()) {
+      if (o.jami === 0) continue;
+      const medal = ["🥇", "🥈", "🥉"][i] ?? `${i + 1}.`;
+      s.push(`${medal} ${esc(o.ism)} — <b>${o.jami}</b> ball`);
+    }
+  }
+
+  // 2) Xonalar intizomi
+  s.push("", `${CHIZIQ}\n<b>🧹 Tozalash navbatlari</b>\n${CHIZIQ}`);
+  for (const x of xonalar) {
+    if (x.navbat === 0) {
+      s.push(`${x.xona}-xona (${x.azoSoni} kishi) — hali navbat bo'lmagan`);
+      continue;
+    }
+    const holat =
+      x.kechikkan === 0
+        ? `✅ ${x.navbat} marta, hammasi vaqtida`
+        : `🔴 ${x.navbat} marta, ${x.kechikkan} tasi kech (${x.kechikkanKun} kun · ${pul(x.jarima)})`;
+    s.push(`${x.xona}-xona (${x.azoSoni} kishi) — ${holat}`);
+  }
+
+  // 3) Qo'shimcha ishlar
+  const ishBoyicha = odamlar
+    .filter((o) => o.musor + o.hammom + o.oshxona > 0)
+    .sort((a, b) => b.ishBall - a.ishBall);
+  s.push("", `${CHIZIQ}\n<b>♻️ Qo'shimcha ishlar</b>\n${CHIZIQ}`);
+  if (ishBoyicha.length === 0) {
+    s.push("<i>hali hech kim belgilamagan</i>");
+  } else {
+    for (const o of ishBoyicha) {
+      s.push(
+        `${esc(o.ism)} — ♻️${o.musor} 🚿${o.hammom} 🍽${o.oshxona} = <b>${o.ishBall}</b> ball`,
       );
     }
   }
 
-  satrlar.push("", "<b>Xonalar intizomi:</b>");
-  for (const x of xonalar) {
-    const holat =
-      x.navbat === 0 ? "navbat bo'lmagan"
-      : x.kechikkan === 0 ? "✅ doim vaqtida"
-      : `🔴 ${x.kechikkan} marta kechikdi, jami ${x.kechikkan_kun} kun`;
-    satrlar.push(`${x.xona}-xona — ${holat}`);
+  // 4) Olib kelinganlar
+  const xarajatBoyicha = odamlar.filter((o) => o.xarajat > 0).sort((a, b) => b.xarajat - a.xarajat);
+  s.push("", `${CHIZIQ}\n<b>🛒 Uyga olib kelganlar</b>\n${CHIZIQ}`);
+  if (xarajatBoyicha.length === 0) {
+    s.push("<i>hali hech kim olib kelmagan</i>");
+  } else {
+    for (const o of xarajatBoyicha) {
+      s.push(`${esc(o.ism)} — ${o.xarajat} marta = <b>${o.xarajatBall}</b> ball`);
+    }
   }
 
-  return satrlar.join("\n");
+  // 5) Tasdiqlashlar
+  const tasdiqBoyicha = odamlar.filter((o) => o.tasdiq > 0).sort((a, b) => b.tasdiq - a.tasdiq);
+  if (tasdiqBoyicha.length > 0) {
+    s.push("", `${CHIZIQ}\n<b>✅ Boshqalarning ishini tasdiqlaganlar</b>\n${CHIZIQ}`);
+    for (const o of tasdiqBoyicha) s.push(`${esc(o.ism)} — ${o.tasdiq} marta`);
+  }
+
+  // 6) Ball jadvali
+  s.push(
+    "",
+    `${CHIZIQ}\n<b>Ball qanday beriladi</b>\n${CHIZIQ}`,
+    `🧹 Tozalash navbati — ${BALLAR.navbatXona} ball xonaga, a'zolar soniga bo'linadi`,
+    `   <i>2 kishilik xona → ${Math.round(BALLAR.navbatXona / 2)}, 4 kishilik → ${Math.round(BALLAR.navbatXona / 4)}</i>`,
+    `   vaqtida tugatsa +${BALLAR.vaqtidaBonus}, kechiksa har kun −${BALLAR.kechikishJarima}`,
+    `🚿 Hammom / 🍽 Oshxona — ${ISH_TURLARI.hammom.ball} ball`,
+    `♻️ Musor — ${ISH_TURLARI.musor.ball} ball`,
+    `🛒 Uyga narsa olib kelish — ${BALLAR.xarajat} ball`,
+    `✅ Tasdiqlash — ${BALLAR.tasdiq} ball`,
+  );
+
+  return s.join("\n");
 }
 
 async function tarixMatni(): Promise<string> {
   const yozuvlar = await tarix(10);
   if (yozuvlar.length === 0) return "🕘 Tarix hali bo'sh.";
 
-  const satrlar = ["🕘 <b>Oxirgi 10 navbat</b>", ""];
+  const s = ["🕘 <b>Oxirgi navbatlar</b>", ""];
   for (const y of yozuvlar) {
     const belgi = y.kechikkan_kun > 0 ? "🔴" : "✅";
-    satrlar.push(
+    s.push(
       `${belgi} <b>${y.xona}-xona</b> · ${qisqaSana(y.boshlandi)} → ` +
         `${y.tasdiqlandi ? qisqaSana(y.tasdiqlandi) : "—"}`,
     );
-    satrlar.push(
+    s.push(
       `   Yuklagan: ${esc(y.topshirdi ?? "—")} · ${y.rasm_soni} rasm · ` +
         `tasdiq: ${y.tasdiqlovchilar.length ? y.tasdiqlovchilar.map(esc).join(", ") : "—"}` +
         (y.kechikkan_kun > 0 ? ` · ${y.kechikkan_kun} kun kech` : ""),
     );
   }
-  return satrlar.join("\n");
+  return s.join("\n");
 }
 
-async function guruhgaChiqar(api: Api, matn: string) {
+async function guruhgaChiqar(api: Api, matn: string, extra: object = {}) {
   const chatId = await guruhId();
-  if (chatId) await api.sendMessage(chatId, matn, { parse_mode: "HTML" });
+  if (chatId) await api.sendMessage(chatId, matn, { parse_mode: "HTML", ...extra });
 }
 
 export function register(bot: Bot) {
   bot.command("start", async (ctx) => {
-    if (ctx.chat.type !== "private") return;
-    const mavjud = await kim(ctx.from?.id);
+    if (ctx.chat.type !== "private" || !ctx.from) return;
+
+    const mavjud = await kim(ctx.from.id);
+
+    if (mavjud && ctx.match === "xarajat") return xarajatniBoshla(ctx);
+
     if (mavjud) {
-      return ctx.reply(
-        `Salom, <b>${esc(mavjud.ism)}</b>! Siz allaqachon ro'yxatdasiz.\n\n` +
-          `Buyruqlar: /navbat /kassa /reyting /tarix /xarajat`,
-        { parse_mode: "HTML" },
-      );
+      return ctx.reply(await panelMatni(), {
+        parse_mode: "HTML",
+        reply_markup: panelKeyboard(),
+      });
     }
 
     const bosh = await sql<{ id: number; ism: string }[]>`
       SELECT id, ism FROM users WHERE telegram_id IS NULL AND faol ORDER BY id
     `;
-    if (bosh.length === 0) {
-      return ctx.reply("Ro'yxatda bo'sh ism qolmadi. Admin bilan gaplashing.");
-    }
-
-    await ctx.reply("Ro'yxatdan o'zingizni tanlang:", {
-      reply_markup: ismTanlashKeyboard(bosh),
-    });
+    await ctx.reply(
+      "Salom! Ro'yxatdan o'zingizni tanlang.\n\n" +
+        "<i>Ismingiz ro'yxatda bo'lmasa — pastdagi \"Men yangi a'zoman\" tugmasini bosing.</i>",
+      { parse_mode: "HTML", reply_markup: ismTanlashKeyboard(bosh) },
+    );
   });
 
   bot.callbackQuery(/^men:(\d+)$/, async (ctx) => {
     const userId = Number(ctx.match[1]);
-    const band = await kim(ctx.from.id);
-    if (band) return ctx.answerCallbackQuery({ text: "Siz allaqachon ro'yxatdasiz." });
+    if (await kim(ctx.from.id)) {
+      return ctx.answerCallbackQuery({ text: "Siz allaqachon ro'yxatdasiz." });
+    }
 
     const natija = await sql<{ ism: string }[]>`
       UPDATE users
@@ -142,67 +231,130 @@ export function register(bot: Bot) {
       RETURNING ism
     `;
     if (natija.length === 0) {
-      return ctx.answerCallbackQuery({ text: "Bu ismni boshqa kimdir olib bo'lgan.", show_alert: true });
+      return ctx.answerCallbackQuery({
+        text: "Bu ismni boshqa kimdir olib bo'lgan.",
+        show_alert: true,
+      });
     }
 
     await ctx.answerCallbackQuery({ text: "Qabul qilindi!" }).catch(() => {});
-    await ctx.editMessageText(
-      `✅ Xush kelibsiz, <b>${esc(natija[0]!.ism)}</b>!\n\n` +
-        `Endi guruhdagi tugmalar siz uchun ishlaydi.`,
-      { parse_mode: "HTML" },
+    await ctx
+      .editMessageText(`✅ Xush kelibsiz, <b>${esc(natija[0]!.ism)}</b>!`, { parse_mode: "HTML" })
+      .catch(() => {});
+    await ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: panelKeyboard() });
+  });
+
+  bot.callbackQuery("yangiazo", async (ctx) => {
+    if (await kim(ctx.from.id)) {
+      return ctx.answerCallbackQuery({ text: "Siz allaqachon ro'yxatdasiz." });
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+    await holatOrnat(ctx.from.id, { tur: "royxat", qadam: "ism" });
+    await ctx.editMessageText("✍️ Ismingizni yozing:").catch(() => {});
+  });
+
+  bot.callbackQuery(/^yangixona:(\d+)$/, async (ctx) => {
+    const raqam = Number(ctx.match[1]);
+    const { holatOl } = await import("../state.js");
+    const holat = await holatOl(ctx.from.id);
+    if (holat?.tur !== "royxat" || holat.qadam !== "xona") {
+      return ctx.answerCallbackQuery({ text: "Jarayon eskirgan. /start dan boshlang." });
+    }
+
+    const [room] = await sql<Room[]>`SELECT * FROM rooms WHERE raqam = ${raqam}`;
+    if (!room) return ctx.answerCallbackQuery({ text: "Bunday xona yo'q." });
+
+    await sql`
+      INSERT INTO users (ism, telegram_id, username, room_id)
+      VALUES (${holat.ism}, ${ctx.from.id}, ${ctx.from.username ?? null}, ${room.id})
+    `;
+    await holatTozala(ctx.from.id);
+
+    await ctx.answerCallbackQuery({ text: "Qo'shildingiz!" }).catch(() => {});
+    await ctx
+      .editMessageText(
+        `✅ <b>${esc(holat.ism)}</b> — ${raqam}-xonaga qo'shildingiz.`,
+        { parse_mode: "HTML" },
+      )
+      .catch(() => {});
+    await ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: panelKeyboard() });
+
+    await guruhgaChiqar(
+      ctx.api,
+      `👋 <b>${esc(holat.ism)}</b> ${raqam}-xonaga qo'shildi.`,
     );
+  });
+
+  bot.callbackQuery("bekor", async (ctx) => {
+    await holatTozala(ctx.from.id);
+    await ctx.answerCallbackQuery({ text: "Bekor qilindi" }).catch(() => {});
+    await ctx.editMessageText("✖️ Bekor qilindi.").catch(() => {});
   });
 
   bot.command("navbat", async (ctx) => ctx.reply(await navbatMatni(), { parse_mode: "HTML" }));
-  bot.command("kassa", async (ctx) => ctx.reply(await kassaMatni(), { parse_mode: "HTML" }));
   bot.command("reyting", async (ctx) => ctx.reply(await reytingMatni(), { parse_mode: "HTML" }));
   bot.command("tarix", async (ctx) => ctx.reply(await tarixMatni(), { parse_mode: "HTML" }));
 
-  bot.command("id", async (ctx) => {
-    await ctx.reply(`Bu chat ID: <code>${ctx.chat.id}</code>`, { parse_mode: "HTML" });
-    if (ctx.chat.type !== "private") {
-      const u = await kim(ctx.from?.id);
-      if (u?.admin) {
-        await guruhIdOrnat(ctx.chat.id);
-        await ctx.reply("✅ Shu guruh asosiy guruh sifatida saqlandi.");
-      }
-    }
-  });
-
   bot.command("panel", async (ctx) => {
     const u = await kim(ctx.from?.id);
-    if (!u?.admin) return ctx.reply("Bu buyruq faqat admin uchun.");
-    if (ctx.chat.type === "private") return ctx.reply("Bu buyruqni guruhda yozing.");
-
+    if (!u?.admin) return;
+    if (ctx.chat.type === "private") {
+      return ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: panelKeyboard() });
+    }
     await guruhIdOrnat(ctx.chat.id);
-    const xabar = await ctx.reply(
-      [
-        "🏠 <b>Uy paneli</b>",
-        "",
-        "Biror ish qilsangiz — pastdagi tugmani bosing, guruh xabardor bo'ladi.",
-        "Tozalash rasmlarini shu guruhga tashlang (kamida " + config.minRasm + " ta).",
-      ].join("\n"),
-      { parse_mode: "HTML", reply_markup: panelKeyboard() },
-    );
+    const xabar = await ctx.reply(await panelMatni(), {
+      parse_mode: "HTML",
+      reply_markup: panelKeyboard(),
+    });
     await ctx.api.pinChatMessage(ctx.chat.id, xabar.message_id).catch(() => {});
+  });
+
+  bot.command("id", async (ctx) => {
+    const u = await kim(ctx.from?.id);
+    if (!u?.admin) return;
+    await ctx.reply(`Bu chat ID: <code>${ctx.chat.id}</code>`, { parse_mode: "HTML" });
+    if (ctx.chat.type !== "private") {
+      await guruhIdOrnat(ctx.chat.id);
+      await ctx.reply("✅ Shu guruh asosiy guruh sifatida saqlandi.");
+    }
   });
 
   bot.callbackQuery("korish:navbat", async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});
-    await guruhgaChiqar(ctx.api, await navbatMatni());
-  });
-  bot.callbackQuery("korish:kassa", async (ctx) => {
-    await ctx.answerCallbackQuery().catch(() => {});
-    await guruhgaChiqar(ctx.api, await kassaMatni());
+    await javob(ctx, await navbatMatni());
   });
   bot.callbackQuery("korish:reyting", async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});
-    await guruhgaChiqar(ctx.api, await reytingMatni());
+    await javob(ctx, await reytingMatni());
   });
   bot.callbackQuery("korish:tarix", async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});
-    await guruhgaChiqar(ctx.api, await tarixMatni());
+    await javob(ctx, await tarixMatni());
+  });
+  bot.callbackQuery("korish:xarajat", async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await javob(ctx, await xarajatMatni(), {
+      reply_markup: xarajatQoshishKeyboard(ctx.me.username),
+    });
+  });
+
+  /** Tugma qayerda bosilgan bo'lsa, javob ham o'sha yerga. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function javob(ctx: any, matn: string, extra: object = {}) {
+    if (ctx.chat) {
+      await ctx.reply(matn, { parse_mode: "HTML", ...extra });
+    } else {
+      await guruhgaChiqar(ctx.api, matn, extra);
+    }
+  }
+
+  // Yangi a'zo xona tanlashi uchun (bekor qilingandan keyin qayta chiqarish)
+  bot.command("xonatanla", async (ctx) => {
+    const xonalar = await sql<{ raqam: number }[]>`SELECT raqam FROM rooms ORDER BY raqam`;
+    await ctx.reply("Qaysi xonada turasiz?", {
+      reply_markup: xonaTanlashKeyboard(xonalar.map((x) => x.raqam)),
+    });
   });
 }
 
-export { navbatMatni, kassaMatni, reytingMatni, tarixMatni };
+export { navbatMatni, reytingMatni, tarixMatni, xarajatMatni };

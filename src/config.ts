@@ -23,21 +23,41 @@ export const config = {
   /** Rasmning minimal soni */
   minRasm: 3,
 
-  /** Kechikkan har bir kun uchun jarima (so'm). Jarima XONAGA yoziladi va
-   *  xona a'zolari o'rtasida teng bo'linadi. */
+  /** Kechikkan har bir kun uchun jarima (so'm). Faqat reytingda ko'rsatiladi —
+   *  bot pul hisobini yuritmaydi. */
   jarimaKunlik: 10_000,
-
-  /** Oylik yig'im (har oyning 1-sanasida har bir odamga yoziladi) */
-  oylikYigim: 10_000,
-
-  /** Xarajat qilgan odamning puli hammaga teng bo'linadimi */
-  xarajatBolinadi: true,
 } as const;
 
 export const ISH_TURLARI = {
-  musor: { emoji: "♻️", matn: "musorni tashlab keldi", tugma: "Musor tashladim" },
-  hammom: { emoji: "🚿", matn: "hammomni tozaladi", tugma: "Hammom tozaladim" },
-  oshxona: { emoji: "🍽", matn: "oshxonani tozaladi", tugma: "Oshxona tozaladim" },
+  musor: { emoji: "♻️", matn: "musorni tashlab keldi", tugma: "Musor tashladim", ball: 3 },
+  hammom: { emoji: "🚿", matn: "hammomni tozaladi", tugma: "Hammom tozaladim", ball: 15 },
+  oshxona: { emoji: "🍽", matn: "oshxonani tozaladi", tugma: "Oshxona tozaladim", ball: 15 },
 } as const;
 
 export type IshTuri = keyof typeof ISH_TURLARI;
+
+/**
+ * Ball tizimi. O'lchov: taxminan 2 daqiqa ish = 1 ball.
+ *
+ *   musor tashlash   ~5 daqiqa   →  3 ball
+ *   oshxona/hammom   ~30 daqiqa  → 15 ball
+ *   butun kvartira   ~2 soat     → 60 ball (XONAGA beriladi)
+ *
+ * Navbat balli xona a'zolari soniga bo'linadi: 2 kishilik xona bir xil
+ * ishni kam odam bilan bajaradi, demak har biriga ko'proq tegadi.
+ *   2 kishilik xona → 30 ball, 3 kishilik → 20, 4 kishilik → 15
+ *
+ * Xarajat balli tozalashdan biroz yuqori — chunki pul ham ketadi.
+ */
+export const BALLAR = {
+  /** Bitta navbat uchun xonaga beriladigan umumiy ball */
+  navbatXona: 60,
+  /** Muddatdan oldin tugatgan har bir a'zoga qo'shimcha */
+  vaqtidaBonus: 10,
+  /** Kechikkan har kun uchun har bir a'zodan ayiriladi */
+  kechikishJarima: 10,
+  /** Uyga narsa olib kelgani uchun */
+  xarajat: 20,
+  /** Boshqa xonaning ishini tasdiqlagani uchun */
+  tasdiq: 1,
+} as const;

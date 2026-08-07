@@ -6,6 +6,7 @@ import * as expense from "./handlers/expense.js";
 import * as photos from "./handlers/photos.js";
 import * as confirm from "./handlers/confirm.js";
 import * as chores from "./handlers/chores.js";
+import * as messages from "./handlers/messages.js";
 
 /** Xatoni qisqa ko'rinishda yozadi — butun ctx ni dump qilmaydi,
  *  chunki unda bot tokeni ham bo'ladi. */
@@ -35,13 +36,14 @@ export function botYarat(): Bot {
     }
   });
 
-  // Tartib muhim: buyruqlar avval, keyin umumiy xabar ushlagichlar
+  // Tartib muhim: buyruqlar va tugmalar avval, umumiy xabar ushlagichlar oxirida
   commands.register(bot);
   admin.register(bot);
   expense.register(bot);
-  photos.register(bot);
   confirm.register(bot);
   chores.register(bot);
+  photos.register(bot);
+  messages.register(bot);
 
   // Long polling uchun qo'shimcha to'siq (yuqoridagi chegara o'tkazib
   // yuborgan xatolar shu yerga tushadi)

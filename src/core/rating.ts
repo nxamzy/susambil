@@ -1,64 +1,145 @@
 import { sql } from "../db/index.js";
-import { config } from "../config.js";
+import { config, ISH_TURLARI, BALLAR, type IshTuri } from "../config.js";
 
-export type OdamReyting = {
-  user_id: number;
+export type OdamBall = {
+  userId: number;
   ism: string;
   xona: number | null;
   musor: number;
   hammom: number;
   oshxona: number;
-  topshirgan: number;   // necha marta tozalash rasmini yuklagan
-  tasdiqlagan: number;  // boshqalarnikini necha marta tasdiqlagan
+  xarajat: number;
+  tasdiq: number;
+  navbatSoni: number;
+  kechikkanKun: number;
+  navbatBall: number;
+  ishBall: number;
+  xarajatBall: number;
+  tasdiqBall: number;
+  jami: number;
 };
 
-export type XonaReyting = {
+export type XonaHolat = {
   xona: number;
+  azoSoni: number;
   navbat: number;
   kechikkan: number;
-  kechikkan_kun: number;
+  kechikkanKun: number;
   jarima: number;
 };
 
-/** @param dan - shu sanadan keyingi ma'lumot (null bo'lsa — butun tarix) */
-export async function odamReytingi(dan: Date | null = null): Promise<OdamReyting[]> {
-  return sql<OdamReyting[]>`
+type Qator = {
+  user_id: number;
+  ism: string;
+  xona: number | null;
+  room_id: number | null;
+  azo_soni: number;
+  musor: number;
+  hammom: number;
+  oshxona: number;
+  xarajat: number;
+  tasdiq: number;
+};
+
+/**
+ * Bitta navbat uchun bir a'zoga tegadigan ball.
+ * Xona balli a'zolar soniga bo'linadi, so'ng vaqtida/kechikkani hisobga olinadi.
+ */
+export function navbatBalli(azoSoni: number, kechikkanKun: number): number {
+  const asos = Math.round(BALLAR.navbatXona / Math.max(1, azoSoni));
+  const tuzatish =
+    kechikkanKun === 0
+      ? BALLAR.vaqtidaBonus
+      : -BALLAR.kechikishJarima * kechikkanKun;
+  return Math.max(0, asos + tuzatish);
+}
+
+/** @param dan — shu sanadan keyingi ma'lumot (null bo'lsa butun tarix) */
+export async function reyting(dan: Date | null = null): Promise<OdamBall[]> {
+  const qatorlar = await sql<Qator[]>`
     SELECT u.id AS user_id,
            u.ism,
            r.raqam AS xona,
-           COUNT(*) FILTER (WHERE c.tur = 'musor')::int   AS musor,
-           COUNT(*) FILTER (WHERE c.tur = 'hammom')::int  AS hammom,
-           COUNT(*) FILTER (WHERE c.tur = 'oshxona')::int AS oshxona,
-           (SELECT COUNT(*) FROM submissions s
-             WHERE s.user_id = u.id AND NOT s.bekor
-               AND (${dan}::timestamptz IS NULL OR s.created_at >= ${dan}))::int AS topshirgan,
-           (SELECT COUNT(*) FROM confirmations cf
-             WHERE cf.user_id = u.id
-               AND (${dan}::timestamptz IS NULL OR cf.created_at >= ${dan}))::int AS tasdiqlagan
+           u.room_id,
+           (SELECT count(*)::int FROM users x WHERE x.room_id = u.room_id AND x.faol) AS azo_soni,
+           (SELECT count(*)::int FROM chores c WHERE c.user_id = u.id AND c.tur = 'musor'
+              AND (${dan}::timestamptz IS NULL OR c.created_at >= ${dan})) AS musor,
+           (SELECT count(*)::int FROM chores c WHERE c.user_id = u.id AND c.tur = 'hammom'
+              AND (${dan}::timestamptz IS NULL OR c.created_at >= ${dan})) AS hammom,
+           (SELECT count(*)::int FROM chores c WHERE c.user_id = u.id AND c.tur = 'oshxona'
+              AND (${dan}::timestamptz IS NULL OR c.created_at >= ${dan})) AS oshxona,
+           (SELECT count(*)::int FROM expenses e WHERE e.user_id = u.id
+              AND (${dan}::timestamptz IS NULL OR e.created_at >= ${dan})) AS xarajat,
+           (SELECT count(*)::int FROM confirmations cf WHERE cf.user_id = u.id
+              AND (${dan}::timestamptz IS NULL OR cf.created_at >= ${dan})) AS tasdiq
     FROM users u
     LEFT JOIN rooms r ON r.id = u.room_id
-    LEFT JOIN chores c ON c.user_id = u.id
-      AND (${dan}::timestamptz IS NULL OR c.created_at >= ${dan})
     WHERE u.faol
-    GROUP BY u.id, u.ism, r.raqam
     ORDER BY r.raqam NULLS LAST, u.ism
   `;
+
+  const navbatlar = await sql<{ room_id: number; kechikkan_kun: number }[]>`
+    SELECT room_id, kechikkan_kun FROM turns
+    WHERE holat = 'tasdiqlandi'
+      AND (${dan}::timestamptz IS NULL OR boshlandi >= ${dan})
+  `;
+
+  return qatorlar.map((q) => {
+    const oz = navbatlar.filter((n) => n.room_id === q.room_id);
+    const navbatBall = oz.reduce(
+      (s, n) => s + navbatBalli(q.azo_soni, n.kechikkan_kun),
+      0,
+    );
+    const ishBall =
+      q.musor * ISH_TURLARI.musor.ball +
+      q.hammom * ISH_TURLARI.hammom.ball +
+      q.oshxona * ISH_TURLARI.oshxona.ball;
+    const xarajatBall = q.xarajat * BALLAR.xarajat;
+    const tasdiqBall = q.tasdiq * BALLAR.tasdiq;
+
+    return {
+      userId: q.user_id,
+      ism: q.ism,
+      xona: q.xona,
+      musor: q.musor,
+      hammom: q.hammom,
+      oshxona: q.oshxona,
+      xarajat: q.xarajat,
+      tasdiq: q.tasdiq,
+      navbatSoni: oz.length,
+      kechikkanKun: oz.reduce((s, n) => s + n.kechikkan_kun, 0),
+      navbatBall,
+      ishBall,
+      xarajatBall,
+      tasdiqBall,
+      jami: navbatBall + ishBall + xarajatBall + tasdiqBall,
+    };
+  });
 }
 
-export async function xonaReytingi(dan: Date | null = null): Promise<XonaReyting[]> {
-  return sql<XonaReyting[]>`
+export async function xonaHolati(dan: Date | null = null): Promise<XonaHolat[]> {
+  const r = await sql<
+    { xona: number; azo_soni: number; navbat: number; kechikkan: number; kechikkan_kun: number }[]
+  >`
     SELECT r.raqam AS xona,
-           COUNT(t.id) FILTER (WHERE t.holat = 'tasdiqlandi')::int AS navbat,
-           COUNT(t.id) FILTER (WHERE t.kechikkan_kun > 0)::int     AS kechikkan,
-           COALESCE(SUM(t.kechikkan_kun), 0)::int                  AS kechikkan_kun,
-           COALESCE(SUM(t.kechikkan_kun), 0)::int * ${config.jarimaKunlik} AS jarima
+           (SELECT count(*)::int FROM users u WHERE u.room_id = r.id AND u.faol) AS azo_soni,
+           count(t.id) FILTER (WHERE t.holat = 'tasdiqlandi')::int AS navbat,
+           count(t.id) FILTER (WHERE t.kechikkan_kun > 0)::int     AS kechikkan,
+           COALESCE(SUM(t.kechikkan_kun), 0)::int                  AS kechikkan_kun
     FROM rooms r
-    LEFT JOIN turns t ON t.room_id = r.id
-      AND t.holat <> 'faol'
+    LEFT JOIN turns t ON t.room_id = r.id AND t.holat = 'tasdiqlandi'
       AND (${dan}::timestamptz IS NULL OR t.boshlandi >= ${dan})
-    GROUP BY r.raqam
+    GROUP BY r.raqam, r.id
     ORDER BY r.raqam
   `;
+  return r.map((x) => ({
+    xona: x.xona,
+    azoSoni: x.azo_soni,
+    navbat: x.navbat,
+    kechikkan: x.kechikkan,
+    kechikkanKun: x.kechikkan_kun,
+    jarima: x.kechikkan_kun * config.jarimaKunlik,
+  }));
 }
 
 export type TarixYozuvi = {
@@ -74,7 +155,7 @@ export type TarixYozuvi = {
   tasdiqlovchilar: string[];
 };
 
-export async function tarix(limit = 20, offset = 0): Promise<TarixYozuvi[]> {
+export async function tarix(limit = 10, offset = 0): Promise<TarixYozuvi[]> {
   return sql<TarixYozuvi[]>`
     SELECT t.id AS turn_id,
            r.raqam AS xona,
@@ -101,5 +182,16 @@ export async function tarix(limit = 20, offset = 0): Promise<TarixYozuvi[]> {
     WHERE t.holat <> 'faol'
     ORDER BY t.id DESC
     LIMIT ${limit} OFFSET ${offset}
+  `;
+}
+
+/** Qo'shimcha ish tarixi (rasm bilan). */
+export async function ishTarixi(limit = 15): Promise<
+  { ism: string; tur: IshTuri; created_at: Date }[]
+> {
+  return sql`
+    SELECT u.ism, c.tur, c.created_at
+    FROM chores c JOIN users u ON u.id = c.user_id
+    ORDER BY c.id DESC LIMIT ${limit}
   `;
 }

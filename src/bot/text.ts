@@ -1,5 +1,12 @@
 import type { Room, User } from "../db/index.js";
-import { pul } from "../core/kassa.js";
+
+export function pul(n: number): string {
+  return n.toLocaleString("ru-RU").replace(/,/g, " ") + " so'm";
+}
+
+export function ball(n: number): string {
+  return `${n > 0 ? "+" : ""}${n} ball`;
+}
 
 const TZ = "Asia/Tashkent";
 

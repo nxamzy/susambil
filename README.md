@@ -1,10 +1,10 @@
-# Uy navbat boti
+# Susambil — uy navbat boti
 
 Kvartira tozalash navbatini boshqaradigan Telegram bot. Asosiy g'oya —
-**hech kim hech nima ochmasligi kerak**: hamma narsa guruh ichida, xabar
-tagidagi tugmalar orqali bo'ladi.
+**hech kim hech nima ochmasligi va buyruq yozmasligi kerak**: hamma narsa
+guruhdagi panel tugmalarida.
 
-## Qanday ishlaydi
+## Tozalash navbati
 
 ```
 Navbat boshlanadi (5 kun muddat)
@@ -17,198 +17,195 @@ Bot rasmlarni albom qilib qo'yadi + "✅ Tasdiqlayman (0/3)" tugmasi
         ↓
 Boshqa xonalardan 3 kishi bosadi
         ↓
-Navbat yopiladi → kechikkan bo'lsa jarima → keyingi xona e'lon qilinadi
+Navbat yopiladi → ball beriladi → keyingi xona e'lon qilinadi
 ```
 
-Tasdiqlanmaguncha navbat **keyingi xonaga o'tmaydi**. Muddat o'tsa,
-bot kuniga bir marta guruhga eslatib turadi va jarima o'sib boradi.
+Tasdiqlanmaguncha navbat **keyingi xonaga o'tmaydi**. Muddat o'tsa, bot
+kuniga bir marta guruhga eslatib turadi.
 
-## Qoidalar (`src/config.ts` da o'zgartiriladi)
+## Qo'shimcha ishlar
+
+Panelda uch tugma: **musor**, **hammom**, **oshxona**. Bosilganda bot
+rasm so'raydi. Rasm kelgach ish yoziladi, guruhga xabar chiqadi va ball
+qo'shiladi. Rasmsiz ball berilmaydi.
+
+## Ball tizimi
+
+O'lchov: **taxminan 2 daqiqa ish = 1 ball**.
+
+| Ish | Ball | Izoh |
+|---|---|---|
+| 🧹 Tozalash navbati | **60 ball xonaga** | a'zolar soniga bo'linadi |
+| ⏱ Vaqtida tugatish | +10 | har a'zoga |
+| 🔴 Kechikish | −10 | har kun, har a'zodan |
+| 🚿 Hammom | 15 | rasm bilan |
+| 🍽 Oshxona | 15 | rasm bilan |
+| ♻️ Musor | 3 | rasm bilan |
+| 🛒 Uyga narsa olib kelish | 20 | rasm + nomi |
+| ✅ Boshqaning ishini tasdiqlash | 1 | |
+
+Navbat balli xona a'zolari soniga bo'linadi, chunki **2 kishilik xona bir
+xil ishni kam odam bilan bajaradi**:
+
+| Xona | Navbat balli (har a'zoga) | Vaqtida bo'lsa |
+|---|---|---|
+| 2 kishilik | 30 | 40 |
+| 3 kishilik | 20 | 30 |
+| 4 kishilik | 15 | 25 |
+
+Kechikish balni kamaytiradi, lekin manfiyga tushmaydi (kamida 0).
+
+Ball hech qayerda saqlanmaydi — har safar hodisalardan hisoblanadi.
+Demak formulani `src/config.ts` da o'zgartirsangiz, butun tarix qayta
+hisoblanadi.
+
+## Qoidalar (`src/config.ts`)
 
 | Sozlama | Qiymat |
 |---|---|
-| Bir xonaga beriladigan muddat | 5 kun |
-| Eslatma | muddat tugashiga 1 kun qolganda |
+| Bir xonaga muddat | 5 kun |
+| Eslatma | muddatga 1 kun qolganda |
 | Kerakli tasdiq | 3 kishi (faqat boshqa xonalardan) |
 | Minimal rasm | 3 ta |
-| Kechikish jarimasi | kuniga 10 000 so'm — xonaga yoziladi, a'zolar o'rtasida bo'linadi |
-| Oylik yig'im | har oyning 1-sanasida har kimga 10 000 so'm |
+| Kechikish jarimasi | kuniga 10 000 so'm — faqat reytingda ko'rsatiladi |
 
-> Kechikish butun kun bilan hisoblanadi: muddatdan 1 soat o'tsa ham 1 kun deb yoziladi.
+> Bot pul hisobini yuritmaydi. Jarima summasi reytingda ma'lumot uchun
+> chiqadi, kassa yo'q.
 
 ## O'rnatish
 
-### 1. Telegram bot yaratish
+### 1. Telegram bot
 
-[@BotFather](https://t.me/BotFather) ga yozing:
+[@BotFather](https://t.me/BotFather):
 
 ```
-/newbot           → nom va username beriladi, token olasiz
-/setprivacy       → botni tanlang → Disable
+/newbot           → token
+/setprivacy       → Disable
 ```
 
-⚠️ **`/setprivacy → Disable` majburiy.** Aks holda bot guruhdagi
-rasmlarni umuman ko'rmaydi va hech narsa ishlamaydi.
+⚠️ **`/setprivacy → Disable` majburiy** — aks holda bot guruhdagi
+rasmlarni ko'rmaydi.
 
-### 2. Baza
-
-[neon.com](https://neon.com) da bepul Postgres oching, ulanish satrini
-(`postgresql://...`) nusxalang.
-
-### 3. Sozlash
+### 2. Baza va sozlash
 
 ```bash
-cp .env.example .env
-```
-
-`.env` ni to'ldiring:
-
-```
-BOT_TOKEN=BotFather bergan token
-DATABASE_URL=Neon bergan satr
-GROUP_CHAT_ID=          # hozircha bo'sh qoldiring
-```
-
-### 4. Jadvallar va boshlang'ich ma'lumot
-
-```bash
+cp .env.example .env      # BOT_TOKEN va DATABASE_URL to'ldiriladi
 npm install
-npm run db:setup    # jadvallarni yaratadi
-npm run db:seed     # 4 xona, 12 odam, birinchi navbat
+npm run db:setup
+npm run db:seed
 ```
 
-Ismlar va xonalar `src/db/seed.ts` da. Kerak bo'lsa avval o'sha faylni tahrirlang.
+Ismlar va xonalar `src/db/seed.ts` da.
 
-### 5. Ishga tushirish
-
-```bash
-npm run dev     # ishlab chiqish (o'zgarishni o'zi oladi)
-npm start       # oddiy ishga tushirish
-```
-
-### 6. Guruhga ulash
+### 3. Guruhga ulash
 
 1. Botni guruhga qo'shing va **admin** qiling (xabar pin qilishi kerak)
-2. Guruhda `/id` yozing — bot chat ID ni aytadi va o'zi saqlab qo'yadi
-3. Guruhda `/panel` yozing (admin) — doimiy tugmalar paneli chiqadi va pin bo'ladi
+2. Guruhda `/id` → bot guruhni eslab qoladi
+3. Guruhda `/panel` → panel chiqadi va pin bo'ladi
 
-### 7. Odamlarni ulash
+### 4. Odamlar
 
-Har bir odam botga **shaxsiy** yozib `/start` bosadi va ro'yxatdan o'z
-ismini tanlaydi. Shundan keyin guruhdagi tugmalar u uchun ishlaydi.
+Har kim botga shaxsiy `/start` yozib ro'yxatdan ismini tanlaydi.
+Ismi ro'yxatda bo'lmasa — **"➕ Men yangi a'zoman"** tugmasi: ismini
+yozadi, xonasini tanlaydi, tamom.
 
 Kim ulanganini ko'rish: `/royxat` (admin).
 
-## Buyruqlar
+## Foydalanish
 
-| Buyruq | Kim uchun |
+Oddiy a'zolar uchun **buyruq kerak emas** — panel tugmalari yetarli.
+Botga har qanday xabar yozilsa ham panel chiqadi.
+
+| Tugma | Nima qiladi |
 |---|---|
-| `/navbat` | kim navbatda, kim keyingi |
-| `/kassa` | kim qancha qarzdor |
-| `/reyting` | shu oylik reyting |
-| `/tarix` | oxirgi 10 navbat, rasm soni, tasdiqlovchilar |
-| `/xarajat` | xarajat qo'shish (shaxsiy yozing) |
-| `/yordam` | buyruqlar ro'yxati |
+| ♻️ 🚿 🍽 | rasm so'raydi, ball qo'shadi, guruhga xabar beradi |
+| 📋 Navbat kimda? | hozirgi va keyingi xona, muddat |
+| 🛒 Xarajat | kim nima olib kelgani + yangi qo'shish tugmasi |
+| 🏆 Reyting | ball, xonalar intizomi, qo'shimcha ishlar, xarajatlar |
+| 🕘 Tarix | oxirgi navbatlar: kim yuklagan, necha rasm, kim tasdiqlagan |
 
-Admin uchun qo'shimcha:
+Admin buyruqlari: `/yordam` (faqat adminga ko'rinadi).
 
 | Buyruq | Vazifasi |
 |---|---|
 | `/panel` | guruhga panel qo'yish |
-| `/royxat` | kim ulangan, kim yo'q |
-| `/qosh Ism 2` | odam qo'shish (2 = xona raqami) |
+| `/royxat` | kim ulangan |
+| `/qosh Ism 2` | odam qo'shish |
 | `/ochir Ism` | ro'yxatdan chiqarish |
 | `/xona Ism 3` | xonasini o'zgartirish |
-| `/navbatber 2` | navbatni qo'lda 2-xonaga o'tkazish |
+| `/navbatber 2` | navbatni qo'lda o'tkazish |
 | `/navbatboshla` | navbat yo'q bo'lsa boshlash |
-| `/tolov Ism 50000` | kassaga to'lov yozish |
-
-## Kassa qanday hisoblanadi
-
-Har bir odamning balansi `kassa_entries` jadvalidagi yozuvlar yig'indisi:
-
-- **Jarima** — xona kechikkanda, summa a'zolar o'rtasida bo'linadi (minus)
-- **Oylik yig'im** — har oyning 1-sanasida (minus)
-- **Ulush** — kimdir xarajat qilganda, hammadan teng ulush (minus)
-- **Xarajat** — pul sarflagan odamga to'liq summa (plus)
-- **To'lov** — admin yozadi (plus)
-
-`🔴 manfiy` = kassaga qarzdor · `🟢 musbat` = kassadan olishi kerak
 
 ## Deploy — Vercel
 
-Bot **webhook** rejimida ishlaydi: Telegram yangilanishlarni
-`/api/webhook` ga yuboradi, eslatmalarni esa Vercel Cron kuniga bir marta
-`/api/cron` orqali tekshiradi (04:00 UTC = 09:00 Toshkent).
+Bot **webhook** rejimida: Telegram `/api/webhook` ga yuboradi, eslatmalar
+`/api/cron` orqali kuniga bir marta (04:00 UTC = 09:00 Toshkent).
 
 ```bash
 vercel link --yes
-vercel env add BOT_TOKEN production      # BotFather tokeni
-vercel env add DATABASE_URL production   # Neon ulanish satri
-vercel env add CRON_SECRET production    # openssl rand -hex 24
+vercel env add BOT_TOKEN production
+vercel env add DATABASE_URL production
+vercel env add CRON_SECRET production     # openssl rand -hex 24
 vercel deploy --prod
-
-npm run webhook:set -- https://<loyihangiz>.vercel.app
+npm run webhook:set -- https://<loyiha>.vercel.app
 ```
 
-Tekshirish:
+Tekshirish: `npm run webhook:info`
 
-```bash
-npm run webhook:info                     # url to'g'rimi, xato bormi
-curl -H "Authorization: Bearer $CRON_SECRET" https://<...>/api/cron
-```
+### Serverless uchun nima o'zgacha
 
-### Nega webhook, long polling emas
+Funksiya doim ishlab turmaydi, shuning uchun xotiradagi holat bazaga
+ko'chirilgan:
 
-Serverless funksiya doim ishlab turmaydi, shuning uchun xotirada
-saqlanadigan holat yo'qoladi. Ikki narsa bazaga ko'chirilgan:
+- `pending_photos` — 3 taga yetmagan rasmlar. Albom rasmlari alohida va
+  bir vaqtda keladi, shuning uchun navbat qatori `FOR UPDATE` bilan
+  qulflanadi — aks holda bitta albomdan ikkita topshiriq yaralardi.
+- `flow_state` — ko'p qadamli suhbat (rasm kutish, xarajat, ro'yxatdan o'tish).
 
-- `pending_photos` — 3 taga yetmagan rasmlar. Albomning rasmlari alohida
-  va bir vaqtda keladi, shuning uchun navbat qatori `FOR UPDATE` bilan
-  qulflanadi — aks holda ikkita topshiriq yaratilib qolardi.
-- `flow_state` — xarajat kiritish jarayonidagi qadam.
+> grammY'da `bot.catch` faqat long polling uchun ishlaydi. Webhook
+> rejimida xato tashqariga chiqsa funksiya 500 qaytaradi va Telegram
+> yangilanishni qayta-qayta yuboradi. Shuning uchun `botYarat()` ichida
+> barcha handler'lar xato chegarasi ichiga olingan.
 
 ### Lokal ishlab chiqish
 
-Long polling va webhook birga ishlay olmaydi:
-
 ```bash
-npm run webhook:delete   # webhookni o'chiring
-npm run dev              # long polling
-npm run webhook:set -- https://<...>   # qaytarish
+npm run webhook:delete   # long polling va webhook birga ishlamaydi
+npm run dev
+npm run webhook:set -- https://<loyiha>.vercel.app
 ```
 
-### Boshqa variant: doimiy jarayon
-
-`Dockerfile` ham bor — Fly.io, Railway yoki VPS uchun. U holda
-`src/index.ts` long polling bilan ishlaydi va `node-cron` eslatmalarni
-har soatda tekshiradi (Vercel'dagi kuniga bir martadan aniqroq).
-
-> Diqqat: grammY'da `bot.catch` faqat long polling uchun ishlaydi.
-> Webhook rejimida xato tashqariga chiqsa funksiya 500 qaytaradi va
-> Telegram yangilanishni qayta-qayta yuboradi. Shuning uchun
-> `botYarat()` ichida barcha handler'lar xato chegarasi ichiga olingan.
+`Dockerfile` ham bor — Fly.io / Railway / VPS uchun. U holda long polling
+ishlaydi va `node-cron` eslatmalarni har soatda tekshiradi.
 
 ## Tuzilishi
 
 ```
 src/
-├── config.ts              qoidalar: 5 kun, 3 tasdiq, 10 000 jarima
+├── config.ts              qoidalar va ball jadvali
 ├── db/
 │   ├── schema.sql         jadvallar
-│   ├── setup.ts           jadvallarni yaratish
-│   └── seed.ts            xonalar, odamlar, birinchi navbat
+│   ├── setup.ts / seed.ts
 ├── core/
-│   ├── rotation.ts        navbat dvigateli, kechikish, jarima
-│   ├── kassa.ts           balans, xarajat, to'lov
-│   └── rating.ts          reyting va tarix so'rovlari
+│   ├── rotation.ts        navbat dvigateli, kechikish
+│   ├── photobuffer.ts     rasm to'plash (FOR UPDATE qulf)
+│   ├── rating.ts          ball hisobi va reyting
+│   └── expenses.ts        olib kelinganlar
 ├── bot/
-│   ├── handlers/          buyruqlar, rasm, tasdiq, qo'shimcha ish, xarajat, admin
-│   ├── keyboards.ts       tugmalar
-│   ├── text.ts            xabar matnlari, sana formati
-│   └── group.ts           guruh id, shaxsiy xabar
+│   ├── handlers/
+│   │   ├── commands.ts    panel, ko'rinishlar, ro'yxatdan o'tish
+│   │   ├── photos.ts      rasm dispetcheri (ish / xarajat / navbat)
+│   │   ├── messages.ts    matn dispetcheri, panel qaytishi
+│   │   ├── chores.ts      qo'shimcha ish tugmalari
+│   │   ├── expense.ts     xarajat oqimi
+│   │   ├── confirm.ts     tasdiqlash
+│   │   └── admin.ts       admin buyruqlari
+│   ├── keyboards.ts / text.ts / group.ts / state.ts
 ├── jobs/
-│   ├── reminders.ts       har soatda: eslatma va kechikish ogohlantirishi
-│   └── monthly.ts         har oy 1-sanasi: yig'im + hisobot
-└── index.ts               ishga tushirish + cron
+│   ├── reminders.ts       eslatma va kechikish ogohlantirishi
+│   └── monthly.ts         oylik hisobot
+└── index.ts               long polling (lokal / Docker)
+api/
+├── webhook.ts             Telegram yangilanishlari (Vercel)
+└── cron.ts                kunlik vazifalar (Vercel Cron)
 ```

@@ -35,13 +35,14 @@ CREATE INDEX IF NOT EXISTS turns_faol_idx ON turns (holat) WHERE holat = 'faol';
 
 -- Topshirilgan ish: rasmlar to'plami
 CREATE TABLE IF NOT EXISTS submissions (
-  id            SERIAL PRIMARY KEY,
-  turn_id       INT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
-  user_id       INT NOT NULL REFERENCES users(id),
-  photo_ids     TEXT[] NOT NULL,
-  guruh_msg_id  BIGINT,                  -- guruhdagi tugmali xabar id si
-  bekor         BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  id             SERIAL PRIMARY KEY,
+  turn_id        INT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+  user_id        INT NOT NULL REFERENCES users(id),
+  photo_ids      TEXT[] NOT NULL,
+  media_group_id TEXT,
+  guruh_msg_id   BIGINT,                 -- guruhdagi tugmali xabar id si
+  bekor          BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS submissions_turn_idx ON submissions (turn_id);
@@ -55,40 +56,27 @@ CREATE TABLE IF NOT EXISTS confirmations (
   UNIQUE (submission_id, user_id)
 );
 
--- Qo'shimcha ishlar: musor / hammom / oshxona
+-- Qo'shimcha ishlar: musor / hammom / oshxona. Rasm bilan tasdiqlanadi.
 CREATE TABLE IF NOT EXISTS chores (
   id          SERIAL PRIMARY KEY,
   user_id     INT NOT NULL REFERENCES users(id),
   tur         TEXT NOT NULL,
+  photo_id    TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS chores_vaqt_idx ON chores (created_at);
 
--- Xarajatlar
+-- Uyga olib kelingan narsalar. Pul hisobi yuritilmaydi — faqat rasm va nomi.
 CREATE TABLE IF NOT EXISTS expenses (
   id          SERIAL PRIMARY KEY,
   user_id     INT NOT NULL REFERENCES users(id),
-  summa       BIGINT NOT NULL,
-  izoh        TEXT,
+  izoh        TEXT NOT NULL,
   photo_id    TEXT,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Kassa harakatlari.
---   amount > 0  →  kassa shu odamga qarzdor (u ortiqcha to'lagan / xarajat qilgan)
---   amount < 0  →  odam kassaga qarzdor (jarima, ulush, oylik yig'im)
-CREATE TABLE IF NOT EXISTS kassa_entries (
-  id          SERIAL PRIMARY KEY,
-  user_id     INT NOT NULL REFERENCES users(id),
-  summa       BIGINT NOT NULL,
-  tur         TEXT NOT NULL,             -- jarima | xarajat | ulush | tolov | yigim
-  ref_id      INT,
-  izoh        TEXT,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS kassa_user_idx ON kassa_entries (user_id);
+CREATE INDEX IF NOT EXISTS expenses_vaqt_idx ON expenses (created_at);
 
 -- Turli sozlamalar (guruh id, oxirgi oylik hisobot sanasi ...)
 CREATE TABLE IF NOT EXISTS settings (
@@ -113,12 +101,9 @@ CREATE TABLE IF NOT EXISTS pending_photos (
 
 CREATE INDEX IF NOT EXISTS pending_photos_idx ON pending_photos (turn_id, user_id);
 
--- Xarajat kiritish jarayonidagi qadam
+-- Ko'p qadamli suhbat holati (xarajat qo'shish, ro'yxatdan o'tish)
 CREATE TABLE IF NOT EXISTS flow_state (
   telegram_id BIGINT PRIMARY KEY,
   holat       JSONB NOT NULL,
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
--- Topshiriqni albom bo'yicha bir marta yaratish uchun
-ALTER TABLE submissions ADD COLUMN IF NOT EXISTS media_group_id TEXT;

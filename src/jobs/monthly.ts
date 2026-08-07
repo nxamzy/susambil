@@ -1,28 +1,28 @@
 import type { Api } from "grammy";
-import { config } from "../config.js";
-import { oylikYigimYozish, pul } from "../core/kassa.js";
+import { sql } from "../db/index.js";
 import { guruhgaYubor } from "../bot/group.js";
-import { kassaMatni, reytingMatni } from "../bot/handlers/commands.js";
+import { reytingMatni } from "../bot/handlers/commands.js";
 
-/** Har oyning 1-sanasida: oylik yig'im yoziladi va hisobot e'lon qilinadi. */
+/** Har oyning 1-sanasida o'tgan oy hisoboti e'lon qilinadi. */
 export async function oylikHisobot(api: Api): Promise<void> {
-  const hozir = new Date();
   const belgi = new Intl.DateTimeFormat("en-CA", {
-    year: "numeric", month: "2-digit", timeZone: "Asia/Tashkent",
-  }).format(hozir).slice(0, 7);
+    year: "numeric",
+    month: "2-digit",
+    timeZone: "Asia/Tashkent",
+  })
+    .format(new Date())
+    .slice(0, 7);
 
-  const nechta = await oylikYigimYozish(belgi);
-  if (nechta === 0) return; // bu oy allaqachon yozilgan
+  const [bor] = await sql<{ qiymat: string }[]>`
+    SELECT qiymat FROM settings WHERE kalit = 'oxirgi_hisobot'
+  `;
+  if (bor?.qiymat === belgi) return; // bu oy allaqachon e'lon qilingan
 
-  await guruhgaYubor(
-    api,
-    [
-      `📅 <b>Yangi oy boshlandi</b>`,
-      ``,
-      `Har kimga ${pul(config.oylikYigim)} oylik yig'im yozildi (${nechta} kishi).`,
-    ].join("\n"),
-  );
+  await sql`
+    INSERT INTO settings (kalit, qiymat) VALUES ('oxirgi_hisobot', ${belgi})
+    ON CONFLICT (kalit) DO UPDATE SET qiymat = EXCLUDED.qiymat
+  `;
 
+  await guruhgaYubor(api, "📅 <b>Yangi oy boshlandi — o'tgan oy natijalari:</b>");
   await guruhgaYubor(api, await reytingMatni());
-  await guruhgaYubor(api, await kassaMatni());
 }

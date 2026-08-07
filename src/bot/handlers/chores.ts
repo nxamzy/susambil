@@ -1,15 +1,18 @@
 import type { Bot } from "grammy";
 import { sql } from "../../db/index.js";
 import { ISH_TURLARI, type IshTuri } from "../../config.js";
-import { guruhId, kim } from "../group.js";
+import { kim } from "../group.js";
 import { esc } from "../text.js";
+import { holatOrnat } from "../state.js";
+import { bekorKeyboard } from "../keyboards.js";
 
-/** Bir odam bir ishni 30 daqiqada bir martadan ko'p bosa olmaydi (tasodifiy bosishga qarshi). */
+/** Bir odam bir ishni 30 daqiqada bir martadan ko'p belgilay olmaydi. */
 const TAKROR_MS = 30 * 60_000;
 
 export function register(bot: Bot) {
   bot.callbackQuery(/^ish:(musor|hammom|oshxona)$/, async (ctx) => {
     const tur = ctx.match[1] as IshTuri;
+    const t = ISH_TURLARI[tur];
 
     const u = await kim(ctx.from.id);
     if (!u) {
@@ -31,18 +34,14 @@ export function register(bot: Bot) {
       });
     }
 
-    await sql`INSERT INTO chores (user_id, tur) VALUES (${u.id}, ${tur})`;
-    await ctx
-      .answerCallbackQuery({ text: `${ISH_TURLARI[tur].emoji} Yozib qo'ydim, rahmat!` })
-      .catch(() => {});
+    await holatOrnat(ctx.from.id, { tur: "ish", ish: tur, chatId: ctx.chat?.id ?? 0 });
+    await ctx.answerCallbackQuery({ text: "📷 Endi rasmini tashlang" }).catch(() => {});
 
-    const chatId = await guruhId();
-    if (chatId) {
-      await ctx.api.sendMessage(
-        chatId,
-        `${ISH_TURLARI[tur].emoji} <b>${esc(u.ism)}</b> ${ISH_TURLARI[tur].matn}.`,
-        { parse_mode: "HTML" },
-      );
-    }
+    await ctx.reply(
+      `${t.emoji} <b>${esc(u.ism)}</b> — <b>${esc(t.tugma.toLowerCase())}</b>\n\n` +
+        `📷 Tasdiqlash uchun rasmini shu yerga tashlang.\n` +
+        `Rasm kelgach <b>+${t.ball} ball</b> qo'shiladi.`,
+      { parse_mode: "HTML", reply_markup: bekorKeyboard() },
+    );
   });
 }
