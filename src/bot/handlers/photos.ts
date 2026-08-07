@@ -7,12 +7,12 @@ import { rasmQabulQil } from "../../core/photobuffer.js";
 import { guruhId, kim } from "../group.js";
 import { tasdiqKeyboard, bekorKeyboard } from "../keyboards.js";
 import { tasdiqXabari, esc } from "../text.js";
-import { holatOl, holatOrnat, holatTozala } from "../state.js";
+import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
 
 /**
  * Rasm uch xil maqsadda kelishi mumkin. Tartib muhim:
  *   1) qo'shimcha ish tasdig'i (tugma bosilgan, rasm kutilyapti)
- *   2) yangi xarajat rasmi
+ *   2) yangi xarajat rasmi — faqat shaxsiy chatda
  *   3) navbatdagi xonaning tozalash rasmi
  */
 export function register(bot: Bot) {
@@ -34,17 +34,27 @@ export function register(bot: Bot) {
     const holat = await holatOl(fromId);
 
     if (holat?.tur === "ish") {
+      await sorovniOchir(ctx.api, holat);
       return ishniYakunla(ctx, u, holat.ish, eng.file_id);
     }
 
-    if (holat?.tur === "xarajat" && holat.qadam === "rasm") {
-      await holatOrnat(fromId, { tur: "xarajat", qadam: "izoh", photoId: eng.file_id });
-      await ctx.reply(
-        "✍️ Nima olib keldingiz?\n\n" +
-          "<i>Bir nechta narsa bo'lsa hammasini yozing, masalan:</i>\n" +
-          "<code>Fayri, gubka, qop-qog'oz</code>",
+    // Xarajat oqimi faqat shaxsiy chatda. Aks holda odam botda xarajat
+    // boshlab, guruhga tozalash rasmini tashlasa — birinchi rasm xarajatga
+    // ketib qolardi.
+    if (holat?.tur === "xarajat" && holat.qadam === "rasm" && ctx.chat.type === "private") {
+      await sorovniOchir(ctx.api, holat);
+      const yangi = { tur: "xarajat", qadam: "izoh", photoId: eng.file_id } as const;
+      await holatOrnat(fromId, yangi);
+      const xabar = await ctx.reply(
+        [
+          `✍️ <b>Nima olib keldingiz?</b>`,
+          ``,
+          `<i>Bir nechta narsa bo'lsa hammasini yozing:</i>`,
+          `<code>Fayri, gubka, qop-qog'oz</code>`,
+        ].join("\n"),
         { parse_mode: "HTML", reply_markup: bekorKeyboard() },
       );
+      await sorovniEslat(fromId, yangi, xabar.chat.id, xabar.message_id);
       return;
     }
 
@@ -57,20 +67,18 @@ async function ishniYakunla(ctx: Context, u: User, ish: IshTuri, photoId: string
   await sql`INSERT INTO chores (user_id, tur, photo_id) VALUES (${u.id}, ${ish}, ${photoId})`;
   if (ctx.from) await holatTozala(ctx.from.id);
 
-  const matn =
-    `${t.emoji} <b>${esc(u.ism)}</b> ${t.matn}.\n\n` + `🏅 <b>+${t.ball} ball</b>`;
-
+  const matn = `${t.emoji} <b>${esc(u.ism)}</b> ${t.matn}\n\n🏅 <b>+${t.ball} ball</b>`;
   const guruh = await guruhId();
-  const guruhdaYuborilgan = ctx.chat?.id === guruh;
 
-  if (guruhdaYuborilgan) {
+  if (ctx.chat?.id === guruh) {
     // Rasm allaqachon guruhda ko'rinib turibdi — qayta yubormaymiz
     await ctx.reply(matn, { parse_mode: "HTML" });
-  } else {
-    await ctx.reply(`${t.emoji} Yozib qo'ydim — <b>+${t.ball} ball</b>`, { parse_mode: "HTML" });
-    if (guruh) {
-      await ctx.api.sendPhoto(guruh, photoId, { caption: matn, parse_mode: "HTML" });
-    }
+    return;
+  }
+
+  await ctx.reply(`${t.emoji} Yozib qo'ydim — <b>+${t.ball} ball</b>`, { parse_mode: "HTML" });
+  if (guruh) {
+    await ctx.api.sendPhoto(guruh, photoId, { caption: matn, parse_mode: "HTML" });
   }
 }
 
@@ -80,9 +88,7 @@ async function navbatRasmi(ctx: Context, u: User, fileId: string) {
 
   if (u.room_id !== navbat.room.id) {
     if (ctx.chat?.type === "private") {
-      await ctx.reply(
-        `Hozir navbat ${navbat.room.raqam}-xonada. Rasmingiz hisobga olinmadi.`,
-      );
+      await ctx.reply(`Hozir navbat ${navbat.room.raqam}-xonada. Rasmingiz hisobga olinmadi.`);
     }
     return;
   }
@@ -97,7 +103,9 @@ async function navbatRasmi(ctx: Context, u: User, fileId: string) {
 
   if (natija.holat === "kutilyapti") {
     const yana = natija.kerak - natija.soni;
-    await ctx.reply(`📷 ${natija.soni} ta rasm qabul qilindi, yana ${yana} ta kerak.`);
+    await ctx.reply(`📷 ${natija.soni} ta rasm qabul qilindi — yana <b>${yana} ta</b> kerak.`, {
+      parse_mode: "HTML",
+    });
     return;
   }
   if (natija.holat !== "topshirildi") return;

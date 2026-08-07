@@ -2,10 +2,14 @@
  * Ko'p qadamli suhbat holati.
  * Serverless muhitda xotira saqlanmagani uchun bazada turadi.
  */
+import type { Api } from "grammy";
 import { sql } from "../db/index.js";
 import type { IshTuri } from "../config.js";
 
-export type Flow =
+/** Bot yuborgan "rasm tashlang" kabi so'rov — jarayon tugagach o'chiriladi. */
+type Sorov = { sorov?: { chatId: number; msgId: number } };
+
+export type Flow = (
   /** Qo'shimcha ish belgilandi, endi rasm kutilyapti */
   | { tur: "ish"; ish: IshTuri; chatId: number }
   /** Yangi xarajat: avval rasm, keyin nomi */
@@ -13,7 +17,9 @@ export type Flow =
   | { tur: "xarajat"; qadam: "izoh"; photoId: string }
   /** Yangi a'zo ro'yxatdan o'tyapti */
   | { tur: "royxat"; qadam: "ism" }
-  | { tur: "royxat"; qadam: "xona"; ism: string };
+  | { tur: "royxat"; qadam: "xona"; ism: string }
+) &
+  Sorov;
 
 /** Chala qolgan jarayon shuncha daqiqadan keyin bekor bo'ladi. */
 const MUDDAT_DAQIQA = 15;
@@ -38,4 +44,20 @@ export async function holatOrnat(telegramId: number, holat: Flow): Promise<void>
 
 export async function holatTozala(telegramId: number): Promise<void> {
   await sql`DELETE FROM flow_state WHERE telegram_id = ${telegramId}`;
+}
+
+/** Jarayon tugadi — botning so'rov xabarini o'chiramiz, chat toza qolsin. */
+export async function sorovniOchir(api: Api, holat: Flow | null): Promise<void> {
+  if (!holat?.sorov) return;
+  await api.deleteMessage(holat.sorov.chatId, holat.sorov.msgId).catch(() => {});
+}
+
+/** So'rov xabari yuborilgach uning id sini holatga yozib qo'yamiz. */
+export async function sorovniEslat(
+  telegramId: number,
+  holat: Flow,
+  chatId: number,
+  msgId: number,
+): Promise<void> {
+  await holatOrnat(telegramId, { ...holat, sorov: { chatId, msgId } });
 }

@@ -2,7 +2,7 @@ import type { Bot } from "grammy";
 import { sql } from "../../db/index.js";
 import { kim } from "../group.js";
 import { esc } from "../text.js";
-import { holatOl, holatOrnat, holatTozala } from "../state.js";
+import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
 import { panelKeyboard, xonaTanlashKeyboard } from "../keyboards.js";
 import { xarajatniSaqla } from "./expense.js";
 import { panelMatni } from "./commands.js";
@@ -29,12 +29,17 @@ export function register(bot: Bot) {
         return ctx.reply("Bu ism ro'yxatda bor. Boshqacha yozing (masalan familiyangiz bilan).");
       }
 
-      await holatOrnat(ctx.from.id, { tur: "royxat", qadam: "xona", ism });
+      await sorovniOchir(ctx.api, holat);
+      const yangi = { tur: "royxat", qadam: "xona", ism } as const;
+      await holatOrnat(ctx.from.id, yangi);
+
       const xonalar = await sql<{ raqam: number }[]>`SELECT raqam FROM rooms ORDER BY raqam`;
-      return ctx.reply(
-        `Xush kelibsiz, <b>${esc(ism)}</b>!\n\nQaysi xonada turasiz?`,
+      const xabar = await ctx.reply(
+        `👋 Xush kelibsiz, <b>${esc(ism)}</b>!\n\n🚪 <b>Qaysi xonada turasiz?</b>`,
         { parse_mode: "HTML", reply_markup: xonaTanlashKeyboard(xonalar.map((x) => x.raqam)) },
       );
+      await sorovniEslat(ctx.from.id, yangi, xabar.chat.id, xabar.message_id);
+      return;
     }
 
     if (holat?.tur === "xarajat" && holat.qadam === "izoh") {

@@ -32,6 +32,34 @@ export async function guruhgaYubor(api: Api, matn: string, extra: object = {}) {
   return api.sendMessage(id, matn, { parse_mode: "HTML", ...extra });
 }
 
+/**
+ * Ma'lumot xabari (reyting, tarix, navbat...). Chatda bir vaqtda faqat
+ * bittasi turadi — yangisini yuborishdan oldin eskisi o'chiriladi, aks holda
+ * guruh tugma bosilgani sayin to'lib ketardi.
+ */
+export async function korishXabar(
+  api: Api,
+  chatId: number,
+  matn: string,
+  extra: object = {},
+): Promise<void> {
+  const kalit = `korish_msg:${chatId}`;
+
+  const [eski] = await sql<{ qiymat: string }[]>`
+    SELECT qiymat FROM settings WHERE kalit = ${kalit}
+  `;
+  if (eski?.qiymat) {
+    await api.deleteMessage(chatId, Number(eski.qiymat)).catch(() => {});
+  }
+
+  const yangi = await api.sendMessage(chatId, matn, { parse_mode: "HTML", ...extra });
+
+  await sql`
+    INSERT INTO settings (kalit, qiymat) VALUES (${kalit}, ${String(yangi.message_id)})
+    ON CONFLICT (kalit) DO UPDATE SET qiymat = EXCLUDED.qiymat
+  `;
+}
+
 /** Telegram id bo'yicha ro'yxatdan o'tgan odamni topadi. */
 export async function kim(telegramId: number | undefined): Promise<User | null> {
   if (!telegramId) return null;

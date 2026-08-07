@@ -57,28 +57,31 @@ export function register(bot: Bot) {
     const [yuklagan] = await sql<{ ism: string }[]>`SELECT ism FROM users WHERE id = ${sub.user_id}`;
     if (!room || !yuklagan) return ctx.answerCallbackQuery({ text: "Ma'lumot topilmadi." });
 
-    // Javob bermaslik (masalan "query too old") quyidagi mantiqni to'xtatmasin —
+    // Javob bermaslik ("query too old") quyidagi mantiqni to'xtatmasin —
     // tasdiq allaqachon yozilgan, navbat baribir yopilishi kerak.
     await ctx.answerCallbackQuery({ text: "✅ Tasdiqlandi, rahmat!" }).catch(() => {});
 
     if (ismlar.length < config.kerakliTasdiq) {
-      await ctx.editMessageText(
-        tasdiqXabari(room, yuklagan.ism, ismlar, config.kerakliTasdiq),
-        {
+      await ctx
+        .editMessageText(tasdiqXabari(room, yuklagan.ism, ismlar, config.kerakliTasdiq), {
           parse_mode: "HTML",
           reply_markup: tasdiqKeyboard(submissionId, ismlar.length, config.kerakliTasdiq),
-        },
-      ).catch(() => {});
+        })
+        .catch(() => {});
       return;
     }
 
-    // Yetarli tasdiq yig'ildi — navbatni yopamiz
+    // Yetarli tasdiq yig'ildi. Ikki kishi baravar bosgan bo'lsa navbatniYopish
+    // null qaytaradi — o'shanda hech narsa qilmaymiz.
     const natija = await navbatniYopish(turn, room);
+    if (!natija) return;
 
-    await ctx.editMessageText(
-      yopilganXabar(room, yuklagan.ism, ismlar, natija.kechikkanKun, natija.jarima),
-      { parse_mode: "HTML" },
-    ).catch(() => {});
+    await ctx
+      .editMessageText(
+        yopilganXabar(room, yuklagan.ism, ismlar, natija.kechikkanKun, natija.ballHar),
+        { parse_mode: "HTML" },
+      )
+      .catch(() => {});
 
     const chatId = await guruhId();
     if (chatId) {
