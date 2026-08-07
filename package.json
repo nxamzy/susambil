@@ -1,0 +1,27 @@
+{
+  "name": "uy-navbat-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Kvartira tozalash navbati uchun Telegram bot",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc",
+    "db:setup": "tsx src/db/setup.ts",
+    "db:seed": "tsx src/db/seed.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "grammy": "^1.32.0",
+    "node-cron": "^3.0.3",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

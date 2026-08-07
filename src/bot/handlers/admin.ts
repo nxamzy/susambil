@@ -1,0 +1,138 @@
+import type { Bot } from "grammy";
+import { sql, type Room, type User } from "../../db/index.js";
+import { config } from "../../config.js";
+import { faolNavbat, navbatniOzgartirish, xonaAzolari } from "../../core/rotation.js";
+import { tolovQoshish, pul } from "../../core/kassa.js";
+import { kim } from "../group.js";
+import { esc, ismlar, navbatXabari } from "../text.js";
+
+async function adminmi(ctx: { from?: { id: number } }): Promise<User | null> {
+  const u = await kim(ctx.from?.id);
+  return u?.admin ? u : null;
+}
+
+async function odamTop(ism: string): Promise<User | null> {
+  const [u] = await sql<User[]>`
+    SELECT * FROM users WHERE lower(ism) = lower(${ism}) AND faol LIMIT 1
+  `;
+  return u ?? null;
+}
+
+export function register(bot: Bot) {
+  bot.command("yordam", async (ctx) => {
+    const u = await kim(ctx.from?.id);
+    const satrlar = [
+      "<b>Buyruqlar</b>",
+      "/navbat — kim navbatda, kim keyingi",
+      "/kassa — kim qancha qarzdor",
+      "/reyting — shu oylik reyting",
+      "/tarix — oxirgi navbatlar",
+      "/xarajat — xarajat qo'shish (shaxsiy yozing)",
+    ];
+    if (u?.admin) {
+      satrlar.push(
+        "",
+        "<b>Admin</b>",
+        "/panel — guruhga panel qo'yish",
+        "/qosh Ism 2 — odam qo'shish (2 = xona)",
+        "/ochir Ism — odamni ro'yxatdan chiqarish",
+        "/xona Ism 3 — xonasini o'zgartirish",
+        "/navbatber 2 — navbatni 2-xonaga o'tkazish",
+        "/navbatboshla — navbatni boshlash",
+        "/tolov Ism 50000 — kassaga to'lov yozish",
+      );
+    }
+    await ctx.reply(satrlar.join("\n"), { parse_mode: "HTML" });
+  });
+
+  bot.command("qosh", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+    const [ism, xonaStr] = ctx.match.trim().split(/\s+(?=\d+$)/);
+    const xona = Number(xonaStr);
+    if (!ism || !Number.isInteger(xona)) {
+      return ctx.reply("Format: /qosh Ism 2");
+    }
+    const [room] = await sql<Room[]>`SELECT * FROM rooms WHERE raqam = ${xona}`;
+    if (!room) return ctx.reply(`${xona}-xona topilmadi.`);
+
+    await sql`INSERT INTO users (ism, room_id) VALUES (${ism}, ${room.id})`;
+    await ctx.reply(`✅ ${esc(ism)} — ${xona}-xonaga qo'shildi. Endi botga /start yozsin.`, {
+      parse_mode: "HTML",
+    });
+  });
+
+  bot.command("ochir", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+    const u = await odamTop(ctx.match.trim());
+    if (!u) return ctx.reply("Bunday odam topilmadi.");
+    await sql`UPDATE users SET faol = FALSE WHERE id = ${u.id}`;
+    await ctx.reply(`✅ ${esc(u.ism)} ro'yxatdan chiqarildi.`, { parse_mode: "HTML" });
+  });
+
+  bot.command("xona", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+    const [ism, xonaStr] = ctx.match.trim().split(/\s+(?=\d+$)/);
+    const xona = Number(xonaStr);
+    if (!ism || !Number.isInteger(xona)) return ctx.reply("Format: /xona Ism 3");
+
+    const u = await odamTop(ism);
+    if (!u) return ctx.reply("Bunday odam topilmadi.");
+    const [room] = await sql<Room[]>`SELECT * FROM rooms WHERE raqam = ${xona}`;
+    if (!room) return ctx.reply(`${xona}-xona topilmadi.`);
+
+    await sql`UPDATE users SET room_id = ${room.id} WHERE id = ${u.id}`;
+    await ctx.reply(`✅ ${esc(u.ism)} endi ${xona}-xonada.`, { parse_mode: "HTML" });
+  });
+
+  bot.command("navbatber", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+    const xona = Number(ctx.match.trim());
+    if (!Number.isInteger(xona)) return ctx.reply("Format: /navbatber 2");
+
+    const yangi = await navbatniOzgartirish(xona);
+    await ctx.reply(navbatXabari(yangi.room, yangi.azolar, yangi.turn.muddat), {
+      parse_mode: "HTML",
+    });
+  });
+
+  bot.command("navbatboshla", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+    if (await faolNavbat()) return ctx.reply("Navbat allaqachon ketyapti.");
+
+    const [birinchi] = await sql<Room[]>`SELECT * FROM rooms ORDER BY tartib LIMIT 1`;
+    if (!birinchi) return ctx.reply("Bazada xona yo'q.");
+
+    const muddat = new Date(Date.now() + config.siklKuni * 86_400_000);
+    await sql`INSERT INTO turns (room_id, muddat) VALUES (${birinchi.id}, ${muddat})`;
+
+    await ctx.reply(navbatXabari(birinchi, await xonaAzolari(birinchi.id), muddat), {
+      parse_mode: "HTML",
+    });
+  });
+
+  bot.command("tolov", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+    const [ism, summaStr] = ctx.match.trim().split(/\s+(?=\d[\d\s]*$)/);
+    const summa = Number((summaStr ?? "").replace(/\D/g, ""));
+    if (!ism || !summa) return ctx.reply("Format: /tolov Ism 50000");
+
+    const u = await odamTop(ism);
+    if (!u) return ctx.reply("Bunday odam topilmadi.");
+
+    await tolovQoshish(u.id, summa);
+    await ctx.reply(`✅ ${esc(u.ism)} — ${pul(summa)} to'lov yozildi.`, { parse_mode: "HTML" });
+  });
+
+  bot.command("royxat", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+    const rooms = await sql<Room[]>`SELECT * FROM rooms ORDER BY tartib`;
+    const satrlar = ["<b>Ro'yxat</b>", ""];
+    for (const r of rooms) {
+      const azolar = await xonaAzolari(r.id);
+      const belgi = azolar.map((a) => (a.telegram_id ? "✅" : "⏳")).join("");
+      satrlar.push(`<b>${r.raqam}-xona</b> ${belgi}\n   ${esc(ismlar(azolar))}`);
+    }
+    satrlar.push("", "<i>✅ = botga ulangan, ⏳ = hali /start bosmagan</i>");
+    await ctx.reply(satrlar.join("\n"), { parse_mode: "HTML" });
+  });
+}
