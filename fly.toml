@@ -1,0 +1,14 @@
+app = "susambil-bot"
+primary_region = "fra"
+
+[build]
+
+[env]
+  TZ = "Asia/Tashkent"
+
+# Bot HTTP port ochmaydi (long polling), shuning uchun [http_service] yo'q.
+# Mashina doim yoqiq turishi kerak — eslatmalar cron orqali yuboriladi.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+  cpus = 1
