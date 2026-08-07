@@ -32,7 +32,9 @@ export function register(bot: Bot) {
     }
 
     await sql`INSERT INTO chores (user_id, tur) VALUES (${u.id}, ${tur})`;
-    await ctx.answerCallbackQuery({ text: `${ISH_TURLARI[tur].emoji} Yozib qo'ydim, rahmat!` });
+    await ctx
+      .answerCallbackQuery({ text: `${ISH_TURLARI[tur].emoji} Yozib qo'ydim, rahmat!` })
+      .catch(() => {});
 
     const chatId = await guruhId();
     if (chatId) {

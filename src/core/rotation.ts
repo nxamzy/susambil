@@ -92,6 +92,9 @@ export async function navbatniYopish(
       }
     }
 
+    // Chala qolgan rasmlar keyingi navbatga o'tib ketmasin
+    await tx`DELETE FROM pending_photos WHERE turn_id = ${turn.id}`;
+
     await tx`
       INSERT INTO turns (room_id, muddat) VALUES (${keyingiRoom.id}, ${yangiMuddat})
     `;

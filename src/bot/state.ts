@@ -1,27 +1,35 @@
-/** Xarajat kiritish jarayonidagi vaqtinchalik holat (faqat xotirada). */
+/**
+ * Xarajat kiritish jarayonidagi holat.
+ * Serverless muhitda xotira saqlanmagani uchun bazada turadi.
+ */
+import { sql } from "../db/index.js";
 
 export type XarajatHolat =
   | { qadam: "summa" }
   | { qadam: "izoh"; summa: number }
   | { qadam: "rasm"; summa: number; izoh: string };
 
-const holatlar = new Map<number, { holat: XarajatHolat; vaqt: number }>();
-const MUDDAT_MS = 10 * 60_000;
+/** Shuncha vaqtdan keyin chala qolgan jarayon bekor bo'ladi. */
+const MUDDAT_DAQIQA = 15;
 
-export function xarajatHolati(userId: number): XarajatHolat | null {
-  const x = holatlar.get(userId);
-  if (!x) return null;
-  if (Date.now() - x.vaqt > MUDDAT_MS) {
-    holatlar.delete(userId);
-    return null;
-  }
-  return x.holat;
+export async function xarajatHolati(telegramId: number): Promise<XarajatHolat | null> {
+  const [r] = await sql<{ holat: XarajatHolat }[]>`
+    SELECT holat FROM flow_state
+    WHERE telegram_id = ${telegramId}
+      AND updated_at > now() - (${MUDDAT_DAQIQA} || ' minutes')::interval
+  `;
+  return r?.holat ?? null;
 }
 
-export function xarajatOrnat(userId: number, holat: XarajatHolat): void {
-  holatlar.set(userId, { holat, vaqt: Date.now() });
+export async function xarajatOrnat(telegramId: number, holat: XarajatHolat): Promise<void> {
+  await sql`
+    INSERT INTO flow_state (telegram_id, holat, updated_at)
+    VALUES (${telegramId}, ${sql.json(holat)}, now())
+    ON CONFLICT (telegram_id)
+    DO UPDATE SET holat = EXCLUDED.holat, updated_at = now()
+  `;
 }
 
-export function xarajatTozala(userId: number): void {
-  holatlar.delete(userId);
+export async function xarajatTozala(telegramId: number): Promise<void> {
+  await sql`DELETE FROM flow_state WHERE telegram_id = ${telegramId}`;
 }

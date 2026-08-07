@@ -95,3 +95,30 @@ CREATE TABLE IF NOT EXISTS settings (
   kalit  TEXT PRIMARY KEY,
   qiymat TEXT
 );
+
+-- Serverless muhitda xotira saqlanmaydi, shuning uchun quyidagi ikki jadval
+-- ilgari xotirada turgan vaqtinchalik holatni saqlaydi.
+
+-- Hali to'plamga yetmagan rasmlar (kamida 3 ta kerak)
+CREATE TABLE IF NOT EXISTS pending_photos (
+  id             SERIAL PRIMARY KEY,
+  turn_id        INT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+  user_id        INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  chat_id        BIGINT NOT NULL,
+  media_group_id TEXT,
+  file_id        TEXT NOT NULL,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (turn_id, user_id, file_id)
+);
+
+CREATE INDEX IF NOT EXISTS pending_photos_idx ON pending_photos (turn_id, user_id);
+
+-- Xarajat kiritish jarayonidagi qadam
+CREATE TABLE IF NOT EXISTS flow_state (
+  telegram_id BIGINT PRIMARY KEY,
+  holat       JSONB NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Topshiriqni albom bo'yicha bir marta yaratish uchun
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS media_group_id TEXT;

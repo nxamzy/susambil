@@ -145,7 +145,7 @@ export function register(bot: Bot) {
       return ctx.answerCallbackQuery({ text: "Bu ismni boshqa kimdir olib bo'lgan.", show_alert: true });
     }
 
-    await ctx.answerCallbackQuery({ text: "Qabul qilindi!" });
+    await ctx.answerCallbackQuery({ text: "Qabul qilindi!" }).catch(() => {});
     await ctx.editMessageText(
       `✅ Xush kelibsiz, <b>${esc(natija[0]!.ism)}</b>!\n\n` +
         `Endi guruhdagi tugmalar siz uchun ishlaydi.`,
@@ -188,19 +188,19 @@ export function register(bot: Bot) {
   });
 
   bot.callbackQuery("korish:navbat", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     await guruhgaChiqar(ctx.api, await navbatMatni());
   });
   bot.callbackQuery("korish:kassa", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     await guruhgaChiqar(ctx.api, await kassaMatni());
   });
   bot.callbackQuery("korish:reyting", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     await guruhgaChiqar(ctx.api, await reytingMatni());
   });
   bot.callbackQuery("korish:tarix", async (ctx) => {
-    await ctx.answerCallbackQuery();
+    await ctx.answerCallbackQuery().catch(() => {});
     await guruhgaChiqar(ctx.api, await tarixMatni());
   });
 }

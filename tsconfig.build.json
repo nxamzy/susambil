@@ -1,0 +1,11 @@
+// Docker / VPS uchun JS ga kompilyatsiya. Vercel bu faylni ishlatmaydi —
+// u api/ ichidagi funksiyalarni o'zi quradi.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*"]
+}

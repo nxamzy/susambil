@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Susambil — uy navbat boti</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      font: 16px/1.6 system-ui, -apple-system, sans-serif;
+      background: #f6f7f9; color: #1a1a1a;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #111315; color: #e8e8e8; }
+      .karta { background: #1a1d20; border-color: #2a2e33; }
+    }
+    .karta {
+      background: #fff; border: 1px solid #e3e6ea; border-radius: 14px;
+      padding: 2rem 2.5rem; max-width: 30rem; text-align: center;
+    }
+    h1 { margin: 0 0 .5rem; font-size: 1.4rem; }
+    p { margin: .4rem 0; opacity: .75; font-size: .95rem; }
+    code { background: rgba(128,128,128,.15); padding: .15em .4em; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="karta">
+    <h1>🧹 Susambil</h1>
+    <p>Kvartira tozalash navbatini boshqaruvchi Telegram bot.</p>
+    <p>Bot Telegram'da ishlaydi — bu sahifada ko'radigan narsa yo'q.</p>
+    <p><code>/api/webhook</code> · <code>/api/cron</code></p>
+  </div>
+</body>
+</html>

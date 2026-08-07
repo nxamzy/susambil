@@ -135,14 +135,59 @@ Har bir odamning balansi `kassa_entries` jadvalidagi yozuvlar yig'indisi:
 
 `🔴 manfiy` = kassaga qarzdor · `🟢 musbat` = kassadan olishi kerak
 
-## Deploy
+## Deploy — Vercel
 
-Bot uzluksiz ishlashi kerak (eslatmalar cron orqali yuboriladi), shuning
-uchun serverless emas, doimiy jarayon kerak:
+Bot **webhook** rejimida ishlaydi: Telegram yangilanishlarni
+`/api/webhook` ga yuboradi, eslatmalarni esa Vercel Cron kuniga bir marta
+`/api/cron` orqali tekshiradi (04:00 UTC = 09:00 Toshkent).
 
-- **Railway** yoki **Render** — repo ulanadi, `npm start`, .env o'zgaruvchilari qo'yiladi
-- **Fly.io** — `fly launch`, `fly secrets set ...`
-- Oddiy VPS — `pm2 start "npm start" --name uy-bot`
+```bash
+vercel link --yes
+vercel env add BOT_TOKEN production      # BotFather tokeni
+vercel env add DATABASE_URL production   # Neon ulanish satri
+vercel env add CRON_SECRET production    # openssl rand -hex 24
+vercel deploy --prod
+
+npm run webhook:set -- https://<loyihangiz>.vercel.app
+```
+
+Tekshirish:
+
+```bash
+npm run webhook:info                     # url to'g'rimi, xato bormi
+curl -H "Authorization: Bearer $CRON_SECRET" https://<...>/api/cron
+```
+
+### Nega webhook, long polling emas
+
+Serverless funksiya doim ishlab turmaydi, shuning uchun xotirada
+saqlanadigan holat yo'qoladi. Ikki narsa bazaga ko'chirilgan:
+
+- `pending_photos` — 3 taga yetmagan rasmlar. Albomning rasmlari alohida
+  va bir vaqtda keladi, shuning uchun navbat qatori `FOR UPDATE` bilan
+  qulflanadi — aks holda ikkita topshiriq yaratilib qolardi.
+- `flow_state` — xarajat kiritish jarayonidagi qadam.
+
+### Lokal ishlab chiqish
+
+Long polling va webhook birga ishlay olmaydi:
+
+```bash
+npm run webhook:delete   # webhookni o'chiring
+npm run dev              # long polling
+npm run webhook:set -- https://<...>   # qaytarish
+```
+
+### Boshqa variant: doimiy jarayon
+
+`Dockerfile` ham bor — Fly.io, Railway yoki VPS uchun. U holda
+`src/index.ts` long polling bilan ishlaydi va `node-cron` eslatmalarni
+har soatda tekshiradi (Vercel'dagi kuniga bir martadan aniqroq).
+
+> Diqqat: grammY'da `bot.catch` faqat long polling uchun ishlaydi.
+> Webhook rejimida xato tashqariga chiqsa funksiya 500 qaytaradi va
+> Telegram yangilanishni qayta-qayta yuboradi. Shuning uchun
+> `botYarat()` ichida barcha handler'lar xato chegarasi ichiga olingan.
 
 ## Tuzilishi
 

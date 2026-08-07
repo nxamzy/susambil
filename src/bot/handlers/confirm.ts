@@ -57,7 +57,9 @@ export function register(bot: Bot) {
     const [yuklagan] = await sql<{ ism: string }[]>`SELECT ism FROM users WHERE id = ${sub.user_id}`;
     if (!room || !yuklagan) return ctx.answerCallbackQuery({ text: "Ma'lumot topilmadi." });
 
-    await ctx.answerCallbackQuery({ text: "✅ Tasdiqlandi, rahmat!" });
+    // Javob bermaslik (masalan "query too old") quyidagi mantiqni to'xtatmasin —
+    // tasdiq allaqachon yozilgan, navbat baribir yopilishi kerak.
+    await ctx.answerCallbackQuery({ text: "✅ Tasdiqlandi, rahmat!" }).catch(() => {});
 
     if (ismlar.length < config.kerakliTasdiq) {
       await ctx.editMessageText(
