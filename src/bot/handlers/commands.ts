@@ -7,6 +7,7 @@ import { oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
 import { guruhId, guruhIdOrnat, kim, korishXabar } from "../group.js";
 import {
   ismTanlashKeyboard,
+  menyuKeyboard,
   panelKeyboard,
   panelgaKeyboard,
   xonaTanlashKeyboard,
@@ -208,6 +209,59 @@ async function guruhgaChiqar(api: Api, matn: string, extra: object = {}) {
   if (chatId) await api.sendMessage(chatId, matn, { parse_mode: "HTML", ...extra });
 }
 
+/**
+ * Ko'rinish xabarini chiqaradi va chatni toza tutadi:
+ *  - inline tugma bosilgan bo'lsa, shaxsiy chatda o'sha xabarning o'rniga yozadi
+ *  - aks holda oldingi ko'rinish xabarini o'chirib, yangisini yuboradi
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function javob(ctx: any, matn: string, extra: Record<string, unknown> = {}) {
+  const toza = chekla(matn);
+  const bilan = { reply_markup: panelgaKeyboard(), ...extra };
+
+  const chatId = ctx.chat?.id;
+  if (!chatId) return guruhgaChiqar(ctx.api, toza, bilan);
+
+  if (ctx.chat.type === "private" && ctx.callbackQuery) {
+    const almashdi = await ctx
+      .editMessageText(toza, { parse_mode: "HTML", ...bilan })
+      .then(() => true)
+      .catch(() => false);
+    if (almashdi) return;
+  }
+
+  await korishXabar(ctx.api, chatId, toza, bilan);
+}
+
+export type Korinish = "navbat" | "reyting" | "tarix" | "xarajat" | "tanishtirish" | "panel";
+
+/**
+ * Bir xil ko'rinishlar ikki joydan chaqiriladi: guruhdagi inline paneldan va
+ * shaxsiy chatdagi doimiy menyu tugmalaridan. Mantiq shu yerda bitta.
+ */
+export async function korinish(ctx: Context, nom: Korinish): Promise<void> {
+  switch (nom) {
+    case "navbat":
+      return javob(ctx, await navbatMatni());
+    case "reyting":
+      return javob(ctx, await reytingMatni());
+    case "tarix":
+      return javob(ctx, await tarixMatni());
+    case "xarajat": {
+      const bot = ctx.me?.username;
+      return javob(
+        ctx,
+        await xarajatMatni(),
+        bot ? { reply_markup: xarajatQoshishKeyboard(bot) } : {},
+      );
+    }
+    case "tanishtirish":
+      return javob(ctx, tanishtirish(), { reply_markup: panelgaKeyboard() });
+    case "panel":
+      return javob(ctx, await panelMatni(), { reply_markup: panelKeyboard() });
+  }
+}
+
 export function register(bot: Bot) {
   bot.command("start", async (ctx) => {
     if (ctx.chat.type !== "private" || !ctx.from) return;
@@ -217,7 +271,7 @@ export function register(bot: Bot) {
     if (mavjud) {
       return ctx.reply(await panelMatni(), {
         parse_mode: "HTML",
-        reply_markup: panelKeyboard(),
+        reply_markup: menyuKeyboard(),
       });
     }
 
@@ -247,7 +301,7 @@ export function register(bot: Bot) {
       .editMessageText(`✅ <b>Xush kelibsiz, ${esc(ism)}!</b>`, { parse_mode: "HTML" })
       .catch(() => {});
     await ctx.reply(tanishtirish(), { parse_mode: "HTML" });
-    await ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: panelKeyboard() });
+    await ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: menyuKeyboard() });
   }
 
   bot.callbackQuery(/^men:(\d+)$/, async (ctx) => {
@@ -337,7 +391,7 @@ export function register(bot: Bot) {
     const u = await kim(ctx.from?.id);
     if (!u?.admin) return;
     if (ctx.chat.type === "private") {
-      return ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: panelKeyboard() });
+      return ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: menyuKeyboard() });
     }
     await guruhIdOrnat(ctx.chat.id);
     const xabar = await ctx.reply(await panelMatni(), {
@@ -357,54 +411,9 @@ export function register(bot: Bot) {
     }
   });
 
-  /**
-   * Ko'rinish xabarini chiqaradi va chatni toza tutadi:
-   *  - shaxsiy chatda tugma bosilgan xabarning o'rniga yozadi
-   *  - guruhda esa oldingi ko'rinish xabarini o'chirib, yangisini yuboradi
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async function javob(ctx: any, matn: string, extra: Record<string, unknown> = {}) {
-    const toza = chekla(matn);
-    const bilan = { reply_markup: panelgaKeyboard(), ...extra };
-
-    const chatId = ctx.chat?.id;
-    if (!chatId) return guruhgaChiqar(ctx.api, toza, bilan);
-
-    if (ctx.chat.type === "private" && ctx.callbackQuery) {
-      const almashdi = await ctx
-        .editMessageText(toza, { parse_mode: "HTML", ...bilan })
-        .then(() => true)
-        .catch(() => false);
-      if (almashdi) return;
-    }
-
-    await korishXabar(ctx.api, chatId, toza, bilan);
-  }
-
-  bot.callbackQuery("korish:navbat", async (ctx) => {
+  bot.callbackQuery(/^korish:(navbat|reyting|tarix|xarajat|tanishtirish|panel)$/, async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});
-    await javob(ctx, await navbatMatni());
-  });
-  bot.callbackQuery("korish:reyting", async (ctx) => {
-    await ctx.answerCallbackQuery().catch(() => {});
-    await javob(ctx, await reytingMatni());
-  });
-  bot.callbackQuery("korish:tarix", async (ctx) => {
-    await ctx.answerCallbackQuery().catch(() => {});
-    await javob(ctx, await tarixMatni());
-  });
-  bot.callbackQuery("korish:xarajat", async (ctx) => {
-    await ctx.answerCallbackQuery().catch(() => {});
-    const nom = ctx.me?.username;
-    await javob(ctx, await xarajatMatni(), nom ? { reply_markup: xarajatQoshishKeyboard(nom) } : {});
-  });
-  bot.callbackQuery("korish:tanishtirish", async (ctx) => {
-    await ctx.answerCallbackQuery().catch(() => {});
-    await javob(ctx, tanishtirish(), { reply_markup: panelgaKeyboard() });
-  });
-  bot.callbackQuery("korish:panel", async (ctx) => {
-    await ctx.answerCallbackQuery().catch(() => {});
-    await javob(ctx, await panelMatni(), { reply_markup: panelKeyboard() });
+    await korinish(ctx, ctx.match[1] as Korinish);
   });
 
   bot.command("xonatanla", async (ctx) => {

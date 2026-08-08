@@ -30,7 +30,7 @@ export const config = {
 
 export const ISH_TURLARI = {
   musor: { emoji: "♻️", matn: "musorni tashlab keldi", tugma: "Musor tashladim", ball: 3 },
-  hammom: { emoji: "🚿", matn: "hammomni tozaladi", tugma: "Hammom tozaladim", ball: 15 },
+  hammom: { emoji: "🧹", matn: "hammomni tozaladi", tugma: "Hammom tozaladim", ball: 15 },
   oshxona: { emoji: "🍽", matn: "oshxonani tozaladi", tugma: "Oshxona tozaladim", ball: 15 },
 } as const;
 
