@@ -386,12 +386,42 @@ export function register(bot: Bot) {
   });
 
   /** Ro'yxatdan o'tgandan keyin tanishtirish + panel. */
-  async function kutibOl(ctx: Context, ism: string) {
+  async function kutibOl(ctx: Context, ism: string, xona: number | null, yangimi = false) {
     await ctx
       .editMessageText(`✅ <b>Xush kelibsiz, ${esc(ism)}!</b>`, { parse_mode: "HTML" })
       .catch(() => {});
     await ctx.reply(tanishtirish(), { parse_mode: "HTML" });
     await ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: menyuKeyboard() });
+
+    // Guruh ham bilsin — kim ulangani va yana kim qolgani ko'rinib tursin.
+    // Bu ikkinchi darajali: guruh biriktirilmagan bo'lsa yoki bot u yerdan
+    // chiqarilgan bo'lsa ham ro'yxatdan o'tish buzilmasligi kerak.
+    try {
+      const [hisob] = await sql<{ jami: number; ulangan: number }[]>`
+        SELECT count(*)::int AS jami,
+               count(telegram_id)::int AS ulangan
+        FROM users WHERE faol
+      `;
+
+      const s = [
+        yangimi ? `👋 <b>${esc(ism)}</b> uyga qo'shildi!` : `✅ <b>${esc(ism)}</b> botga ulandi`,
+      ];
+      if (xona) s.push(`🏠 ${xona}-xona`);
+      if (hisob) {
+        const qoldi = hisob.jami - hisob.ulangan;
+        s.push(
+          ``,
+          `👥 <b>${hisob.ulangan}/${hisob.jami}</b> kishi ulandi`,
+          qoldi > 0
+            ? `<i>Yana ${qoldi} kishi botga /start bosishi kerak.</i>`
+            : `🎉 <i>Hamma ulandi!</i>`,
+        );
+      }
+
+      await guruhgaChiqar(ctx.api, s.join("\n"));
+    } catch (e) {
+      console.error("Ro'yxat xabarini guruhga yuborib bo'lmadi:", e);
+    }
   }
 
   bot.callbackQuery(/^men:(\d+)$/, async (ctx) => {
@@ -400,11 +430,13 @@ export function register(bot: Bot) {
       return ctx.answerCallbackQuery({ text: "Siz allaqachon ro'yxatdasiz." });
     }
 
-    const natija = await sql<{ ism: string }[]>`
+    // Xona alohida olinadi: UPDATE ... FROM rooms bo'lsa xonasiz odam
+    // umuman yangilanmay qolardi (room_id NULL bo'lishi mumkin).
+    const natija = await sql<{ ism: string; room_id: number | null }[]>`
       UPDATE users
       SET telegram_id = ${ctx.from.id}, username = ${ctx.from.username ?? null}
       WHERE id = ${userId} AND telegram_id IS NULL
-      RETURNING ism
+      RETURNING ism, room_id
     `;
     if (natija.length === 0) {
       return ctx.answerCallbackQuery({
@@ -413,8 +445,12 @@ export function register(bot: Bot) {
       });
     }
 
+    const [xona] = await sql<{ raqam: number }[]>`
+      SELECT raqam FROM rooms WHERE id = ${natija[0]!.room_id}
+    `;
+
     await ctx.answerCallbackQuery({ text: "Qabul qilindi!" }).catch(() => {});
-    await kutibOl(ctx, natija[0]!.ism);
+    await kutibOl(ctx, natija[0]!.ism, xona?.raqam ?? null);
   });
 
   bot.callbackQuery("yangiazo", async (ctx) => {
@@ -453,8 +489,8 @@ export function register(bot: Bot) {
     await holatTozala(ctx.from.id);
 
     await ctx.answerCallbackQuery({ text: "Qo'shildingiz!" }).catch(() => {});
-    await kutibOl(ctx, `${holat.ism} (${raqam}-xona)`);
-    await guruhgaChiqar(ctx.api, `👋 <b>${esc(holat.ism)}</b> ${raqam}-xonaga qo'shildi!`);
+    // Guruhga xabarni kutibOl yuboradi — bu yerda takrorlanmasin
+    await kutibOl(ctx, holat.ism, raqam, true);
   });
 
   bot.callbackQuery("bekor", async (ctx) => {
