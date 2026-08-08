@@ -5,6 +5,7 @@ import { faolNavbat, navbatniOzgartirish, xonaAzolari } from "../../core/rotatio
 import { kim } from "../group.js";
 import { esc, navbatXabari } from "../text.js";
 import { azolarMatni } from "./commands.js";
+import { kutayotganlarniJonat } from "./reports.js";
 
 async function adminmi(ctx: { from?: { id: number } }): Promise<User | null> {
   const u = await kim(ctx.from?.id);
@@ -49,6 +50,7 @@ export function register(bot: Bot) {
         "/ochir Ism — ro'yxatdan chiqarish",
         "/xona Ism 3 — xonasini o'zgartirish",
         "/ism EskiIsm YangiIsm — ismini o'zgartirish",
+        "/shikoyatlar — tasdiq kutayotgan shikoyatlar",
         "/navbatber 2 — navbatni 2-xonaga o'tkazish",
         "/navbatboshla — navbat yo'q bo'lsa boshlash",
       );
@@ -151,5 +153,12 @@ export function register(bot: Bot) {
     await ctx.reply(`✅ <b>${esc(u.ism)}</b> endi <b>${esc(yangi)}</b> deb ataladi.`, {
       parse_mode: "HTML",
     });
+  });
+
+  // DM'dan qochib ketgan yoki eski shikoyatlarni qayta ko'rish uchun —
+  // reports.ts'dagi bir xil ko'rinishni ishlatadi, ikkinchi nusxa yo'q.
+  bot.command("shikoyatlar", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+    await kutayotganlarniJonat(ctx);
   });
 }

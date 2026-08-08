@@ -361,6 +361,9 @@ async function profilMatni(telegramId: number | undefined): Promise<string> {
     `✅ Tasdiqlagan — ${men.tasdiq} marta · <b>${men.tasdiqBall}</b> ball`,
   ];
 
+  if (men.shikoyatBall > 0) {
+    s.push(`🔴 Tasdiqlangan shikoyat — ${men.shikoyatSoni} marta · <b>-${men.shikoyatBall}</b> ball`);
+  }
   if (men.xarajatSumma > 0) s.push(``, `💰 Uyga sarflagan pulingiz: <b>${pul(men.xarajatSumma)}</b>`);
   if (men.kechikkanKun > 0) s.push(`🔴 Kechikkan: ${men.kechikkanKun} kun`);
 

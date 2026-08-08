@@ -4,7 +4,7 @@
  */
 import type { Api } from "grammy";
 import { sql } from "../db/index.js";
-import type { IshTuri } from "../config.js";
+import type { IshTuri, ShikoyatTurkumi } from "../config.js";
 
 /** Bot yuborgan "rasm tashlang" kabi so'rov — jarayon tugagach o'chiriladi. */
 type Sorov = { sorov?: { chatId: number; msgId: number } };
@@ -21,6 +21,11 @@ export type Flow = (
   /** Yangi a'zo ro'yxatdan o'tyapti */
   | { tur: "royxat"; qadam: "ism" }
   | { tur: "royxat"; qadam: "xona"; ism: string }
+  /** Anonim shikoyat: kim → turkum → izoh → rasm */
+  | { tur: "shikoyat"; qadam: "kim" }
+  | { tur: "shikoyat"; qadam: "turkum"; reportedId: number }
+  | { tur: "shikoyat"; qadam: "izoh"; reportedId: number; turkum: ShikoyatTurkumi }
+  | { tur: "shikoyat"; qadam: "rasm"; reportedId: number; turkum: ShikoyatTurkumi; izoh: string }
 ) &
   Sorov;
 

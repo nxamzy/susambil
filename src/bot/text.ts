@@ -1,6 +1,7 @@
 import type { Room, SubTur, User } from "../db/index.js";
-import { config, ISH_TURLARI, BALLAR, type IshTuri } from "../config.js";
+import { config, ISH_TURLARI, BALLAR, SHIKOYAT_TURKUMLARI, type IshTuri, type ShikoyatTurkumi } from "../config.js";
 import { orinlarniHisobla, type OdamBall } from "../core/rating.js";
+import type { ReportToliq } from "../core/reports.js";
 
 const TZ = "Asia/Tashkent";
 
@@ -134,21 +135,26 @@ export function reytingRoyxati(
     (a, b) => b.jami - a.jami || a.ism.localeCompare(b.ism),
   );
   const orinlar = orinlarniHisobla(saralangan);
-  const eng = saralangan[0]?.jami ?? 0;
+  // Chiziq shkalasi uchun — shikoyat jarimasi jamini manfiy qilishi mumkin,
+  // eng past 0 desak "aslida yetakchi" 0 yoki manfiy bo'lganda nolga bo'lish
+  // xatosi (Infinity/NaN) chiqmaydi.
+  const eng = Math.max(saralangan[0]?.jami ?? 0, 0);
 
   const s: string[] = [`🏆 <b>REYTING — ${oy.toUpperCase()}</b>`, AJRATGICH];
 
-  if (eng === 0) {
+  if (saralangan.every((o) => o.jami === 0)) {
     s.push(``, `🤷 <i>Shu oyda hali ball yig'ilmagan.</i>`);
     return s;
   }
 
-  for (const o of saralangan.filter((x) => x.jami > 0)) {
+  // Jarima tufayli manfiy bo'lganlar ham ro'yxatda ko'rinishi kerak —
+  // aks holda eng ko'p jarima olgan odam butunlay yashirinib qolardi.
+  for (const o of saralangan.filter((x) => x.jami !== 0)) {
     const orin = orinlar.get(o.userId)!;
     const belgi = ["🥇", "🥈", "🥉"][orin - 1] ?? `<b>${orin}.</b>`;
 
     // Yetakchiga nisbatan uzunlik — kim qanchalik orqada qolgani ko'rinsin
-    const uzun = Math.max(1, Math.round((o.jami / eng) * 10));
+    const uzun = o.jami <= 0 ? 0 : Math.max(1, Math.round((o.jami / Math.max(eng, 1)) * 10));
     const chiziq = "▰".repeat(uzun) + "▱".repeat(10 - uzun);
 
     s.push(
@@ -162,6 +168,7 @@ export function reytingRoyxati(
     if (o.ishBall) qism.push(`♻️ ${o.ishBall}`);
     if (o.xarajatBall) qism.push(`💰 ${o.xarajatBall}`);
     if (o.tasdiqBall) qism.push(`✅ ${o.tasdiqBall}`);
+    if (o.shikoyatBall) qism.push(`🔴 -${o.shikoyatBall}`);
     if (qism.length) s.push(`<i>${qism.join("  ·  ")}</i>`);
   }
 
@@ -308,6 +315,76 @@ export function yopilganXabar(
   return s.join("\n");
 }
 
+function shikoyatTurkumi(kod: string): (typeof SHIKOYAT_TURKUMLARI)[ShikoyatTurkumi] {
+  return kod in SHIKOYAT_TURKUMLARI
+    ? SHIKOYAT_TURKUMLARI[kod as ShikoyatTurkumi]
+    : SHIKOYAT_TURKUMLARI.boshqa;
+}
+
+/**
+ * Yangi shikoyat — faqat adminga DM qilinadi. Reporter ismi shu yerda
+ * ko'rinadi, chunki bu xabar hech qachon guruhga yoki oddiy a'zoga
+ * yuborilmaydi — faqat admin telegram_id siga.
+ */
+export function shikoyatAdminXabari(r: ReportToliq): string {
+  const t = shikoyatTurkumi(r.turkum);
+  return [
+    `🚨 <b>YANGI SHIKOYAT</b>`,
+    AJRATGICH,
+    ``,
+    `👤 Kim haqida: <b>${esc(r.reported_ism)}</b>`,
+    `🕵️ Kim yubordi: <b>${esc(r.reporter_ism)}</b>`,
+    ``,
+    `${t.emoji} Turkum: ${t.nom}`,
+    `📝 ${esc(r.izoh)}`,
+    `📅 ${sana(r.created_at)}`,
+    ``,
+    `Tasdiqlasangiz <b>${esc(r.reported_ism)}</b>dan <b>-${r.ball} ball</b> ayiriladi.`,
+    ``,
+    `<i>Bu xabar faqat sizga (admin) yuborilgan.</i>`,
+  ].join("\n");
+}
+
+/** Admin qaror qilgandan keyin — o'sha adminning xabari (va boshqa adminlarniki) shunga almashadi. */
+export function shikoyatHalQilindiXabari(r: ReportToliq, tasdiqlandi: boolean): string {
+  return [
+    tasdiqlandi ? `✅ <b>TASDIQLANDI</b>` : `❌ <b>RAD ETILDI</b>`,
+    AJRATGICH,
+    ``,
+    `👤 ${esc(r.reported_ism)} haqidagi shikoyat`,
+    `🕵️ Yuborgan: ${esc(r.reporter_ism)}`,
+    tasdiqlandi ? `🔻 -${r.ball} ball ayirildi.` : `<i>Ball ayirilmadi.</i>`,
+  ].join("\n");
+}
+
+/** Jarima olgan odamga shaxsiy xabar — reporter kim ekani ko'rsatilmaydi. */
+export function shikoyatJarimaXabari(r: ReportToliq, adminIsm: string): string {
+  const t = shikoyatTurkumi(r.turkum);
+  return [
+    `🔴 <b>SIZDAN BALL AYIRILDI</b>`,
+    AJRATGICH,
+    ``,
+    `🔻 <b>-${r.ball} ball</b>`,
+    `${t.emoji} Sabab: ${t.nom}`,
+    `📝 ${esc(r.izoh)}`,
+    ``,
+    `👮 Tasdiqlagan: ${esc(adminIsm)}`,
+  ].join("\n");
+}
+
+/** Guruhga chiqadigan anonim xabar — reporter mutlaqo ko'rsatilmaydi. */
+export function shikoyatGuruhXabari(r: ReportToliq): string {
+  const t = shikoyatTurkumi(r.turkum);
+  return [
+    `⚠️ <b>${esc(r.reported_ism).toUpperCase()}GA JARIMA BERILDI</b>`,
+    AJRATGICH,
+    ``,
+    `${t.emoji} ${t.nom}`,
+    `📝 ${esc(r.izoh)}`,
+    `🔻 <b>-${r.ball} ball</b>`,
+  ].join("\n");
+}
+
 /** Botning tanishtiruvi — "Qanday ishlaydi?" tugmasi shuni chiqaradi. */
 export function tanishtirish(): string {
   const yarim = Math.round(BALLAR.navbatXona / 2);
@@ -378,6 +455,17 @@ export function tanishtirish(): string {
     `   ⏱ Vaqtida tugatsa <b>+${BALLAR.vaqtidaBonus}</b>`,
     `   🔴 Kechiksa har kun <b>−${BALLAR.kechikishJarima}</b>`,
     `   ✅ Boshqaning ishini tasdiqlasa <b>+${BALLAR.tasdiq}</b>`,
+    ``,
+    `<b>🚨 ANONIM SHIKOYAT</b>`,
+    AJRATGICH,
+    `Birov qoida buzsa (tozalamadi, shovqin qildi,`,
+    `mulkka zarar yetkazdi) — "Shikoyat" tugmasidan yozib`,
+    `qo'yasiz.`,
+    ``,
+    `<i>Kim yozganini FAQAT admin biladi. Guruhda va</i>`,
+    `<i>boshqa a'zolarga bu hech qachon ko'rsatilmaydi.</i>`,
+    ``,
+    `Admin tasdiqlasa, o'sha odamdan <b>-${BALLAR.shikoyatJarima} ball</b> ayiriladi.`,
     ``,
     AJRATGICH,
     `💬 Botga hech qanday buyruq yozish shart emas —`,

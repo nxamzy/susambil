@@ -180,3 +180,35 @@ ALTER TABLE expenses ADD COLUMN IF NOT EXISTS submission_id INT REFERENCES submi
 -- shuning uchun eski qatorlar to'sib qo'ymaydi.
 CREATE UNIQUE INDEX IF NOT EXISTS chores_submission_uniq   ON chores (submission_id);
 CREATE UNIQUE INDEX IF NOT EXISTS expenses_submission_uniq ON expenses (submission_id);
+
+-- ---------------------------------------------------------------------------
+-- ANONIM SHIKOYAT
+-- ---------------------------------------------------------------------------
+-- Har qanday a'zo boshqa birovning qoidabuzarligi haqida yozishi mumkin.
+-- Ataylab submissions/confirmations dan ALOHIDA: o'sha tizim ko'p kishilik
+-- tenglar-tasdiqlashi uchun (kerakliTasdiq kishi bosishi kerak) va yuklagan
+-- odam har doim ochiq ko'rsatiladi. Shikoyatda esa bitta admin qaror qiladi
+-- va kim yozgani HECH QACHON guruhga yoki oddiy a'zoga chiqmasligi shart —
+-- buni umumiy kodga aralashtirish anonimlikni tasodifan buzish xavfini
+-- oshirardi, shuning uchun mustaqil jadval va oqim.
+CREATE TABLE IF NOT EXISTS reports (
+  id          SERIAL PRIMARY KEY,
+  reporter_id INT NOT NULL REFERENCES users(id),
+  reported_id INT NOT NULL REFERENCES users(id),
+  turkum      TEXT NOT NULL,
+  izoh        TEXT NOT NULL,
+  photo_id    TEXT,
+  ball        INT NOT NULL,
+  holat       TEXT NOT NULL DEFAULT 'kutilmoqda'
+              CHECK (holat IN ('kutilmoqda', 'tasdiqlandi', 'rad')),
+  admin_id    INT REFERENCES users(id),
+  hal_qilindi TIMESTAMPTZ,
+  -- Bir nechta admin bo'lsa, har biriga jo'natilgan xabar shu yerda —
+  -- biri hal qilganda qolganlarining nusxasi ham yangilanadi.
+  admin_msgs  JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (reporter_id <> reported_id)
+);
+
+CREATE INDEX IF NOT EXISTS reports_kutilmoqda_idx ON reports (holat) WHERE holat = 'kutilmoqda';
+CREATE INDEX IF NOT EXISTS reports_reported_idx ON reports (reported_id, holat);

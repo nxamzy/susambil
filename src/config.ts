@@ -99,4 +99,16 @@ export const BALLAR = {
   xarajat: 10,
   /** Boshqa xonaning ishini tasdiqlagani uchun */
   tasdiq: 1,
+  /** Tasdiqlangan shikoyat uchun ayiriladigan ball */
+  shikoyatJarima: 20,
 } as const;
+
+/** Anonim shikoyat turkumlari. */
+export const SHIKOYAT_TURKUMLARI = {
+  tozalik: { emoji: "🧹", nom: "Tozalik/intizom buzilishi" },
+  shovqin: { emoji: "🔊", nom: "Shovqin" },
+  mulk: { emoji: "💥", nom: "Mulkka zarar" },
+  boshqa: { emoji: "❓", nom: "Boshqa" },
+} as const;
+
+export type ShikoyatTurkumi = keyof typeof SHIKOYAT_TURKUMLARI;

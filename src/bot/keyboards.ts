@@ -1,5 +1,12 @@
 import { InlineKeyboard, Keyboard } from "grammy";
-import { ISH_TURLARI, SEKIN_ISHLAR, TEZ_ISHLAR, type IshTuri } from "../config.js";
+import {
+  ISH_TURLARI,
+  SEKIN_ISHLAR,
+  SHIKOYAT_TURKUMLARI,
+  TEZ_ISHLAR,
+  type IshTuri,
+  type ShikoyatTurkumi,
+} from "../config.js";
 
 /** Ish tugmasining yozuvi — inline va doimiy menyuda bir xil bo'lsin. */
 export function ishTugmasi(t: IshTuri): string {
@@ -21,6 +28,13 @@ export const MENYU = {
 /** Menyudagi tugmasi yo'q ish turlarini ochadigan tugma. */
 export const BOSHQA_ISH = "➕ Boshqa ish";
 
+/**
+ * Anonim shikoyat tugmasi. Ataylab faqat shaxsiy chatdagi doimiy menyuda —
+ * guruh paneliga qo'shilmagan, chunki bu yerdagi butun oqim (kimni
+ * tanlash, izoh) shaxsiy suhbatda o'tishi shart.
+ */
+export const SHIKOYAT_TUGMA = "🚨 Shikoyat qilish";
+
 /** Yozuv bo'yicha ish turini topadi (doimiy menyu tugmasi bosilganda). */
 export function tugmaIshTuri(matn: string): IshTuri | null {
   for (const t of Object.keys(ISH_TURLARI) as IshTuri[]) {
@@ -41,7 +55,8 @@ export function menyuKeyboard(): Keyboard {
   kb.text(MENYU.navbat).text(MENYU.xarajat).row();
   kb.text(MENYU.reyting).text(MENYU.profil).row();
   kb.text(MENYU.azolar).text(MENYU.tarix).row();
-  kb.text(MENYU.tanishtirish);
+  kb.text(MENYU.tanishtirish).row();
+  kb.text(SHIKOYAT_TUGMA);
   return kb.resized().persistent();
 }
 
@@ -123,4 +138,42 @@ export function xarajatQoshishKeyboard(botUsername: string): InlineKeyboard {
 /** Tanishtirishdan keyin panelga qaytish. */
 export function panelgaKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("🏠 Panelga qaytish", "korish:panel");
+}
+
+/** Shikoyat: kimni tanlash — bitta qatorda bitta odam, kim ekani chalkashmasin. */
+export function shikoyatKimKeyboard(odamlar: { id: number; ism: string }[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const o of odamlar) kb.text(`👤 ${o.ism}`, `shikoyat_kim:${o.id}`).row();
+  kb.text("✖️ Bekor qilish", "bekor");
+  return kb;
+}
+
+/** Shikoyat: turkumni tanlash. */
+export function shikoyatTurkumKeyboard(): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const t of Object.keys(SHIKOYAT_TURKUMLARI) as ShikoyatTurkumi[]) {
+    const i = SHIKOYAT_TURKUMLARI[t];
+    kb.text(`${i.emoji} ${i.nom}`, `shikoyat_turkum:${t}`).row();
+  }
+  kb.text("✖️ Bekor qilish", "bekor");
+  return kb;
+}
+
+/**
+ * Shikoyat: rasm so'ralganda. Callback nomi ("shikoyat_rasmsiz") ish
+ * oqimidagi "rasmsiz" bilan atayin bir xil emas — ular ikki xil holatni
+ * (`Flow.tur`) tekshiradi, bitta nom ishlatilsa xato oqimga tushib qolardi.
+ */
+export function shikoyatRasmKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("📷 Rasmim yo'q — shundoq yuboraman", "shikoyat_rasmsiz")
+    .row()
+    .text("✖️ Bekor qilish", "bekor");
+}
+
+/** Adminga yuboriladigan shikoyat xabaridagi tasdiq/rad tugmalari. */
+export function shikoyatAdminKeyboard(reportId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✅ Tasdiqlash", `shikoyat_tasdiq:${reportId}`)
+    .text("❌ Rad etish", `shikoyat_rad:${reportId}`);
 }

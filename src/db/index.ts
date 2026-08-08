@@ -65,3 +65,26 @@ export type Submission = {
   rad_sababi: string | null;
   rad_qildi: number | null;
 };
+
+/** kutilmoqda → tasdiqlandi | rad (bir admin hal qiladi, ko'p kishilik tasdiq emas) */
+export type ShikoyatHolat = "kutilmoqda" | "tasdiqlandi" | "rad";
+
+/**
+ * Anonim shikoyat. `reporter_id` faqat admin ko'radigan joylarda ishlatiladi
+ * (adminga DM, /shikoyatlar) — guruhga yoki oddiy a'zoga chiqadigan hech
+ * qanday matnda bu maydon o'qilmasligi kerak.
+ */
+export type Report = {
+  id: number;
+  reporter_id: number;
+  reported_id: number;
+  turkum: string;
+  izoh: string;
+  photo_id: string | null;
+  ball: number;
+  holat: ShikoyatHolat;
+  admin_id: number | null;
+  hal_qilindi: Date | null;
+  admin_msgs: { chat_id: number; message_id: number }[];
+  created_at: Date;
+};

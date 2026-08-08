@@ -7,12 +7,14 @@ import {
   BOSHQA_ISH,
   MENYU,
   menyuKeyboard,
+  SHIKOYAT_TUGMA,
   tugmaIshTuri,
   xonaTanlashKeyboard,
 } from "../keyboards.js";
 import { summaniSora, xarajatniSaqla } from "./expense.js";
 import { korinish, panelMatni } from "./commands.js";
 import { ishniBoshla, ishRasminiSora } from "./chores.js";
+import { shikoyatBoshla, shikoyatRasmSora } from "./reports.js";
 import { summaTekshir } from "../../core/topshiriq.js";
 
 /**
@@ -26,6 +28,11 @@ async function menyuTugmasi(ctx: Context, matn: string): Promise<boolean> {
   const ish = tugmaIshTuri(matn);
   if (ish) {
     await ishniBoshla(ctx, ish);
+    return true;
+  }
+
+  if (matn === SHIKOYAT_TUGMA) {
+    await shikoyatBoshla(ctx);
     return true;
   }
 
@@ -115,6 +122,20 @@ export function register(bot: Bot) {
 
     if (holat?.tur === "xarajat" && holat.qadam === "rasm") {
       return ctx.reply("📷 Avval rasmini tashlang.");
+    }
+
+    if (holat?.tur === "shikoyat" && holat.qadam === "izoh") {
+      const izoh = ctx.message.text.trim().slice(0, 500);
+      if (izoh.length < 5) return ctx.reply("Juda qisqa. Nima bo'lganini birroz batafsil yozing.");
+      return shikoyatRasmSora(ctx, holat.reportedId, holat.turkum, izoh);
+    }
+
+    if (holat?.tur === "shikoyat" && holat.qadam === "rasm") {
+      return ctx.reply("📷 Avval rasmini tashlang (yoki tugmani bosing).");
+    }
+
+    if (holat?.tur === "shikoyat") {
+      return ctx.reply("👆 Yuqoridagi tugmalardan birini tanlang.");
     }
 
     if (holat?.tur === "ish") {
