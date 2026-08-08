@@ -11,6 +11,7 @@
     "start:prod": "node dist/index.js",
     "db:setup": "tsx src/db/setup.ts",
     "db:seed": "tsx src/db/seed.ts",
+    "commands:set": "tsx src/scripts/commands.ts",
     "webhook:set": "tsx src/scripts/webhook.ts set",
     "webhook:info": "tsx src/scripts/webhook.ts info",
     "webhook:delete": "tsx src/scripts/webhook.ts delete",

@@ -40,7 +40,13 @@ async function menyuTugmasi(ctx: Context, matn: string): Promise<boolean> {
 export function register(bot: Bot) {
   bot.on("message:text", async (ctx) => {
     if (ctx.chat.type !== "private" || !ctx.from) return;
-    if (ctx.message.text.startsWith("/")) return;
+    // Tanilgan buyruqlar yuqoridagi handlerlarda ushlanadi — bu yergacha
+    // faqat yo'q buyruq yetib keladi. Jimgina qaytmaymiz: odam menyudan
+    // eski buyruqni bosib, javob kelmasa nima bo'lganini bilmaydi.
+    if (ctx.message.text.startsWith("/")) {
+      await ctx.reply("Bunday buyruq yo'q. /yordam yozing yoki pastdagi tugmalardan foydalaning.");
+      return;
+    }
 
     if (await menyuTugmasi(ctx, ctx.message.text.trim())) return;
 

@@ -18,11 +18,27 @@ async function odamTop(ism: string): Promise<User | null> {
 }
 
 export function register(bot: Bot) {
-  /** Faqat admin uchun — boshqalar panel bilan ishlaydi, buyruq yozmaydi. */
+  /**
+   * Hammaga ochiq. Ilgari admin bo'lmaganlarga jimgina qaytardi — buyruq esa
+   * Telegram menyusida hammaga ko'rinib turardi, natijada bosilsa hech nima
+   * bo'lmasdi.
+   */
   bot.command("yordam", async (ctx) => {
-    if (!(await adminmi(ctx))) return;
-    await ctx.reply(
-      [
+    const s = [
+      "<b>Buyruqlar</b>",
+      "",
+      "/navbat — kim navbatda",
+      "/reyting — shu oylik reyting",
+      "/tarix — oxirgi navbatlar",
+      "/xarajat — uyga narsa olib kelganingizni yozish",
+      "",
+      "<i>Aslida buyruq yozish shart emas — hammasi yozish",
+      "maydonining ostidagi tugmalarda.</i>",
+    ];
+
+    if (await adminmi(ctx)) {
+      s.push(
+        "",
         "<b>Admin buyruqlari</b>",
         "",
         "/panel — guruhga panel qo'yish va pin qilish",
@@ -33,11 +49,10 @@ export function register(bot: Bot) {
         "/xona Ism 3 — xonasini o'zgartirish",
         "/navbatber 2 — navbatni 2-xonaga o'tkazish",
         "/navbatboshla — navbat yo'q bo'lsa boshlash",
-        "",
-        "<i>Oddiy a'zolar uchun buyruq kerak emas — hammasi panel tugmalarida.</i>",
-      ].join("\n"),
-      { parse_mode: "HTML" },
-    );
+      );
+    }
+
+    await ctx.reply(s.join("\n"), { parse_mode: "HTML" });
   });
 
   bot.command("qosh", async (ctx) => {

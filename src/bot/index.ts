@@ -52,13 +52,18 @@ export function botYarat(): Bot {
   return bot;
 }
 
+/**
+ * Telegram menyusidagi buyruqlar ro'yxati. Faqat haqiqatan ro'yxatdan
+ * o'tgan va hammaga ishlaydigan buyruqlar turishi kerak — bo'lmasa odam
+ * menyudan bosadi-yu, javob kelmaydi. Admin buyruqlari bu yerda yo'q:
+ * ular /yordam ichida, faqat adminga ko'rsatiladi.
+ */
 export async function buyruqlarniOrnat(bot: Bot): Promise<void> {
   await bot.api.setMyCommands([
     { command: "navbat", description: "Kim navbatda" },
-    { command: "kassa", description: "Kim qancha qarzdor" },
     { command: "reyting", description: "Shu oylik reyting" },
     { command: "tarix", description: "Oxirgi navbatlar" },
-    { command: "xarajat", description: "Xarajat qo'shish" },
+    { command: "xarajat", description: "Uyga narsa olib keldim" },
     { command: "yordam", description: "Buyruqlar ro'yxati" },
   ]);
 }

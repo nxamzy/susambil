@@ -68,7 +68,9 @@ export async function xarajatniSaqla(
 }
 
 export function register(bot: Bot) {
-  bot.command("yangixarajat", async (ctx) => {
+  // Ikkala nom ham ishlasin: menyuda /xarajat turadi, eski /yangixarajat esa
+  // odat bo'lib qolganlar uchun qoldirildi.
+  bot.command(["xarajat", "yangixarajat"], async (ctx) => {
     if (ctx.chat.type !== "private") {
       return ctx.reply(
         `🛒 Xarajatni botga shaxsiy yozib qo'shasiz:\nhttps://t.me/${ctx.me.username}?start=xarajat`,
