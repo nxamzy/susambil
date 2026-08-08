@@ -3,7 +3,7 @@ import { sql, type Room } from "../../db/index.js";
 import { config, ISH_TURLARI, SEKIN_ISHLAR, BALLAR, type IshTuri } from "../../config.js";
 import { ochiqTopshiriqlar } from "../../core/topshiriq.js";
 import { faolNavbat, kelgusiTartib } from "../../core/rotation.js";
-import { reyting, xonaHolati, tarix } from "../../core/rating.js";
+import { reyting, orinlarniHisobla, xonaHolati, tarix } from "../../core/rating.js";
 import { jamiXarajat, oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
 import { guruhId, guruhIdOrnat, kim, korishXabar } from "../group.js";
 import {
@@ -16,7 +16,8 @@ import {
   xarajatQoshishKeyboard,
 } from "../keyboards.js";
 import {
-  AJRATGICH, chekla, esc, ismlar, muddatHolati, navbatXabari, pul, qisqaSana, sana, tanishtirish,
+  AJRATGICH, chekla, esc, ismlar, muddatHolati, navbatXabari, pul, qisqaSana, reytingRoyxati,
+  sana, tanishtirish,
 } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat } from "../state.js";
 import { xarajatniBoshla } from "./expense.js";
@@ -136,33 +137,8 @@ async function reytingMatni(telegramId?: number): Promise<string> {
   const odamlar = await reyting(dan);
   const xonalar = await xonaHolati(dan);
 
-  const s: string[] = [`🏆 <b>REYTING — ${oyNomi()}</b>`, AJRATGICH, ``];
-
-  // 1) Umumiy ball
-  const jamiBoyicha = [...odamlar].sort((a, b) => b.jami - a.jami);
-  s.push(`🥇 <b>UMUMIY BALL</b>`, AJRATGICH);
-  if ((jamiBoyicha[0]?.jami ?? 0) === 0) {
-    s.push(`🤷 <i>Shu oyda hali ball yig'ilmagan.</i>`);
-  } else {
-    for (const [i, o] of jamiBoyicha.entries()) {
-      if (o.jami === 0) continue;
-      const medal = ["🥇", "🥈", "🥉"][i] ?? `${i + 1}.`;
-      s.push(`${medal} ${esc(o.ism)} — <b>${o.jami}</b> ball`);
-    }
-  }
-
-  // Ko'rayotgan odamning o'z o'rni — ro'yxat uzayganda o'zini qidirmasin
   const men = telegramId ? await kim(telegramId) : null;
-  if (men) {
-    const orin = jamiBoyicha.findIndex((o) => o.userId === men.id);
-    if (orin !== -1) {
-      s.push(
-        ``,
-        `📊 <b>Sizning o'rningiz: ${orin + 1}</b> / ${jamiBoyicha.length}`,
-        `🏅 Ballingiz: <b>${jamiBoyicha[orin]!.jami}</b>`,
-      );
-    }
-  }
+  const s = reytingRoyxati(odamlar, men?.id ?? null, oyNomi());
 
   // 2) Xonalar intizomi
   s.push(``, `🧹 <b>TOZALASH NAVBATLARI</b>`, AJRATGICH);

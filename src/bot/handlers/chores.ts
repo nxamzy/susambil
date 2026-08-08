@@ -1,10 +1,11 @@
 import type { Bot, Context } from "grammy";
 import { sql, type User } from "../../db/index.js";
-import { ISH_TURLARI, type IshTuri } from "../../config.js";
+import { config, ISH_TURLARI, type IshTuri } from "../../config.js";
 import { kim } from "../group.js";
 import { esc } from "../text.js";
 import { holatOl, holatOrnat, sorovniEslat, sorovniOchir } from "../state.js";
-import { bekorKeyboard } from "../keyboards.js";
+import { bekorKeyboard, rasmKutishKeyboard } from "../keyboards.js";
+import { ishniYakunla } from "./photos.js";
 
 /** Bir odam bir ishni 30 daqiqada bir martadan ko'p belgilay olmaydi. */
 const TAKROR_MS = 30 * 60_000;
@@ -84,10 +85,16 @@ async function rasmSora(
       `${t.emoji} <b>${esc(ism)}</b> — ${esc(t.tugma.toLowerCase())}`,
       ...(izoh ? [`📝 ${esc(izoh)}`] : []),
       ``,
-      `📷 <b>Rasmini tashlang.</b>`,
-      `🏅 Guruh tasdig'idan keyin <b>+${t.ball} ball</b>.`,
+      `📷 <b>Endi rasmini shu yerga tashlang.</b>`,
+      ``,
+      `Keyin nima bo'ladi:`,
+      `   1️⃣ Ishingiz guruhga tasdiqqa chiqadi`,
+      `   2️⃣ <b>${config.kerakliTasdiq} kishi</b> ✅ bosadi`,
+      `   3️⃣ <b>+${t.ball} ball</b> qo'shiladi`,
+      ``,
+      `<i>Rasmga olmagan bo'lsangiz — pastdagi tugma.</i>`,
     ].join("\n"),
-    { parse_mode: "HTML", reply_markup: bekorKeyboard() },
+    { parse_mode: "HTML", reply_markup: rasmKutishKeyboard() },
   );
 
   await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
@@ -115,5 +122,20 @@ export function register(bot: Bot) {
 
     await ctx.answerCallbackQuery({ text: "📷 Endi rasmini tashlang" }).catch(() => {});
     await sora(ctx, n, tur);
+  });
+
+  /** "Rasmim yo'q" — ish rasmsiz tasdiqqa chiqadi. */
+  bot.callbackQuery("rasmsiz", async (ctx) => {
+    const holat = await holatOl(ctx.from.id);
+    if (holat?.tur !== "ish" || ("qadam" in holat && holat.qadam === "izoh")) {
+      return ctx.answerCallbackQuery({ text: "Jarayon eskirgan. Qaytadan boshlang." });
+    }
+
+    const u = await kim(ctx.from.id);
+    if (!u) return ctx.answerCallbackQuery({ text: "Siz ro'yxatda yo'qsiz." });
+
+    await ctx.answerCallbackQuery({ text: "Rasmsiz yuborildi" }).catch(() => {});
+    await sorovniOchir(ctx.api, holat);
+    await ishniYakunla(ctx, u, holat.ish, holat.izoh ?? null, null);
   });
 }

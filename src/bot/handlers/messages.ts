@@ -58,7 +58,12 @@ export function register(bot: Bot) {
       return;
     }
 
-    if (await menyuTugmasi(ctx, ctx.message.text.trim())) return;
+    if (await menyuTugmasi(ctx, ctx.message.text.trim())) {
+      // Doimiy tugma bosilganda uning yozuvi chatda oddiy xabar bo'lib
+      // qolib ketadi ("Hammom tozaladim") — chat toza tursin deb o'chiramiz.
+      await ctx.deleteMessage().catch(() => {});
+      return;
+    }
 
     const holat = await holatOl(ctx.from.id);
 

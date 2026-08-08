@@ -51,11 +51,15 @@ export const ISH_TURLARI = {
   },
   xona: {
     emoji: "🛏", matn: "o'z xonasini tozaladi", tugma: "O'z xonamni tozaladim",
-    ball: 10, tez: false, izohShart: false,
+    ball: 5, tez: true, izohShart: false,
+  },
+  tamir: {
+    emoji: "🔧", matn: "uyda biror narsani ta'mirladi", tugma: "Nimadurni ta'mirladim",
+    ball: 10, tez: true, izohShart: true,
   },
   boshqa: {
-    emoji: "🔧", matn: "boshqa foydali ish qildi", tugma: "Boshqa ish qildim",
-    ball: 5, tez: false, izohShart: true,
+    emoji: "➕", matn: "boshqa foydali ish qildi", tugma: "Boshqa ish",
+    ball: 10, tez: false, izohShart: true,
   },
 } as const;
 
@@ -92,7 +96,7 @@ export const BALLAR = {
   /** Kechikkan har kun uchun har bir a'zodan ayiriladi */
   kechikishJarima: 10,
   /** Uyga narsa olib kelgani uchun */
-  xarajat: 20,
+  xarajat: 10,
   /** Boshqa xonaning ishini tasdiqlagani uchun */
   tasdiq: 1,
 } as const;

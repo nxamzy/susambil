@@ -83,6 +83,18 @@ export function bekorKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("✖️ Bekor qilish", "bekor");
 }
 
+/**
+ * Rasm kutilayotgandagi tugmalar. "Rasmim yo'q" kerak, chunki ba'zi ishning
+ * (masalan musor tashlash) rasmini olish qiyin — u holda ish baribir guruh
+ * tasdig'iga chiqadi, faqat rasmsiz.
+ */
+export function rasmKutishKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("📷 Rasmim yo'q — shundoq yuboraman", "rasmsiz")
+    .row()
+    .text("✖️ Bekor qilish", "bekor");
+}
+
 export function ismTanlashKeyboard(odamlar: { id: number; ism: string }[]): InlineKeyboard {
   const kb = new InlineKeyboard();
   for (const o of odamlar) kb.text(`👤 ${o.ism}`, `men:${o.id}`).row();

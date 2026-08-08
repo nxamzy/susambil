@@ -55,7 +55,7 @@ export function register(bot: Bot) {
           `✍️ <b>Nima olib keldingiz?</b>`,
           ``,
           `<i>Bir nechta narsa bo'lsa hammasini yozing:</i>`,
-          `<code>Fayri, gubka, qop-qog'oz</code>`,
+          `<code>Falga, gubka, qop-qog'oz</code>`,
         ].join("\n"),
         { parse_mode: "HTML", reply_markup: bekorKeyboard() },
       );
@@ -71,15 +71,15 @@ export function register(bot: Bot) {
  * Qo'shimcha ish rasmi keldi. Ilgari shu yerda darrov ball berilardi; endi
  * topshiriq guruhga tasdiqqa chiqadi va ball faqat tasdiqdan keyin beriladi.
  */
-async function ishniYakunla(
+export async function ishniYakunla(
   ctx: Context,
   u: User,
   ish: IshTuri,
   izoh: string | null,
-  photoId: string,
+  photoId: string | null,
 ) {
   const t = ISH_TURLARI[ish];
-  const sub = await topshiriqYarat(u.id, { tur: "ish", ish, izoh }, [photoId]);
+  const sub = await topshiriqYarat(u.id, { tur: "ish", ish, izoh }, photoId ? [photoId] : []);
   if (ctx.from) await holatTozala(ctx.from.id);
 
   await ctx.reply(
@@ -88,6 +88,8 @@ async function ishniYakunla(
       ``,
       `Guruhga tasdiqqa qo'ydim — <b>${config.kerakliTasdiq} kishi</b> bosgach`,
       `<b>+${t.ball} ball</b> qo'shiladi.`,
+      ``,
+      `<i>Holatini "Profil" bo'limidan kuzatasiz.</i>`,
     ].join("\n"),
     { parse_mode: "HTML" },
   );
@@ -95,11 +97,16 @@ async function ishniYakunla(
   const guruh = await guruhId();
   if (!guruh) return;
 
-  const xabar = await ctx.api.sendPhoto(guruh, photoId, {
-    caption: topshiriqXabari(sub, u.ism, [], config.kerakliTasdiq),
-    parse_mode: "HTML",
-    reply_markup: tasdiqKeyboard(sub.id, 0, config.kerakliTasdiq),
-  });
+  const matn = topshiriqXabari(sub, u.ism, [], config.kerakliTasdiq);
+  const tugma = tasdiqKeyboard(sub.id, 0, config.kerakliTasdiq);
+
+  const xabar = photoId
+    ? await ctx.api.sendPhoto(guruh, photoId, {
+        caption: matn,
+        parse_mode: "HTML",
+        reply_markup: tugma,
+      })
+    : await ctx.api.sendMessage(guruh, matn, { parse_mode: "HTML", reply_markup: tugma });
 
   await sql`UPDATE submissions SET guruh_msg_id = ${xabar.message_id} WHERE id = ${sub.id}`;
 }

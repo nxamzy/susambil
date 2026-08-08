@@ -1,5 +1,6 @@
 import type { Room, SubTur, User } from "../db/index.js";
 import { config, ISH_TURLARI, BALLAR, type IshTuri } from "../config.js";
+import { orinlarniHisobla, type OdamBall } from "../core/rating.js";
 
 const TZ = "Asia/Tashkent";
 
@@ -116,6 +117,81 @@ export function tasdiqXabari(
     ``,
     `👇 <i>Boshqa xonadagilar tugmani bossin</i>`,
   ].join("\n");
+}
+
+/**
+ * Reyting jadvali. Sof funksiya — bazaga tegmaydi, shuning uchun testda
+ * to'g'ridan-to'g'ri tekshiriladi.
+ *
+ * @param menId ko'rayotgan odam (o'zini ajratib ko'rsatish uchun), yo'q bo'lsa null
+ */
+export function reytingRoyxati(
+  odamlar: OdamBall[],
+  menId: number | null,
+  oy: string,
+): string[] {
+  const saralangan = [...odamlar].sort(
+    (a, b) => b.jami - a.jami || a.ism.localeCompare(b.ism),
+  );
+  const orinlar = orinlarniHisobla(saralangan);
+  const eng = saralangan[0]?.jami ?? 0;
+
+  const s: string[] = [`🏆 <b>REYTING — ${oy.toUpperCase()}</b>`, AJRATGICH];
+
+  if (eng === 0) {
+    s.push(``, `🤷 <i>Shu oyda hali ball yig'ilmagan.</i>`);
+    return s;
+  }
+
+  for (const o of saralangan.filter((x) => x.jami > 0)) {
+    const orin = orinlar.get(o.userId)!;
+    const belgi = ["🥇", "🥈", "🥉"][orin - 1] ?? `<b>${orin}.</b>`;
+
+    // Yetakchiga nisbatan uzunlik — kim qanchalik orqada qolgani ko'rinsin
+    const uzun = Math.max(1, Math.round((o.jami / eng) * 10));
+    const chiziq = "▰".repeat(uzun) + "▱".repeat(10 - uzun);
+
+    s.push(
+      ``,
+      `${belgi} ${menId === o.userId ? `<b>${esc(o.ism)}</b> 👈` : esc(o.ism)} — <b>${o.jami}</b> ball`,
+      `<code>${chiziq}</code>`,
+    );
+
+    const qism: string[] = [];
+    if (o.navbatBall) qism.push(`🧹 ${o.navbatBall}`);
+    if (o.ishBall) qism.push(`♻️ ${o.ishBall}`);
+    if (o.xarajatBall) qism.push(`💰 ${o.xarajatBall}`);
+    if (o.tasdiqBall) qism.push(`✅ ${o.tasdiqBall}`);
+    if (qism.length) s.push(`<i>${qism.join("  ·  ")}</i>`);
+  }
+
+  // Ball yig'maganlar — ro'yxatni cho'zmasdan, bitta qatorda
+  const nol = saralangan.filter((o) => o.jami === 0);
+  if (nol.length > 0) {
+    s.push(``, `▫️ <i>Hali ball yo'q: ${nol.map((o) => esc(o.ism)).join(", ")}</i>`);
+  }
+
+  if (menId !== null) {
+    const meniki = saralangan.find((o) => o.userId === menId);
+    const orin = orinlar.get(menId);
+    if (meniki && orin) {
+      s.push(
+        ``,
+        AJRATGICH,
+        `📊 <b>Sizning o'rningiz: ${orin}</b> / ${saralangan.length}`,
+        `🏅 Ballingiz: <b>${meniki.jami}</b>`,
+      );
+      // Oldindagiga yetish uchun qancha kerakligi — eng qiziq raqam
+      const oldinda = saralangan.filter((o) => o.jami > meniki.jami).at(-1);
+      if (oldinda) {
+        s.push(`⬆️ ${esc(oldinda.ism)} dan <b>${oldinda.jami - meniki.jami}</b> ball orqadasiz`);
+      } else if (saralangan.length > 1 && meniki.jami > 0) {
+        s.push(`👑 <b>Siz yetakchisiz!</b>`);
+      }
+    }
+  }
+
+  return s;
 }
 
 /** Tasdiq progressi — navbat va qo'shimcha ishda bir xil ko'rinsin. */
@@ -277,7 +353,7 @@ export function tanishtirish(): string {
     ``,
     `<b>💰 UYGA NARSA OLIB KELISH</b>`,
     AJRATGICH,
-    `Fayri, gubka, qop-qog'oz olib kelsangiz —`,
+    `Falga, gubka, qop-qog'oz olib kelsangiz —`,
     `rasmga olib botga tashlang, nomini va qancha`,
     `pul ketganini yozing.`,
     `   <b>+${BALLAR.xarajat} ball</b>`,

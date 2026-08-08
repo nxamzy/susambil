@@ -57,6 +57,25 @@ export function navbatBalli(azoSoni: number, kechikkanKun: number): number {
   return Math.max(0, asos + tuzatish);
 }
 
+/**
+ * Ball bo'yicha saralangan ro'yxatga o'rin beradi. Teng ball — teng o'rin,
+ * keyingisi esa sakraydi: 540, 540, 470 → 1, 1, 3. Aks holda ikki kishi bir
+ * xil ball bilan turib, biri "2-o'rin" ko'rsatib chalkashtirardi.
+ */
+export function orinlarniHisobla(
+  saralangan: { userId: number; jami: number }[],
+): Map<number, number> {
+  const orinlar = new Map<number, number>();
+  saralangan.forEach((o, i) => {
+    const oldingi = i > 0 ? saralangan[i - 1]! : null;
+    orinlar.set(
+      o.userId,
+      oldingi && oldingi.jami === o.jami ? orinlar.get(oldingi.userId)! : i + 1,
+    );
+  });
+  return orinlar;
+}
+
 /** @param dan — shu sanadan keyingi ma'lumot (null bo'lsa butun tarix) */
 export async function reyting(dan: Date | null = null): Promise<OdamBall[]> {
   // Ball daftar qatorining o'zidan olinadi (chores.ball / expenses.ball).

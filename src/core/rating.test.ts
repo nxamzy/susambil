@@ -1,7 +1,35 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { navbatBalli } from "./rating.js";
+import { navbatBalli, orinlarniHisobla } from "./rating.js";
 import { BALLAR } from "../config.js";
+
+test("teng ball teng o'rin oladi, keyingisi sakraydi", () => {
+  const o = orinlarniHisobla([
+    { userId: 1, jami: 540 },
+    { userId: 2, jami: 540 },
+    { userId: 3, jami: 470 },
+    { userId: 4, jami: 470 },
+    { userId: 5, jami: 100 },
+  ]);
+  assert.equal(o.get(1), 1);
+  assert.equal(o.get(2), 1);
+  assert.equal(o.get(3), 3);
+  assert.equal(o.get(4), 3);
+  assert.equal(o.get(5), 5);
+});
+
+test("hamma teng bo'lsa hamma birinchi", () => {
+  const o = orinlarniHisobla([
+    { userId: 1, jami: 0 },
+    { userId: 2, jami: 0 },
+    { userId: 3, jami: 0 },
+  ]);
+  assert.deepEqual([o.get(1), o.get(2), o.get(3)], [1, 1, 1]);
+});
+
+test("bo'sh ro'yxat yiqilmaydi", () => {
+  assert.equal(orinlarniHisobla([]).size, 0);
+});
 
 test("xona balli a'zolar soniga bo'linadi", () => {
   // 60 ball xonaga; 2 kishilik xonada har biriga 30 + vaqtida bonus
