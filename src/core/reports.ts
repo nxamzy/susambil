@@ -1,5 +1,5 @@
 /**
- * Muammo yozib qo'yish — baza mantig'i. Faqat sql/config bilan ishlaydi,
+ * Anonim shikoyat — baza mantig'i. Faqat sql/config bilan ishlaydi,
  * Telegram bilan bog'liq hech narsa yo'q (xabar yuborish
  * `bot/handlers/reports.ts` da) — `core/topshiriq.ts` bilan bir xil
  * qatlamlash saqlanadi.
@@ -10,13 +10,18 @@
  * yerga ajratib qo'yish umumiy kodga aralashtirib anonimlikni tasodifan
  * ochib qo'yish xavfini yo'qotadi.
  *
- * Bu ayblov emas: sababchi noma'lum bo'lishi ("bilmayman") mumkin — u holda
- * `reported_id` NULL bo'ladi va tasdiqlansa ham hech kimdan ball
- * ayirilmaydi (quyidagi SQL'da `rp.reported_id = u.id` NULL bilan hech
- * qachon TRUE bo'lmaydi).
+ * Hayot sikli:
+ *   kutilmoqda -> tuzatilmoqda -> tuzatildi | jarima
+ *             \-> rad
+ *
+ * Ball faqat "jarima" holatiga o'tganda — ya'ni admin tasdiqlab, sababchiga
+ * imkoniyat berib, keyin "tuzatilmadi" deb belgilaganda — beriladi. Buni
+ * rating.ts oddiy `holat = 'jarima'` sharti bilan hisoblaydi, boshqa hech
+ * qanday qo'shimcha mantiq kerak emas: holatning o'zi ballning berilgan-
+ * berilmaganini bildiradi.
  */
 import { sql, type Report } from "../db/index.js";
-import { BALLAR, type Ishonch } from "../config.js";
+import { BALLAR, type Ishonch, type ShikoyatJoyi } from "../config.js";
 
 /** Bir kishi bir odam haqida shuncha vaqt ichida qayta yoza olmaydi. */
 export const TAKROR_MS = 30 * 60_000;
@@ -28,24 +33,26 @@ export function takrorlanganmi(oxirgiVaqt: Date, hozir: Date = new Date()): bool
 
 export type ReportToliq = Report & { reporter_ism: string; reported_ism: string | null };
 
-export type MuammoXato = "ozi" | "topilmadi" | "takror";
+export type ShikoyatXato = "ozi" | "topilmadi" | "takror";
 
-export type MuammoNatija =
+export type ShikoyatNatija =
   | { ok: true; report: Report }
-  | { ok: false; sabab: MuammoXato };
+  | { ok: false; sabab: ShikoyatXato };
 
 /**
- * Yangi yozuv yaratadi (hali kutilmoqda holatida).
+ * Yangi shikoyat yaratadi (hali kutilmoqda holatida).
  *
  * @param reportedId sababchi — "bilmayman" tanlansa null
  */
-export async function muammoYuborish(
+export async function shikoyatYuborish(
   reporterId: number,
   reportedId: number | null,
   ishonch: Ishonch,
+  joy: ShikoyatJoyi,
   izoh: string,
-  photoId: string | null,
-): Promise<MuammoNatija> {
+  mediaId: string | null,
+  mediaTuri: "rasm" | "video",
+): Promise<ShikoyatNatija> {
   // Sababchi noma'lum bo'lsa "o'zini o'zi ko'rsatish" yoki "takror nishon"
   // tushunchasi ma'nosiz — faqat kimdir ko'rsatilganda tekshiramiz.
   if (reportedId !== null) {
@@ -65,9 +72,9 @@ export async function muammoYuborish(
   }
 
   const [report] = await sql<Report[]>`
-    INSERT INTO reports (reporter_id, reported_id, ishonch, izoh, photo_id, ball)
-    VALUES (${reporterId}, ${reportedId}, ${ishonch}, ${izoh.trim().slice(0, 500)},
-            ${photoId}, ${BALLAR.muammoJarima})
+    INSERT INTO reports (reporter_id, reported_id, ishonch, joy, izoh, photo_id, media_turi, ball)
+    VALUES (${reporterId}, ${reportedId}, ${ishonch}, ${joy}, ${izoh.trim().slice(0, 500)},
+            ${mediaId}, ${mediaTuri}, ${BALLAR.shikoyatJarima})
     RETURNING *
   `;
   if (!report) throw new Error("Yozuv yaratilmadi");
@@ -76,9 +83,8 @@ export async function muammoYuborish(
 
 /**
  * Admin sababchini belgilaydi yoki o'zgartiradi — reporter "bilmayman"
- * degan bo'lsa ham, yoki noto'g'ri taxmin qilgan bo'lsa ham. Faqat hali hal
- * qilinmagan yozuvda ishlaydi; qaror chiqqandan keyin o'zgartirib
- * bo'lmaydi.
+ * degan bo'lsa ham, yoki noto'g'ri taxmin qilgan bo'lsa ham. Faqat hali
+ * boshlang'ich ko'rib chiqilmagan yozuvda ishlaydi.
  *
  * @param javobgarId null — "hech kim (noma'lum)" deb belgilash
  */
@@ -106,19 +112,13 @@ export async function adminIzohQoshish(reportId: number, izoh: string): Promise<
 }
 
 /**
- * Admin qarorini yozadi. Ball o'zi bu funksiyada berilmaydi — u
- * `rating.ts`da `holat='tasdiqlandi' AND reported_id = u.id` bo'yicha
- * hisoblanadi, ya'ni sababchisi noma'lum yozuv hech kimning hisobiga
- * tushmaydi, qo'shimcha shart yozish shart emas.
+ * Admin tasdiqlaydi — sababchiga (bo'lsa) tuzatish uchun imkoniyat
+ * beriladi. Ball hali berilmaydi.
  *
  * Ikki admin bir vaqtda bosishi mumkin, shuning uchun `FOR UPDATE` bilan
- * qulflangan tranzaksiya ichida — allaqachon hal qilingan bo'lsa `null`.
+ * qulflangan tranzaksiya ichida — allaqachon ko'rib chiqilgan bo'lsa `null`.
  */
-export async function muammoniHalQil(
-  reportId: number,
-  adminId: number,
-  qaror: "tasdiqlandi" | "rad",
-): Promise<Report | null> {
+export async function shikoyatniTasdiqla(reportId: number, adminId: number): Promise<Report | null> {
   return sql.begin(async (tx) => {
     const [r] = await tx<Report[]>`
       SELECT * FROM reports WHERE id = ${reportId} AND holat = 'kutilmoqda' FOR UPDATE
@@ -126,7 +126,7 @@ export async function muammoniHalQil(
     if (!r) return null;
 
     const [yangi] = await tx<Report[]>`
-      UPDATE reports SET holat = ${qaror}, admin_id = ${adminId}, hal_qilindi = now()
+      UPDATE reports SET holat = 'tuzatilmoqda', admin_id = ${adminId}, confirmed_at = now()
       WHERE id = ${reportId}
       RETURNING *
     `;
@@ -134,7 +134,51 @@ export async function muammoniHalQil(
   });
 }
 
-export async function muammoniOl(id: number): Promise<ReportToliq | null> {
+/** Admin boshlang'ich ko'rib chiqishda rad etadi — hech qachon ball berilmaydi. */
+export async function shikoyatniRadEt(reportId: number, adminId: number): Promise<Report | null> {
+  return sql.begin(async (tx) => {
+    const [r] = await tx<Report[]>`
+      SELECT * FROM reports WHERE id = ${reportId} AND holat = 'kutilmoqda' FOR UPDATE
+    `;
+    if (!r) return null;
+
+    const [yangi] = await tx<Report[]>`
+      UPDATE reports SET holat = 'rad', admin_id = ${adminId}, hal_qilindi = now()
+      WHERE id = ${reportId}
+      RETURNING *
+    `;
+    return yangi ?? null;
+  });
+}
+
+/**
+ * Admin qayta tekshiradi: tuzatildimi yoki yo'qmi. "jarima" tanlansa ball
+ * shu qatorning o'zida saqlanadi va rating.ts uni `holat = 'jarima'`
+ * bo'yicha topib oladi — bitta shikoyat ikki marta ball bera olmaydi,
+ * chunki `WHERE holat = 'tuzatilmoqda'` sharti uni faqat bir marta
+ * o'tkazadi.
+ */
+export async function shikoyatniTekshir(
+  reportId: number,
+  adminId: number,
+  natija: "tuzatildi" | "jarima",
+): Promise<Report | null> {
+  return sql.begin(async (tx) => {
+    const [r] = await tx<Report[]>`
+      SELECT * FROM reports WHERE id = ${reportId} AND holat = 'tuzatilmoqda' FOR UPDATE
+    `;
+    if (!r) return null;
+
+    const [yangi] = await tx<Report[]>`
+      UPDATE reports SET holat = ${natija}, admin_id = ${adminId}, hal_qilindi = now()
+      WHERE id = ${reportId}
+      RETURNING *
+    `;
+    return yangi ?? null;
+  });
+}
+
+export async function shikoyatniOl(id: number): Promise<ReportToliq | null> {
   const [r] = await sql<ReportToliq[]>`
     SELECT rp.*, u1.ism AS reporter_ism, u2.ism AS reported_ism
     FROM reports rp
@@ -145,8 +189,8 @@ export async function muammoniOl(id: number): Promise<ReportToliq | null> {
   return r ?? null;
 }
 
-/** Hali admin ko'rib chiqmagan yozuvlar — /muammolar buyrug'i uchun. */
-export async function kutayotganMuammolar(): Promise<ReportToliq[]> {
+/** Hali admin boshlang'ich ko'rib chiqmagan yozuvlar — /shikoyatlar buyrug'i uchun. */
+export async function kutayotganShikoyatlar(): Promise<ReportToliq[]> {
   return sql<ReportToliq[]>`
     SELECT rp.*, u1.ism AS reporter_ism, u2.ism AS reported_ism
     FROM reports rp
@@ -163,4 +207,9 @@ export async function adminXabarlarniSaqla(
   xabarlar: { chat_id: number; message_id: number }[],
 ): Promise<void> {
   await sql`UPDATE reports SET admin_msgs = ${sql.json(xabarlar)} WHERE id = ${id}`;
+}
+
+/** Guruhdagi anonim xabar id'sini saqlaydi — keyin qayta yubormasdan shuni tahrirlash uchun. */
+export async function guruhXabarniSaqla(id: number, messageId: number): Promise<void> {
+  await sql`UPDATE reports SET guruh_msg_id = ${messageId} WHERE id = ${id}`;
 }

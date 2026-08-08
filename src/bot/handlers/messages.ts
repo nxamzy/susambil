@@ -7,14 +7,14 @@ import {
   BOSHQA_ISH,
   MENYU,
   menyuKeyboard,
-  MUAMMO_TUGMA,
+  SHIKOYAT_TUGMA,
   tugmaIshTuri,
   xonaTanlashKeyboard,
 } from "../keyboards.js";
 import { summaniSora, xarajatniSaqla } from "./expense.js";
 import { korinish, panelMatni } from "./commands.js";
 import { ishniBoshla, ishRasminiSora } from "./chores.js";
-import { muammoBoshla, muammoIzohSaqlandi, muammoRasmSora } from "./reports.js";
+import { shikoyatBoshla, shikoyatIzohSaqlandi, shikoyatJoySora } from "./reports.js";
 import { summaTekshir } from "../../core/topshiriq.js";
 
 /**
@@ -31,8 +31,8 @@ async function menyuTugmasi(ctx: Context, matn: string): Promise<boolean> {
     return true;
   }
 
-  if (matn === MUAMMO_TUGMA) {
-    await muammoBoshla(ctx);
+  if (matn === SHIKOYAT_TUGMA) {
+    await shikoyatBoshla(ctx);
     return true;
   }
 
@@ -124,24 +124,24 @@ export function register(bot: Bot) {
       return ctx.reply("📷 Avval rasmini tashlang.");
     }
 
-    if (holat?.tur === "muammo" && holat.qadam === "izoh") {
+    if (holat?.tur === "shikoyat" && holat.qadam === "izoh") {
       const izoh = ctx.message.text.trim().slice(0, 500);
       if (izoh.length < 5) return ctx.reply("Juda qisqa. Nima bo'lganini birroz batafsil yozing.");
-      return muammoRasmSora(ctx, izoh);
+      return shikoyatJoySora(ctx, izoh);
     }
 
-    if (holat?.tur === "muammo" && holat.qadam === "rasm") {
-      return ctx.reply("📷 Avval rasmini tashlang (yoki tugmani bosing).");
+    if (holat?.tur === "shikoyat" && holat.qadam === "dalil") {
+      return ctx.reply("📷 Avval rasm/video tashlang (yoki tugmani bosing).");
     }
 
-    if (holat?.tur === "muammo") {
+    if (holat?.tur === "shikoyat") {
       return ctx.reply("👆 Yuqoridagi tugmalardan birini tanlang.");
     }
 
-    if (holat?.tur === "muammo_izoh") {
+    if (holat?.tur === "shikoyat_izoh") {
       const izoh = ctx.message.text.trim().slice(0, 500);
       if (izoh.length < 2) return ctx.reply("Juda qisqa. Qaytadan yozing.");
-      return muammoIzohSaqlandi(ctx, holat.reportId, izoh);
+      return shikoyatIzohSaqlandi(ctx, holat.reportId, izoh);
     }
 
     if (holat?.tur === "ish") {

@@ -4,7 +4,7 @@
  */
 import type { Api } from "grammy";
 import { sql } from "../db/index.js";
-import type { IshTuri, Ishonch } from "../config.js";
+import type { IshTuri, Ishonch, ShikoyatJoyi } from "../config.js";
 
 /** Bot yuborgan "rasm tashlang" kabi so'rov — jarayon tugagach o'chiriladi. */
 type Sorov = { sorov?: { chatId: number; msgId: number } };
@@ -22,22 +22,32 @@ export type Flow = (
   | { tur: "royxat"; qadam: "ism" }
   | { tur: "royxat"; qadam: "xona"; ism: string }
   /**
-   * Muammo yozib qo'yish: izoh → rasm → sababchi qanchalik aniqmi →
-   * (aniq/gumon bo'lsa) kimni tanlash. "Bilmayman" tanlansa to'g'ridan-to'g'ri
-   * yuboriladi, alohida qadam kerak emas.
+   * Anonim shikoyat: izoh → joy → dalil (rasm/video, ixtiyoriy) → sababchi
+   * qanchalik aniqmi → (aniq/gumon bo'lsa) kimni tanlash. "Bilmayman"
+   * tanlansa to'g'ridan-to'g'ri yuboriladi, alohida qadam kerak emas.
    */
-  | { tur: "muammo"; qadam: "izoh" }
-  | { tur: "muammo"; qadam: "rasm"; izoh: string }
-  | { tur: "muammo"; qadam: "javobgar"; izoh: string; photoId: string | null }
+  | { tur: "shikoyat"; qadam: "izoh" }
+  | { tur: "shikoyat"; qadam: "joy"; izoh: string }
+  | { tur: "shikoyat"; qadam: "dalil"; izoh: string; joy: ShikoyatJoyi }
   | {
-      tur: "muammo";
+      tur: "shikoyat";
+      qadam: "javobgar";
+      izoh: string;
+      joy: ShikoyatJoyi;
+      mediaId: string | null;
+      mediaTuri: "rasm" | "video" | null;
+    }
+  | {
+      tur: "shikoyat";
       qadam: "kim";
       izoh: string;
-      photoId: string | null;
+      joy: ShikoyatJoyi;
+      mediaId: string | null;
+      mediaTuri: "rasm" | "video" | null;
       ishonch: Extract<Ishonch, "aniq" | "gumon">;
     }
-  /** Admin muammoga erkin izoh yozayotganda — reporterning o'z holatidan alohida. */
-  | { tur: "muammo_izoh"; reportId: number }
+  /** Admin shikoyatga erkin izoh yozayotganda — reporterning o'z holatidan alohida. */
+  | { tur: "shikoyat_izoh"; reportId: number }
 ) &
   Sorov;
 

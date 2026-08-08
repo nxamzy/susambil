@@ -3,9 +3,11 @@ import {
   ISH_TURLARI,
   ISHONCH_DARAJASI,
   SEKIN_ISHLAR,
+  SHIKOYAT_JOYLARI,
   TEZ_ISHLAR,
   type Ishonch,
   type IshTuri,
+  type ShikoyatJoyi,
 } from "../config.js";
 
 /** Ish tugmasining yozuvi — inline va doimiy menyuda bir xil bo'lsin. */
@@ -29,11 +31,11 @@ export const MENYU = {
 export const BOSHQA_ISH = "➕ Boshqa ish";
 
 /**
- * Muammo yozib qo'yish tugmasi. Ataylab faqat shaxsiy chatdagi doimiy
- * menyuda — guruh paneliga qo'shilmagan, chunki bu yerdagi butun oqim
- * (izoh, kim ekani) shaxsiy suhbatda o'tishi shart.
+ * Anonim shikoyat tugmasi. Ataylab faqat shaxsiy chatdagi doimiy menyuda —
+ * guruh paneliga qo'shilmagan, chunki bu yerdagi butun oqim (izoh, kim
+ * ekani) shaxsiy suhbatda o'tishi shart.
  */
-export const MUAMMO_TUGMA = "📝 Muammo yozish";
+export const SHIKOYAT_TUGMA = "🔒 Anonim shikoyat";
 
 /** Yozuv bo'yicha ish turini topadi (doimiy menyu tugmasi bosilganda). */
 export function tugmaIshTuri(matn: string): IshTuri | null {
@@ -56,7 +58,7 @@ export function menyuKeyboard(): Keyboard {
   kb.text(MENYU.reyting).text(MENYU.profil).row();
   kb.text(MENYU.azolar).text(MENYU.tarix).row();
   kb.text(MENYU.tanishtirish).row();
-  kb.text(MUAMMO_TUGMA);
+  kb.text(SHIKOYAT_TUGMA);
   return kb.resized().persistent();
 }
 
@@ -140,59 +142,81 @@ export function panelgaKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("🏠 Panelga qaytish", "korish:panel");
 }
 
-/** Muammo: sababchi qanchalik aniq ekanini tanlash. */
-export function ishonchKeyboard(): InlineKeyboard {
+/** Shikoyat: uyning qaysi joyiga tegishli. */
+export function shikoyatJoyKeyboard(): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (const d of Object.keys(ISHONCH_DARAJASI) as Ishonch[]) {
-    const i = ISHONCH_DARAJASI[d];
-    kb.text(`${i.emoji} ${i.nom}`, `muammo_ishonch:${d}`).row();
+  for (const j of Object.keys(SHIKOYAT_JOYLARI) as ShikoyatJoyi[]) {
+    const i = SHIKOYAT_JOYLARI[j];
+    kb.text(`${i.emoji} ${i.nom}`, `shikoyat_joy:${j}`).row();
   }
   kb.text("✖️ Bekor qilish", "bekor");
   return kb;
 }
 
-/** Muammo: "aniq"/"gumon" tanlangach kimni tanlash — bitta qatorda bitta odam. */
-export function muammoKimKeyboard(odamlar: { id: number; ism: string }[]): InlineKeyboard {
+/**
+ * Shikoyat: dalil (rasm yoki video) so'ralganda. Callback nomi
+ * ("shikoyat_dalilsiz") ish oqimidagi "rasmsiz" bilan atayin bir xil emas —
+ * ular ikki xil holatni (`Flow.tur`) tekshiradi, bitta nom ishlatilsa xato
+ * oqimga tushib qolardi.
+ */
+export function shikoyatDalilKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("📷 Dalilim yo'q — shundoq yuboraman", "shikoyat_dalilsiz")
+    .row()
+    .text("✖️ Bekor qilish", "bekor");
+}
+
+/** Shikoyat: sababchi qanchalik aniq ekanini tanlash. */
+export function ishonchKeyboard(): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (const o of odamlar) kb.text(`👤 ${o.ism}`, `muammo_kim:${o.id}`).row();
+  for (const d of Object.keys(ISHONCH_DARAJASI) as Ishonch[]) {
+    const i = ISHONCH_DARAJASI[d];
+    kb.text(`${i.emoji} ${i.nom}`, `shikoyat_ishonch:${d}`).row();
+  }
+  kb.text("✖️ Bekor qilish", "bekor");
+  return kb;
+}
+
+/** Shikoyat: "aniq"/"gumon" tanlangach kimni tanlash — bitta qatorda bitta odam. */
+export function shikoyatKimKeyboard(odamlar: { id: number; ism: string }[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const o of odamlar) kb.text(`👤 ${o.ism}`, `shikoyat_kim:${o.id}`).row();
   kb.text("✖️ Bekor qilish", "bekor");
   return kb;
 }
 
 /**
- * Muammo: rasm so'ralganda. Callback nomi ("muammo_rasmsiz") ish
- * oqimidagi "rasmsiz" bilan atayin bir xil emas — ular ikki xil holatni
- * (`Flow.tur`) tekshiradi, bitta nom ishlatilsa xato oqimga tushib qolardi.
+ * Adminga yuboriladigan shikoyat xabaridagi boshlang'ich harakatlar —
+ * "kutilmoqda" holatida ko'rinadi. Tasdiqlansa `shikoyatTekshiruvKeyboard`
+ * bilan, rad/hal qilinsa bo'sh klaviatura bilan almashadi.
  */
-export function muammoRasmKeyboard(): InlineKeyboard {
+export function shikoyatAdminKeyboard(reportId: number): InlineKeyboard {
   return new InlineKeyboard()
-    .text("📷 Rasmim yo'q — shundoq yuboraman", "muammo_rasmsiz")
+    .text("✅ Tasdiqlash", `shikoyat_tasdiq:${reportId}`)
+    .text("➖ Rad etish", `shikoyat_rad:${reportId}`)
     .row()
-    .text("✖️ Bekor qilish", "bekor");
+    .text("👤 Boshqa odam", `shikoyat_qayta:${reportId}`)
+    .text("✏️ Izoh qo'shish", `shikoyat_izoh:${reportId}`);
 }
 
 /**
- * Adminga yuboriladigan muammo xabaridagi harakatlar. To'rttasi ham hali
- * hal qilinmagan holatda ko'rinadi; qaror chiqqach panelniYangila() bularni
- * bo'sh klaviatura bilan almashtiradi.
+ * "tuzatilmoqda" holatidagi qayta tekshiruv tugmalari — sababchiga
+ * imkoniyat berilgandan keyin admin qaytib ko'radi.
  */
-export function muammoAdminKeyboard(reportId: number): InlineKeyboard {
+export function shikoyatTekshiruvKeyboard(reportId: number): InlineKeyboard {
   return new InlineKeyboard()
-    .text("✅ Tasdiqlash", `muammo_tasdiq:${reportId}`)
-    .text("➖ Rad etish", `muammo_rad:${reportId}`)
-    .row()
-    .text("👤 Boshqa odam", `muammo_qayta:${reportId}`)
-    .text("✏️ Izoh qo'shish", `muammo_izoh:${reportId}`);
+    .text("✅ Tuzatildi", `shikoyat_tuzatildi:${reportId}`)
+    .text("❌ Tuzatilmadi", `shikoyat_tuzatilmadi:${reportId}`);
 }
 
 /** Admin "👤 Boshqa odam" bosganda — hammani ko'rsatadi, o'zini chetlab o'tirmaydi. */
-export function muammoQaytaKeyboard(
+export function shikoyatQaytaKeyboard(
   reportId: number,
   odamlar: { id: number; ism: string }[],
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (const o of odamlar) kb.text(`👤 ${o.ism}`, `muammo_belgila:${reportId}:${o.id}`).row();
-  kb.text("❓ Hech kim (noma'lum)", `muammo_notanilgan:${reportId}`).row();
-  kb.text("⬅️ Bekor qilish", `muammo_qayta_bekor:${reportId}`);
+  for (const o of odamlar) kb.text(`👤 ${o.ism}`, `shikoyat_belgila:${reportId}:${o.id}`).row();
+  kb.text("❓ Hech kim (noma'lum)", `shikoyat_notanilgan:${reportId}`).row();
+  kb.text("⬅️ Bekor qilish", `shikoyat_qayta_bekor:${reportId}`);
   return kb;
 }

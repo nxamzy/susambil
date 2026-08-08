@@ -50,7 +50,7 @@ export function register(bot: Bot) {
         "/ochir Ism — ro'yxatdan chiqarish",
         "/xona Ism 3 — xonasini o'zgartirish",
         "/ism EskiIsm YangiIsm — ismini o'zgartirish",
-        "/muammolar — tasdiq kutayotgan muammolar",
+        "/shikoyatlar — tasdiq kutayotgan shikoyatlar",
         "/navbatber 2 — navbatni 2-xonaga o'tkazish",
         "/navbatboshla — navbat yo'q bo'lsa boshlash",
       );
@@ -155,9 +155,9 @@ export function register(bot: Bot) {
     });
   });
 
-  // DM'dan qochib ketgan yoki eski muammolarni qayta ko'rish uchun —
+  // DM'dan qochib ketgan yoki eski shikoyatlarni qayta ko'rish uchun —
   // reports.ts'dagi bir xil ko'rinishni ishlatadi, ikkinchi nusxa yo'q.
-  bot.command("muammolar", async (ctx) => {
+  bot.command("shikoyatlar", async (ctx) => {
     if (!(await adminmi(ctx))) return;
     await kutayotganlarniJonat(ctx);
   });

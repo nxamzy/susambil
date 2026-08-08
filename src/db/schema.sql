@@ -182,36 +182,52 @@ CREATE UNIQUE INDEX IF NOT EXISTS chores_submission_uniq   ON chores (submission
 CREATE UNIQUE INDEX IF NOT EXISTS expenses_submission_uniq ON expenses (submission_id);
 
 -- ---------------------------------------------------------------------------
--- MUAMMO YOZIB QO'YISH
+-- ANONIM SHIKOYAT
 -- ---------------------------------------------------------------------------
--- Uy a'zolari bir-birini ayblamaydi — shunchaki muammoni yozib qo'yadi.
--- Kim sabab bo'lgani noaniq bo'lishi ham mumkin edi (masalan biror narsa
--- sinib qolgan bo'lsa hech kim bilmasligi mumkin) — shuning uchun
--- reported_id ixtiyoriy. Ataylab submissions/confirmations dan ALOHIDA:
--- o'sha tizim ko'p kishilik tenglar-tasdiqlashi uchun va yuklagan odam har
--- doim ochiq ko'rsatiladi. Bu yerda esa bitta admin ko'rib chiqadi va kim
--- yozgani HECH QACHON guruhga yoki oddiy a'zoga chiqmasligi shart.
+-- Har qanday a'zo boshqa birovning (yoki noma'lum sababchining)
+-- qoidabuzarligi haqida yozishi mumkin. Kim sabab bo'lgani noaniq bo'lishi
+-- ham mumkin (masalan biror narsa sinib qolgan bo'lsa hech kim bilmasligi
+-- mumkin) — shuning uchun reported_id ixtiyoriy. Ataylab
+-- submissions/confirmations dan ALOHIDA: o'sha tizim ko'p kishilik
+-- tenglar-tasdiqlashi uchun va yuklagan odam har doim ochiq ko'rsatiladi.
+-- Bu yerda esa bitta admin ko'rib chiqadi va kim yozgani (reporter) HAM,
+-- kim ayblangani (sababchi) HAM guruhga yoki oddiy a'zoga hech qachon
+-- chiqmasligi shart — faqat admin ikkalasini ham ko'radi.
+--
+-- Hayot sikli: kutilmoqda -> tuzatilmoqda -> tuzatildi | jarima
+--                        \-> rad
 CREATE TABLE IF NOT EXISTS reports (
-  id          SERIAL PRIMARY KEY,
-  reporter_id INT NOT NULL REFERENCES users(id),
+  id           SERIAL PRIMARY KEY,
+  reporter_id  INT NOT NULL REFERENCES users(id),
   -- Sababchi noma'lum bo'lsa NULL. Admin keyinroq belgilashi ham mumkin.
-  reported_id INT REFERENCES users(id),
+  reported_id  INT REFERENCES users(id),
   -- Reporter sababchi haqida qanchalik ishonchli ekani: aniq | gumon | nomalum
-  ishonch     TEXT NOT NULL DEFAULT 'nomalum'
-              CHECK (ishonch IN ('aniq', 'gumon', 'nomalum')),
-  izoh        TEXT NOT NULL,
-  photo_id    TEXT,
-  ball        INT NOT NULL,
-  holat       TEXT NOT NULL DEFAULT 'kutilmoqda'
-              CHECK (holat IN ('kutilmoqda', 'tasdiqlandi', 'rad')),
-  admin_id    INT REFERENCES users(id),
+  ishonch      TEXT NOT NULL DEFAULT 'nomalum'
+               CHECK (ishonch IN ('aniq', 'gumon', 'nomalum')),
+  -- Uyning qaysi joyiga tegishli: oshxona | hammom | umumiy | xona | boshqa
+  joy          TEXT NOT NULL DEFAULT 'boshqa',
+  izoh         TEXT NOT NULL,
+  photo_id     TEXT,
+  media_turi   TEXT NOT NULL DEFAULT 'rasm' CHECK (media_turi IN ('rasm', 'video')),
+  ball         INT NOT NULL,
+  -- kutilmoqda -> tuzatilmoqda -> tuzatildi | jarima
+  --           \-> rad
+  -- "jarima" ustidagi holatning o'zi ball qachon berilganini bildiradi —
+  -- rating.ts'da qo'shimcha shart yozish shart emas.
+  holat        TEXT NOT NULL DEFAULT 'kutilmoqda'
+               CHECK (holat IN ('kutilmoqda', 'tuzatilmoqda', 'tuzatildi', 'jarima', 'rad')),
+  admin_id     INT REFERENCES users(id),
   -- Admin qo'shgan erkin izoh — reporterning izohidan alohida.
-  admin_note  TEXT,
-  hal_qilindi TIMESTAMPTZ,
+  admin_note   TEXT,
+  -- Admin tasdiqlab, tuzatish uchun imkoniyat bergan payt.
+  confirmed_at TIMESTAMPTZ,
+  hal_qilindi  TIMESTAMPTZ,
   -- Bir nechta admin bo'lsa, har biriga jo'natilgan xabar shu yerda —
   -- biri hal qilganda yoki sababchini o'zgartirganda qolganlar ham ko'rsin.
-  admin_msgs  JSONB NOT NULL DEFAULT '[]'::jsonb,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  admin_msgs   JSONB NOT NULL DEFAULT '[]'::jsonb,
+  -- Guruhdagi anonim xabar — qayta yubormasdan shuni tahrirlab boramiz.
+  guruh_msg_id BIGINT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   -- reported_id NULL bo'lsa <> solishtirishi NULL qaytaradi, CHECK buni
   -- "o'tdi" deb hisoblaydi — demak noma'lum holat bemalol qoladi.
   CHECK (reporter_id <> reported_id)
@@ -231,4 +247,24 @@ ALTER TABLE reports ADD COLUMN IF NOT EXISTS admin_note TEXT;
 DO $$ BEGIN
   ALTER TABLE reports ADD CONSTRAINT reports_ishonch_chk
     CHECK (ishonch IN ('aniq', 'gumon', 'nomalum'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- MIGRATSIYA 2: "muammo" (ayblovsiz) versiyasidan "anonim shikoyat" +
+-- tuzatish/tekshiruv oqimiga qaytish. Jadval hamon bo'sh.
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS joy TEXT NOT NULL DEFAULT 'boshqa';
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS media_turi TEXT NOT NULL DEFAULT 'rasm';
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS guruh_msg_id BIGINT;
+
+DO $$ BEGIN
+  ALTER TABLE reports ADD CONSTRAINT reports_media_turi_chk
+    CHECK (media_turi IN ('rasm', 'video'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- holat CHECK'ini yangi 5 bosqichli ro'yxatga almashtiramiz. Nomi Postgres
+-- konvensiyasi bo'yicha <jadval>_<ustun>_check — bazadan tasdiqlangan.
+ALTER TABLE reports DROP CONSTRAINT IF EXISTS reports_holat_check;
+DO $$ BEGIN
+  ALTER TABLE reports ADD CONSTRAINT reports_holat_check
+    CHECK (holat IN ('kutilmoqda', 'tuzatilmoqda', 'tuzatildi', 'jarima', 'rad'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;

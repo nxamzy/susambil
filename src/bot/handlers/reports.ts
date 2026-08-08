@@ -1,53 +1,60 @@
 /**
- * Muammo yozib qo'yish — Telegram tomoni. Bu ayblov emas: uy a'zolari
- * bir-birini shikoyat qilmaydi, shunchaki uyda nimadir noto'g'ri
- * ketganini yozib qo'yadi, kerak bo'lsa sababchisi kim ekanini ham
- * (aniq/gumon/bilmayman) ko'rsatadi.
+ * Anonim shikoyat — Telegram tomoni.
  *
- * Oqim: menyu tugmasi → izoh → rasm (ixtiyoriy) → qanchalik aniq bilasiz →
- * (aniq/gumon bo'lsa) kimni tanlash → barcha adminlarga DM.
+ * Oqim: menyu tugmasi → izoh → joy → dalil (rasm/video, ixtiyoriy) →
+ * qanchalik aniq bilasiz → (aniq/gumon bo'lsa) kimni tanlash → guruhga
+ * anonim xabar + barcha adminlarga to'liq DM.
  *
- * Bitta admin ko'rib chiqadi — `submissions`dagi ko'p kishilik
- * tenglar-tasdiqlashidan farqli. Reporter ismi shu faylda FAQAT adminga
- * ketadigan xabarlarda ishlatiladi (`muammoAdminXabari`,
- * `muammoHalQilindiXabari`); guruhga chiqadigan `muammoGuruhXabari` va
- * ball olganga ketadigan `muammoJarimaXabari` reporterni bilmaydi ham —
- * bu funksiyalarga reporter umuman berilmaydi, shuning uchun anonimlikni
- * "unutib qoldirish" mumkin emas.
+ * Admin boshlang'ich ko'rib chiqishda: ✅ Tasdiqlash / ➖ Rad etish /
+ * 👤 Boshqa odam / ✏️ Izoh qo'shish. Tasdiqlansa sababchiga (bo'lsa)
+ * tuzatish uchun imkoniyat beriladi ("tuzatilmoqda"), keyin admin qaytib
+ * ✅ Tuzatildi / ❌ Tuzatilmadi deb belgilaydi. Faqat "tuzatilmadi"da ball
+ * ayiriladi.
+ *
+ * Guruh bitta xabarni butun umr davomida ko'radi — qayta yubormasdan shu
+ * tahrirlanadi (`guruh_msg_id`). Reporter HAM, sababchi HAM guruhga hech
+ * qachon chiqmaydi: `shikoyatGuruhXabari` bu ikkalasini parametr sifatida
+ * ham olmaydi, shuning uchun buni "unutib qoldirish" mumkin emas.
  */
-import type { Bot, Context, Api, InlineKeyboard } from "grammy";
-import { sql, type User } from "../../db/index.js";
-import type { Ishonch } from "../../config.js";
+import type { Bot, Context, Api, InlineKeyboard as InlineKeyboardType } from "grammy";
+import { InlineKeyboard } from "grammy";
+import { sql, type Report, type User } from "../../db/index.js";
+import { SHIKOYAT_JOYLARI, type Ishonch, type ShikoyatJoyi } from "../../config.js";
 import {
   adminIzohQoshish,
   adminXabarlarniSaqla,
+  guruhXabarniSaqla,
   javobgarniOzgartir,
-  kutayotganMuammolar,
-  muammoniHalQil,
-  muammoniOl,
-  muammoYuborish,
+  kutayotganShikoyatlar,
+  shikoyatniOl,
+  shikoyatniRadEt,
+  shikoyatniTasdiqla,
+  shikoyatniTekshir,
+  shikoyatYuborish,
   type ReportToliq,
 } from "../../core/reports.js";
-import { guruhgaYubor, kim, shaxsiy } from "../group.js";
+import { guruhId, kim, shaxsiy } from "../group.js";
 import {
   bekorKeyboard,
   ishonchKeyboard,
-  muammoAdminKeyboard,
-  muammoKimKeyboard,
-  muammoQaytaKeyboard,
-  muammoRasmKeyboard,
+  shikoyatAdminKeyboard,
+  shikoyatDalilKeyboard,
+  shikoyatJoyKeyboard,
+  shikoyatKimKeyboard,
+  shikoyatQaytaKeyboard,
+  shikoyatTekshiruvKeyboard,
 } from "../keyboards.js";
 import {
   AJRATGICH,
-  muammoAdminXabari,
-  muammoGuruhXabari,
-  muammoHalQilindiXabari,
-  muammoJarimaXabari,
+  shikoyatAdminXabari,
+  shikoyatGuruhXabari,
+  shikoyatJarimaXabari,
+  shikoyatTuzatishSorovi,
 } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir, type Flow } from "../state.js";
 
-/** Menyudan "📝 Muammo yozish" bosilganda. */
-export async function muammoBoshla(ctx: Context): Promise<void> {
+/** Menyudan "🔒 Anonim shikoyat" bosilganda. */
+export async function shikoyatBoshla(ctx: Context): Promise<void> {
   if (!ctx.from) return;
   const reporter = await kim(ctx.from.id);
   if (!reporter) {
@@ -57,16 +64,15 @@ export async function muammoBoshla(ctx: Context): Promise<void> {
 
   await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
 
-  const holat = { tur: "muammo", qadam: "izoh" } as const;
+  const holat = { tur: "shikoyat", qadam: "izoh" } as const;
   await holatOrnat(ctx.from.id, holat);
 
   const xabar = await ctx.reply(
     [
-      `📝 <b>MUAMMO YOZIB QO'YISH</b>`,
+      `🔒 <b>ANONIM SHIKOYAT</b>`,
       AJRATGICH,
       ``,
-      `Uyda nimadir noto'g'ri bo'ldimi? Batafsil yozing —`,
-      `admin ko'rib chiqadi.`,
+      `Nima bo'ldi? Batafsil yozing.`,
       ``,
       `<i>Bu maxfiy — yozganingizni faqat admin biladi.</i>`,
     ].join("\n"),
@@ -75,36 +81,53 @@ export async function muammoBoshla(ctx: Context): Promise<void> {
   await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
 }
 
-/** Izoh yozilgach rasm so'raydi. messages.ts'dan chaqiriladi. */
-export async function muammoRasmSora(ctx: Context, izoh: string): Promise<void> {
+/** Izoh yozilgach joyni so'raydi. messages.ts'dan chaqiriladi. */
+export async function shikoyatJoySora(ctx: Context, izoh: string): Promise<void> {
   if (!ctx.from) return;
   await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
 
-  const holat = { tur: "muammo", qadam: "rasm", izoh } as const;
+  const holat = { tur: "shikoyat", qadam: "joy", izoh } as const;
+  await holatOrnat(ctx.from.id, holat);
+
+  const xabar = await ctx.reply(`📍 <b>Uyning qaysi joyiga tegishli?</b>`, {
+    parse_mode: "HTML",
+    reply_markup: shikoyatJoyKeyboard(),
+  });
+  await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
+}
+
+/** Joy tanlangach dalil so'raydi. */
+async function shikoyatDalilSora(ctx: Context, izoh: string, joy: ShikoyatJoyi): Promise<void> {
+  if (!ctx.from) return;
+  await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+
+  const holat = { tur: "shikoyat", qadam: "dalil", izoh, joy } as const;
   await holatOrnat(ctx.from.id, holat);
 
   const xabar = await ctx.reply(
     [
-      `📷 <b>Rasm bormi?</b>`,
+      `📸 <b>Rasm yoki video bormi?</b>`,
       ``,
       `Bo'lsa shu yerga tashlang. Bo'lmasa pastdagi`,
       `tugmani bosing.`,
     ].join("\n"),
-    { parse_mode: "HTML", reply_markup: muammoRasmKeyboard() },
+    { parse_mode: "HTML", reply_markup: shikoyatDalilKeyboard() },
   );
   await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
 }
 
-/** Rasm kelgach (yoki "rasmim yo'q" bosilgach) sababchi haqida so'raydi. */
-export async function muammoJavobgarSora(
+/** Dalil kelgach (yoki o'tkazib yuborilgach) sababchi haqida so'raydi. */
+async function shikoyatJavobgarSora(
   ctx: Context,
   izoh: string,
-  photoId: string | null,
+  joy: ShikoyatJoyi,
+  mediaId: string | null,
+  mediaTuri: "rasm" | "video" | null,
 ): Promise<void> {
   if (!ctx.from) return;
   await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
 
-  const holat = { tur: "muammo", qadam: "javobgar", izoh, photoId } as const;
+  const holat = { tur: "shikoyat", qadam: "javobgar", izoh, joy, mediaId, mediaTuri } as const;
   await holatOrnat(ctx.from.id, holat);
 
   const xabar = await ctx.reply(`🤔 <b>Kim sabab bo'lgan deb o'ylaysiz?</b>`, {
@@ -114,21 +137,47 @@ export async function muammoJavobgarSora(
   await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
 }
 
-type YuborishManbasi = { izoh: string; photoId: string | null; ishonch: Ishonch; reportedId: number | null };
+type DalilHolati = Extract<Flow, { tur: "shikoyat"; qadam: "dalil" }>;
+
+/** photos.ts'dan chaqiriladi — rasm/video (yoki uning yo'qligi) sababchi so'roviga o'tkazadi. */
+export async function shikoyatDalilKeldi(
+  ctx: Context,
+  holat: DalilHolati,
+  mediaId: string,
+  mediaTuri: "rasm" | "video",
+): Promise<void> {
+  await shikoyatJavobgarSora(ctx, holat.izoh, holat.joy, mediaId, mediaTuri);
+}
+
+type YuborishManbasi = {
+  izoh: string;
+  joy: ShikoyatJoyi;
+  mediaId: string | null;
+  mediaTuri: "rasm" | "video" | null;
+  ishonch: Ishonch;
+  reportedId: number | null;
+};
 
 /**
- * Yozuvni yakunlaydi: bazaga yozadi, reporterga tasdiq, adminlarga DM.
- * "Bilmayman" tanlansa to'g'ridan-to'g'ri shu yerdan, "aniq"/"gumon" bo'lsa
- * odam tanlangandan keyin chaqiriladi.
+ * Yozuvni yakunlaydi: bazaga yozadi, reporterga tasdiq, guruhga anonim
+ * xabar, barcha adminlarga to'liq DM.
  */
-async function muammoYuborildi(ctx: Context, m: YuborishManbasi): Promise<void> {
+async function shikoyatYuborildi(ctx: Context, m: YuborishManbasi): Promise<void> {
   if (!ctx.from) return;
   const reporter = await kim(ctx.from.id);
   if (!reporter) return;
 
   await holatTozala(ctx.from.id);
 
-  const natija = await muammoYuborish(reporter.id, m.reportedId, m.ishonch, m.izoh, m.photoId);
+  const natija = await shikoyatYuborish(
+    reporter.id,
+    m.reportedId,
+    m.ishonch,
+    m.joy,
+    m.izoh,
+    m.mediaId,
+    m.mediaTuri ?? "rasm",
+  );
   if (!natija.ok) {
     const xabar = {
       ozi: "O'zingizni tanlay olmaysiz.",
@@ -143,111 +192,121 @@ async function muammoYuborildi(ctx: Context, m: YuborishManbasi): Promise<void> 
     [
       `✅ <b>Qabul qildim.</b>`,
       ``,
-      `Admin ko'rib chiqadi. Bu maxfiy — yozganingizni`,
-      `faqat admin biladi.`,
+      `Bu butunlay maxfiy — yozganingizni faqat`,
+      `admin biladi.`,
     ].join("\n"),
     { parse_mode: "HTML" },
   );
 
-  const toliq = await muammoniOl(natija.report.id);
-  if (toliq) await adminlargaYubor(ctx.api, toliq);
+  const toliq = await shikoyatniOl(natija.report.id);
+  if (!toliq) return;
+
+  await guruhXabarniYangila(ctx.api, toliq);
+  await adminlargaYubor(ctx.api, toliq);
 }
 
-type RasmHolati = Extract<Flow, { tur: "muammo"; qadam: "rasm" }>;
+/** Rasm/video bo'lsa mos usul bilan, bo'lmasa oddiy matn bilan yuboradi. */
+async function mediaXabarYubor(
+  api: Api,
+  chatId: number,
+  matn: string,
+  r: Report,
+  extra: object = {},
+): Promise<{ message_id: number; chat: { id: number } }> {
+  if (!r.photo_id) return api.sendMessage(chatId, matn, { parse_mode: "HTML", ...extra });
+  return r.media_turi === "video"
+    ? api.sendVideo(chatId, r.photo_id, { caption: matn, parse_mode: "HTML", ...extra })
+    : api.sendPhoto(chatId, r.photo_id, { caption: matn, parse_mode: "HTML", ...extra });
+}
 
-/** photos.ts'dan chaqiriladi — rasm (yoki uning yo'qligi) sababchi so'roviga o'tkazadi. */
-export async function muammoRasmKeldi(
-  ctx: Context,
-  holat: RasmHolati,
-  photoId: string | null,
+/** Yuqoridagi bilan bir xil, lekin mavjud xabarni tahrirlaydi. */
+async function mediaXabarTahrirla(
+  api: Api,
+  chatId: number,
+  messageId: number,
+  matn: string,
+  r: Report,
+  extra: object = {},
 ): Promise<void> {
-  await muammoJavobgarSora(ctx, holat.izoh, photoId);
+  if (!r.photo_id) {
+    await api.editMessageText(chatId, messageId, matn, { parse_mode: "HTML", ...extra }).catch(() => {});
+    return;
+  }
+  await api
+    .editMessageCaption(chatId, messageId, { caption: matn, parse_mode: "HTML", ...extra })
+    .catch(() => {});
 }
 
-/** Har bir bog'langan adminga DM qiladi, xabar id'larini keyingi yangilash uchun saqlaydi. */
-async function adminlargaYubor(api: Api, report: ReportToliq): Promise<void> {
+/**
+ * Guruhdagi yagona anonim xabarni yuboradi (birinchi marta) yoki
+ * tahrirlaydi (keyingi har bir holat o'zgarishida) — qayta yubormaymiz,
+ * aks holda guruh bir shikoyat uchun bir necha marta bezovta bo'lardi.
+ */
+async function guruhXabarniYangila(api: Api, r: ReportToliq): Promise<void> {
+  const chatId = await guruhId();
+  if (!chatId) return;
+  const matn = shikoyatGuruhXabari(r);
+
+  if (r.guruh_msg_id) {
+    await mediaXabarTahrirla(api, chatId, Number(r.guruh_msg_id), matn, r);
+    return;
+  }
+  const msg = await mediaXabarYubor(api, chatId, matn, r);
+  await guruhXabarniSaqla(r.id, msg.message_id);
+}
+
+/** Har bir bog'langan adminga to'liq DM qiladi, xabar id'larini saqlaydi. */
+async function adminlargaYubor(api: Api, r: ReportToliq): Promise<void> {
   const adminlar = await sql<User[]>`
     SELECT * FROM users WHERE admin AND faol AND telegram_id IS NOT NULL
   `;
 
-  const matn = muammoAdminXabari(report);
-  const kb = muammoAdminKeyboard(report.id);
+  const matn = shikoyatAdminXabari(r);
+  const kb = shikoyatAdminKeyboard(r.id);
   const yuborilganlar: { chat_id: number; message_id: number }[] = [];
 
   for (const a of adminlar) {
     try {
-      const msg = report.photo_id
-        ? await api.sendPhoto(Number(a.telegram_id), report.photo_id, {
-            caption: matn,
-            parse_mode: "HTML",
-            reply_markup: kb,
-          })
-        : await api.sendMessage(Number(a.telegram_id), matn, {
-            parse_mode: "HTML",
-            reply_markup: kb,
-          });
+      const msg = await mediaXabarYubor(api, Number(a.telegram_id), matn, r, { reply_markup: kb });
       yuborilganlar.push({ chat_id: msg.chat.id, message_id: msg.message_id });
     } catch {
       /* admin botni bloklagan yoki hali /start bosmagan */
     }
   }
 
-  if (yuborilganlar.length > 0) await adminXabarlarniSaqla(report.id, yuborilganlar);
+  if (yuborilganlar.length > 0) await adminXabarlarniSaqla(r.id, yuborilganlar);
 }
 
-/**
- * Barcha adminlarga yuborilgan nusxalarni yangilaydi. `faolMi=true` bo'lsa
- * hali kutilmoqda holati — to'liq harakat tugmalari bilan; `false` bo'lsa
- * qaror chiqqan — tugmalar butunlay tozalanadi, aks holda eski "Tasdiqlash"
- * tugmasi ko'rinib qolib, bosilganda "allaqachon hal qilingan" deb
- * chalkashtirardi.
- */
-async function panelniYangila(api: Api, report: ReportToliq, faolMi: boolean): Promise<void> {
-  const matn = faolMi
-    ? muammoAdminXabari(report)
-    : muammoHalQilindiXabari(report, report.holat === "tasdiqlandi");
-  const kb: InlineKeyboard | undefined = faolMi ? muammoAdminKeyboard(report.id) : undefined;
-
-  for (const m of report.admin_msgs) {
-    if (report.photo_id) {
-      await api
-        .editMessageCaption(m.chat_id, m.message_id, {
-          caption: matn,
-          parse_mode: "HTML",
-          ...(kb ? { reply_markup: kb } : {}),
-        })
-        .catch(() => {});
-    } else {
-      await api
-        .editMessageText(m.chat_id, m.message_id, matn, {
-          parse_mode: "HTML",
-          ...(kb ? { reply_markup: kb } : {}),
-        })
-        .catch(() => {});
-    }
+/** Barcha adminlarga yuborilgan nusxalarni yangilaydi — berilgan klaviatura bilan. */
+async function panelniYangila(api: Api, r: ReportToliq, kb: InlineKeyboardType): Promise<void> {
+  const matn = shikoyatAdminXabari(r);
+  for (const m of r.admin_msgs) {
+    await mediaXabarTahrirla(api, m.chat_id, m.message_id, matn, r, { reply_markup: kb });
   }
 }
 
-/** /muammolar buyrug'i uchun ham ishlatiladi — bir xil ko'rinish, ikkinchi nusxa yo'q. */
+/** /shikoyatlar buyrug'i uchun ham ishlatiladi — bir xil ko'rinish, ikkinchi nusxa yo'q. */
 export async function kutayotganlarniJonat(ctx: Context): Promise<void> {
-  const royxat = await kutayotganMuammolar();
+  const royxat = await kutayotganShikoyatlar();
   if (royxat.length === 0) {
-    await ctx.reply("✅ Tasdiq kutayotgan muammo yo'q.");
+    await ctx.reply("✅ Tasdiq kutayotgan shikoyat yo'q.");
     return;
   }
   for (const r of royxat) {
-    const matn = muammoAdminXabari(r);
-    const kb = muammoAdminKeyboard(r.id);
-    if (r.photo_id) {
-      await ctx.replyWithPhoto(r.photo_id, { caption: matn, parse_mode: "HTML", reply_markup: kb });
-    } else {
+    const matn = shikoyatAdminXabari(r);
+    const kb = shikoyatAdminKeyboard(r.id);
+    if (!r.photo_id) {
       await ctx.reply(matn, { parse_mode: "HTML", reply_markup: kb });
+    } else if (r.media_turi === "video") {
+      await ctx.replyWithVideo(r.photo_id, { caption: matn, parse_mode: "HTML", reply_markup: kb });
+    } else {
+      await ctx.replyWithPhoto(r.photo_id, { caption: matn, parse_mode: "HTML", reply_markup: kb });
     }
   }
 }
 
 /** Admin izohini yozib bo'lgach — messages.ts'dan chaqiriladi. */
-export async function muammoIzohSaqlandi(
+export async function shikoyatIzohSaqlandi(
   ctx: Context,
   reportId: number,
   izoh: string,
@@ -257,13 +316,13 @@ export async function muammoIzohSaqlandi(
 
   const yangi = await adminIzohQoshish(reportId, izoh);
   if (!yangi) {
-    await ctx.reply("Bu muammo allaqachon hal qilingan yoki topilmadi.");
+    await ctx.reply("Bu shikoyat allaqachon ko'rib chiqilgan yoki topilmadi.");
     return;
   }
   await ctx.reply("✅ Izoh saqlandi.");
 
-  const toliq = await muammoniOl(reportId);
-  if (toliq) await panelniYangila(ctx.api, toliq, true);
+  const toliq = await shikoyatniOl(reportId);
+  if (toliq) await panelniYangila(ctx.api, toliq, shikoyatAdminKeyboard(reportId));
 }
 
 async function faqatAdmin(ctx: Context): Promise<User | null> {
@@ -271,10 +330,11 @@ async function faqatAdmin(ctx: Context): Promise<User | null> {
   return admin?.admin ? admin : null;
 }
 
-async function qarorQabulQil(
+/** Boshlang'ich ko'rib chiqish: ✅ Tasdiqlash yoki ➖ Rad etish. */
+async function boshlangichQaror(
   ctx: Context,
   reportId: number,
-  qaror: "tasdiqlandi" | "rad",
+  qaror: "tasdiq" | "rad",
 ): Promise<void> {
   const admin = await faqatAdmin(ctx);
   if (!admin) {
@@ -282,45 +342,108 @@ async function qarorQabulQil(
     return;
   }
 
-  const yopildi = await muammoniHalQil(reportId, admin.id, qaror);
-  if (!yopildi) {
-    await ctx.answerCallbackQuery({ text: "Bu muammo allaqachon ko'rib chiqilgan." }).catch(() => {});
+  const yangi =
+    qaror === "tasdiq"
+      ? await shikoyatniTasdiqla(reportId, admin.id)
+      : await shikoyatniRadEt(reportId, admin.id);
+
+  if (!yangi) {
+    await ctx.answerCallbackQuery({ text: "Bu shikoyat allaqachon ko'rib chiqilgan." }).catch(() => {});
     return;
   }
 
   await ctx
-    .answerCallbackQuery({
-      text: qaror === "tasdiqlandi" ? "✅ Ko'rib chiqildi." : "Rad etildi.",
-    })
+    .answerCallbackQuery({ text: qaror === "tasdiq" ? "✅ Tasdiqlandi." : "Rad etildi." })
     .catch(() => {});
 
-  const toliq = await muammoniOl(reportId);
+  const toliq = await shikoyatniOl(reportId);
   if (!toliq) return;
 
-  await panelniYangila(ctx.api, toliq, false);
+  await guruhXabarniYangila(ctx.api, toliq);
 
-  const [reporter] = await sql<User[]>`SELECT * FROM users WHERE id = ${toliq.reporter_id}`;
+  if (qaror === "tasdiq") {
+    await panelniYangila(ctx.api, toliq, shikoyatTekshiruvKeyboard(reportId));
 
-  if (qaror === "tasdiqlandi") {
-    // Sababchi aniqlangan bo'lsagina ball ayiriladi va e'lon qilinadi —
-    // "bilmayman" bilan tugagan yozuv shunchaki qayd bo'lib qoladi.
     if (toliq.reported_id) {
       const [reported] = await sql<User[]>`SELECT * FROM users WHERE id = ${toliq.reported_id}`;
-      if (reported) {
-        await shaxsiy(ctx.api, reported, muammoJarimaXabari(toliq, admin.ism));
-        await guruhgaYubor(ctx.api, muammoGuruhXabari(toliq));
-      }
+      if (reported) await shaxsiy(ctx.api, reported, shikoyatTuzatishSorovi(toliq));
     }
-    if (reporter) await shaxsiy(ctx.api, reporter, "✅ Yozganingiz ko'rib chiqildi.");
-  } else if (reporter) {
-    await shaxsiy(ctx.api, reporter, "Yozganingiz ko'rib chiqildi, lekin rad etildi.");
+  } else {
+    await panelniYangila(ctx.api, toliq, new InlineKeyboard());
+
+    const [reporter] = await sql<User[]>`SELECT * FROM users WHERE id = ${toliq.reporter_id}`;
+    if (reporter) await shaxsiy(ctx.api, reporter, "Yozganingiz ko'rib chiqildi, lekin rad etildi.");
+  }
+}
+
+/** Qayta tekshiruv: ✅ Tuzatildi yoki ❌ Tuzatilmadi. Faqat shu yerda ball beriladi. */
+async function tekshiruvQarori(
+  ctx: Context,
+  reportId: number,
+  natija: "tuzatildi" | "jarima",
+): Promise<void> {
+  const admin = await faqatAdmin(ctx);
+  if (!admin) {
+    await ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    return;
+  }
+
+  const yangi = await shikoyatniTekshir(reportId, admin.id, natija);
+  if (!yangi) {
+    await ctx.answerCallbackQuery({ text: "Bu shikoyat allaqachon yopilgan." }).catch(() => {});
+    return;
+  }
+
+  await ctx
+    .answerCallbackQuery({ text: natija === "tuzatildi" ? "✅ Hal qilindi." : "➖ Ball ayirildi." })
+    .catch(() => {});
+
+  const toliq = await shikoyatniOl(reportId);
+  if (!toliq) return;
+
+  await guruhXabarniYangila(ctx.api, toliq);
+  await panelniYangila(ctx.api, toliq, new InlineKeyboard());
+
+  const [reporter] = await sql<User[]>`SELECT * FROM users WHERE id = ${toliq.reporter_id}`;
+  const reported = toliq.reported_id
+    ? (await sql<User[]>`SELECT * FROM users WHERE id = ${toliq.reported_id}`)[0]
+    : null;
+
+  if (natija === "tuzatildi") {
+    if (reported) await shaxsiy(ctx.api, reported, "✅ Rahmat! Muammo hal qilindi deb belgilandi.");
+    if (reporter) await shaxsiy(ctx.api, reporter, "✅ Yozganingiz hal qilindi.");
+  } else {
+    if (reported) await shaxsiy(ctx.api, reported, shikoyatJarimaXabari(toliq, admin.ism));
+    if (reporter) await shaxsiy(ctx.api, reporter, "Yozganingiz bo'yicha chora ko'rildi.");
   }
 }
 
 export function register(bot: Bot) {
-  bot.callbackQuery(/^muammo_ishonch:(aniq|gumon|nomalum)$/, async (ctx) => {
+  bot.callbackQuery(/^shikoyat_joy:(\w+)$/, async (ctx) => {
     const holat = await holatOl(ctx.from.id);
-    if (holat?.tur !== "muammo" || holat.qadam !== "javobgar") {
+    if (holat?.tur !== "shikoyat" || holat.qadam !== "joy") {
+      return ctx.answerCallbackQuery({ text: "Jarayon eskirgan. Qaytadan boshlang." });
+    }
+    const kod = ctx.match[1];
+    if (!kod || !(kod in SHIKOYAT_JOYLARI)) return ctx.answerCallbackQuery({ text: "Noto'g'ri joy." });
+
+    await ctx.answerCallbackQuery().catch(() => {});
+    await sorovniOchir(ctx.api, holat);
+    await shikoyatDalilSora(ctx, holat.izoh, kod as ShikoyatJoyi);
+  });
+
+  bot.callbackQuery("shikoyat_dalilsiz", async (ctx) => {
+    const holat = await holatOl(ctx.from.id);
+    if (holat?.tur !== "shikoyat" || holat.qadam !== "dalil") {
+      return ctx.answerCallbackQuery({ text: "Jarayon eskirgan. Qaytadan boshlang." });
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+    await shikoyatJavobgarSora(ctx, holat.izoh, holat.joy, null, null);
+  });
+
+  bot.callbackQuery(/^shikoyat_ishonch:(aniq|gumon|nomalum)$/, async (ctx) => {
+    const holat = await holatOl(ctx.from.id);
+    if (holat?.tur !== "shikoyat" || holat.qadam !== "javobgar") {
       return ctx.answerCallbackQuery({ text: "Jarayon eskirgan. Qaytadan boshlang." });
     }
 
@@ -329,9 +452,11 @@ export function register(bot: Bot) {
 
     if (ishonch === "nomalum") {
       await sorovniOchir(ctx.api, holat);
-      await muammoYuborildi(ctx, {
+      await shikoyatYuborildi(ctx, {
         izoh: holat.izoh,
-        photoId: holat.photoId,
+        joy: holat.joy,
+        mediaId: holat.mediaId,
+        mediaTuri: holat.mediaTuri,
         ishonch,
         reportedId: null,
       });
@@ -344,10 +469,12 @@ export function register(bot: Bot) {
     `;
 
     const yangi = {
-      tur: "muammo",
+      tur: "shikoyat",
       qadam: "kim",
       izoh: holat.izoh,
-      photoId: holat.photoId,
+      joy: holat.joy,
+      mediaId: holat.mediaId,
+      mediaTuri: holat.mediaTuri,
       ishonch,
     } as const;
     await holatOrnat(ctx.from.id, yangi);
@@ -355,7 +482,7 @@ export function register(bot: Bot) {
     const xabar = await ctx
       .editMessageText(`👤 <b>Kimni nazarda tutyapsiz?</b>`, {
         parse_mode: "HTML",
-        reply_markup: muammoKimKeyboard(odamlar),
+        reply_markup: shikoyatKimKeyboard(odamlar),
       })
       .catch(() => null);
 
@@ -364,9 +491,9 @@ export function register(bot: Bot) {
     }
   });
 
-  bot.callbackQuery(/^muammo_kim:(\d+)$/, async (ctx) => {
+  bot.callbackQuery(/^shikoyat_kim:(\d+)$/, async (ctx) => {
     const holat = await holatOl(ctx.from.id);
-    if (holat?.tur !== "muammo" || holat.qadam !== "kim") {
+    if (holat?.tur !== "shikoyat" || holat.qadam !== "kim") {
       return ctx.answerCallbackQuery({ text: "Jarayon eskirgan. Qaytadan boshlang." });
     }
     const reporter = await kim(ctx.from.id);
@@ -386,61 +513,54 @@ export function register(bot: Bot) {
 
     await ctx.answerCallbackQuery().catch(() => {});
     await sorovniOchir(ctx.api, holat);
-    await muammoYuborildi(ctx, {
+    await shikoyatYuborildi(ctx, {
       izoh: holat.izoh,
-      photoId: holat.photoId,
+      joy: holat.joy,
+      mediaId: holat.mediaId,
+      mediaTuri: holat.mediaTuri,
       ishonch: holat.ishonch,
       reportedId,
     });
   });
 
-  bot.callbackQuery("muammo_rasmsiz", async (ctx) => {
-    const holat = await holatOl(ctx.from.id);
-    if (holat?.tur !== "muammo" || holat.qadam !== "rasm") {
-      return ctx.answerCallbackQuery({ text: "Jarayon eskirgan. Qaytadan boshlang." });
-    }
-    await ctx.answerCallbackQuery().catch(() => {});
-    await muammoJavobgarSora(ctx, holat.izoh, null);
-  });
+  bot.callbackQuery(/^shikoyat_tasdiq:(\d+)$/, (ctx) => boshlangichQaror(ctx, Number(ctx.match[1]), "tasdiq"));
+  bot.callbackQuery(/^shikoyat_rad:(\d+)$/, (ctx) => boshlangichQaror(ctx, Number(ctx.match[1]), "rad"));
+  bot.callbackQuery(/^shikoyat_tuzatildi:(\d+)$/, (ctx) =>
+    tekshiruvQarori(ctx, Number(ctx.match[1]), "tuzatildi"),
+  );
+  bot.callbackQuery(/^shikoyat_tuzatilmadi:(\d+)$/, (ctx) =>
+    tekshiruvQarori(ctx, Number(ctx.match[1]), "jarima"),
+  );
 
-  bot.callbackQuery(/^muammo_tasdiq:(\d+)$/, async (ctx) => {
-    await qarorQabulQil(ctx, Number(ctx.match[1]), "tasdiqlandi");
-  });
-
-  bot.callbackQuery(/^muammo_rad:(\d+)$/, async (ctx) => {
-    await qarorQabulQil(ctx, Number(ctx.match[1]), "rad");
-  });
-
-  bot.callbackQuery(/^muammo_qayta:(\d+)$/, async (ctx) => {
+  bot.callbackQuery(/^shikoyat_qayta:(\d+)$/, async (ctx) => {
     const admin = await faqatAdmin(ctx);
     if (!admin) {
       return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true });
     }
 
     const reportId = Number(ctx.match[1]);
-    const toliq = await muammoniOl(reportId);
+    const toliq = await shikoyatniOl(reportId);
     if (!toliq || toliq.holat !== "kutilmoqda") {
-      return ctx.answerCallbackQuery({ text: "Bu muammo allaqachon hal qilingan." });
+      return ctx.answerCallbackQuery({ text: "Bu shikoyat allaqachon ko'rib chiqilgan." });
     }
     await ctx.answerCallbackQuery().catch(() => {});
 
     const odamlar = await sql<{ id: number; ism: string }[]>`
       SELECT id, ism FROM users WHERE faol ORDER BY ism
     `;
-    const kb = muammoQaytaKeyboard(reportId, odamlar);
+    const matn = `👤 <b>Kimni belgilaysiz?</b>`;
+    const kb = shikoyatQaytaKeyboard(reportId, odamlar);
 
     if (toliq.photo_id) {
       await ctx
-        .editMessageCaption({ caption: `👤 <b>Kimni belgilaysiz?</b>`, parse_mode: "HTML", reply_markup: kb })
+        .editMessageCaption({ caption: matn, parse_mode: "HTML", reply_markup: kb })
         .catch(() => {});
     } else {
-      await ctx
-        .editMessageText(`👤 <b>Kimni belgilaysiz?</b>`, { parse_mode: "HTML", reply_markup: kb })
-        .catch(() => {});
+      await ctx.editMessageText(matn, { parse_mode: "HTML", reply_markup: kb }).catch(() => {});
     }
   });
 
-  bot.callbackQuery(/^muammo_belgila:(\d+):(\d+)$/, async (ctx) => {
+  bot.callbackQuery(/^shikoyat_belgila:(\d+):(\d+)$/, async (ctx) => {
     const admin = await faqatAdmin(ctx);
     if (!admin) {
       return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true });
@@ -451,14 +571,14 @@ export function register(bot: Bot) {
 
     // Admin belgilagani — bu allaqachon aniqlangan deb hisoblanadi.
     const yangi = await javobgarniOzgartir(reportId, personId, "aniq");
-    if (!yangi) return ctx.answerCallbackQuery({ text: "Bu muammo allaqachon hal qilingan." });
+    if (!yangi) return ctx.answerCallbackQuery({ text: "Bu shikoyat allaqachon ko'rib chiqilgan." });
     await ctx.answerCallbackQuery({ text: "✅ Belgilandi." }).catch(() => {});
 
-    const toliq = await muammoniOl(reportId);
-    if (toliq) await panelniYangila(ctx.api, toliq, true);
+    const toliq = await shikoyatniOl(reportId);
+    if (toliq) await panelniYangila(ctx.api, toliq, shikoyatAdminKeyboard(reportId));
   });
 
-  bot.callbackQuery(/^muammo_notanilgan:(\d+)$/, async (ctx) => {
+  bot.callbackQuery(/^shikoyat_notanilgan:(\d+)$/, async (ctx) => {
     const admin = await faqatAdmin(ctx);
     if (!admin) {
       return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true });
@@ -466,23 +586,23 @@ export function register(bot: Bot) {
 
     const reportId = Number(ctx.match[1]);
     const yangi = await javobgarniOzgartir(reportId, null, "nomalum");
-    if (!yangi) return ctx.answerCallbackQuery({ text: "Bu muammo allaqachon hal qilingan." });
+    if (!yangi) return ctx.answerCallbackQuery({ text: "Bu shikoyat allaqachon ko'rib chiqilgan." });
     await ctx.answerCallbackQuery({ text: "✅ Belgilandi." }).catch(() => {});
 
-    const toliq = await muammoniOl(reportId);
-    if (toliq) await panelniYangila(ctx.api, toliq, true);
+    const toliq = await shikoyatniOl(reportId);
+    if (toliq) await panelniYangila(ctx.api, toliq, shikoyatAdminKeyboard(reportId));
   });
 
-  bot.callbackQuery(/^muammo_qayta_bekor:(\d+)$/, async (ctx) => {
+  bot.callbackQuery(/^shikoyat_qayta_bekor:(\d+)$/, async (ctx) => {
     const admin = await faqatAdmin(ctx);
     if (!admin) return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q." });
     await ctx.answerCallbackQuery().catch(() => {});
 
-    const toliq = await muammoniOl(Number(ctx.match[1]));
+    const toliq = await shikoyatniOl(Number(ctx.match[1]));
     if (!toliq) return;
 
-    const matn = muammoAdminXabari(toliq);
-    const kb = muammoAdminKeyboard(toliq.id);
+    const matn = shikoyatAdminXabari(toliq);
+    const kb = shikoyatAdminKeyboard(toliq.id);
     if (toliq.photo_id) {
       await ctx.editMessageCaption({ caption: matn, parse_mode: "HTML", reply_markup: kb }).catch(() => {});
     } else {
@@ -490,7 +610,7 @@ export function register(bot: Bot) {
     }
   });
 
-  bot.callbackQuery(/^muammo_izoh:(\d+)$/, async (ctx) => {
+  bot.callbackQuery(/^shikoyat_izoh:(\d+)$/, async (ctx) => {
     const admin = await faqatAdmin(ctx);
     if (!admin) {
       return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true });
@@ -499,7 +619,7 @@ export function register(bot: Bot) {
     const reportId = Number(ctx.match[1]);
     await ctx.answerCallbackQuery().catch(() => {});
 
-    const holat = { tur: "muammo_izoh", reportId } as const;
+    const holat = { tur: "shikoyat_izoh", reportId } as const;
     await holatOrnat(ctx.from.id, holat);
 
     const xabar = await ctx.reply("✏️ Izohingizni yozing:", { reply_markup: bekorKeyboard() });

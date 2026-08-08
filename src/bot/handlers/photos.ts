@@ -9,16 +9,19 @@ import { tasdiqKeyboard, bekorKeyboard } from "../keyboards.js";
 import { tasdiqXabari, topshiriqXabari } from "../text.js";
 import { topshiriqYarat } from "../../core/topshiriq.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
-import { muammoRasmKeldi } from "./reports.js";
+import { shikoyatDalilKeldi } from "./reports.js";
 
 /**
  * Rasm to'rt xil maqsadda kelishi mumkin. Tartib muhim — har biri holat
- * tekshiruvi bilan aniq ushlanmasa, masalan muammo dalili navbat rasmiga
+ * tekshiruvi bilan aniq ushlanmasa, masalan shikoyat dalili navbat rasmiga
  * (navbatRasmi) tushib qolib, butunlay boshqa joyga yozilib ketardi:
  *   1) qo'shimcha ish tasdig'i (tugma bosilgan, rasm kutilyapti)
  *   2) yangi xarajat rasmi — faqat shaxsiy chatda
- *   3) muammo dalili — faqat shaxsiy chatda
+ *   3) shikoyat dalili — faqat shaxsiy chatda
  *   4) navbatdagi xonaning tozalash rasmi
+ *
+ * Video faqat shikoyat dalili sifatida ishlatiladi — boshqa hech qanday
+ * oqim video kutmaydi, shuning uchun alohida, qisqa handler yetarli.
  */
 export function register(bot: Bot) {
   bot.on("message:photo", async (ctx) => {
@@ -67,13 +70,25 @@ export function register(bot: Bot) {
       return;
     }
 
-    // Muammo oqimi ham faqat shaxsiy chatda — xuddi xarajatdagi kabi,
+    // Shikoyat oqimi ham faqat shaxsiy chatda — xuddi xarajatdagi kabi,
     // guruhga tashlangan rasm navbat topshirig'iga ketishi kerak.
-    if (holat?.tur === "muammo" && holat.qadam === "rasm" && ctx.chat.type === "private") {
-      return muammoRasmKeldi(ctx, holat, eng.file_id);
+    if (holat?.tur === "shikoyat" && holat.qadam === "dalil" && ctx.chat.type === "private") {
+      return shikoyatDalilKeldi(ctx, holat, eng.file_id, "rasm");
     }
 
     await navbatRasmi(ctx, u, eng.file_id);
+  });
+
+  // Video faqat shikoyat dalili sifatida qabul qilinadi — boshqa hech
+  // qanday jarayon uni kutmaydi, shuning uchun boshqa holatlarda jim o'tadi.
+  bot.on("message:video", async (ctx) => {
+    const fromId = ctx.from?.id;
+    if (!fromId || ctx.chat.type !== "private") return;
+
+    const holat = await holatOl(fromId);
+    if (holat?.tur !== "shikoyat" || holat.qadam !== "dalil") return;
+
+    await shikoyatDalilKeldi(ctx, holat, ctx.message.video.file_id, "video");
   });
 }
 

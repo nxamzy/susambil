@@ -99,14 +99,17 @@ export const BALLAR = {
   xarajat: 10,
   /** Boshqa xonaning ishini tasdiqlagani uchun */
   tasdiq: 1,
-  /** Admin tasdiqlagan va sababchisi aniqlangan muammo uchun ayiriladigan ball */
-  muammoJarima: 20,
+  /**
+   * Sababchi tuzatish uchun berilgan imkoniyatdan foydalanmasa (admin
+   * "Tuzatilmadi" deb belgilasa) ayiriladigan ball.
+   */
+  shikoyatJarima: 20,
 } as const;
 
 /**
- * Muammo yozib qo'yilganda kim sabab bo'lgani qanchalik aniqligi. Bu
- * ayblov emas — shunchaki reporter o'zi qanchalik ishonchli ekanini
- * belgilaydi, admin esa buni ko'rib chiqib kerak bo'lsa o'zgartiradi.
+ * Anonim shikoyat yozilganda kim sabab bo'lgani qanchalik aniqligi.
+ * Reporter o'zi qanchalik ishonchli ekanini belgilaydi, admin esa buni
+ * ko'rib chiqib kerak bo'lsa o'zgartiradi.
  */
 export const ISHONCH_DARAJASI = {
   aniq: { emoji: "✅", nom: "Aniq bilaman" },
@@ -115,3 +118,14 @@ export const ISHONCH_DARAJASI = {
 } as const;
 
 export type Ishonch = keyof typeof ISHONCH_DARAJASI;
+
+/** Uyning qaysi joyiga tegishli — shikoyat yozilganda va guruh xabarida ko'rsatiladi. */
+export const SHIKOYAT_JOYLARI = {
+  oshxona: { emoji: "🍽", nom: "Oshxona" },
+  hammom: { emoji: "🚿", nom: "Hammom" },
+  umumiy: { emoji: "🛋", nom: "Umumiy joy" },
+  xona: { emoji: "🛏", nom: "Xonalardan biri" },
+  boshqa: { emoji: "📍", nom: "Boshqa" },
+} as const;
+
+export type ShikoyatJoyi = keyof typeof SHIKOYAT_JOYLARI;

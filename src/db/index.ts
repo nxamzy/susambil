@@ -1,5 +1,5 @@
 import postgres from "postgres";
-import { config, type Ishonch } from "../config.js";
+import { config, type Ishonch, type ShikoyatJoyi } from "../config.js";
 
 /** Neon'ning "-pooler" manzili PgBouncer (transaction mode) orqali ishlaydi —
  *  u prepared statement'larni qo'llab-quvvatlamaydi, shuning uchun o'chiramiz. */
@@ -66,13 +66,21 @@ export type Submission = {
   rad_qildi: number | null;
 };
 
-/** kutilmoqda → tasdiqlandi | rad (bir admin hal qiladi, ko'p kishilik tasdiq emas) */
-export type ReportHolat = "kutilmoqda" | "tasdiqlandi" | "rad";
+/**
+ * kutilmoqda -> tuzatilmoqda -> tuzatildi | jarima
+ *           \-> rad
+ *
+ * Bitta admin hal qiladi (ko'p kishilik tasdiq emas). "tuzatilmoqda" —
+ * admin tasdiqlagan, sababchiga tuzatish uchun imkoniyat berilgan;
+ * "jarima" — tuzatilmagan, ball ayirilgan; "tuzatildi" — hal qilingan,
+ * ball ayirilmagan.
+ */
+export type ReportHolat = "kutilmoqda" | "tuzatilmoqda" | "tuzatildi" | "jarima" | "rad";
 
 /**
- * Muammo yozuvi. `reporter_id` faqat admin ko'radigan joylarda ishlatiladi
- * (adminga DM, /muammolar) — guruhga yoki oddiy a'zoga chiqadigan hech
- * qanday matnda bu maydon o'qilmasligi kerak.
+ * Anonim shikoyat. `reporter_id` va `reported_id` faqat admin ko'radigan
+ * joylarda ishlatiladi (adminga DM, /shikoyatlar) — guruhga yoki oddiy
+ * a'zoga chiqadigan hech qanday matnda bu maydonlar o'qilmasligi kerak.
  */
 export type Report = {
   id: number;
@@ -80,14 +88,20 @@ export type Report = {
   /** Sababchi noma'lum bo'lsa null — admin keyinroq belgilashi mumkin */
   reported_id: number | null;
   ishonch: Ishonch;
+  joy: ShikoyatJoyi;
   izoh: string;
   photo_id: string | null;
+  media_turi: "rasm" | "video";
   ball: number;
   holat: ReportHolat;
   admin_id: number | null;
   /** Adminning erkin izohi — reporterning izohidan alohida */
   admin_note: string | null;
+  /** Admin tasdiqlab, tuzatish uchun imkoniyat bergan payt */
+  confirmed_at: Date | null;
   hal_qilindi: Date | null;
   admin_msgs: { chat_id: number; message_id: number }[];
+  /** Guruhdagi anonim xabar — qayta yubormasdan shu tahrirlanadi */
+  guruh_msg_id: string | null;
   created_at: Date;
 };
