@@ -107,3 +107,76 @@ CREATE TABLE IF NOT EXISTS flow_state (
   holat       JSONB NOT NULL,
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ---------------------------------------------------------------------------
+-- MIGRATSIYA: hamma ish bitta tasdiqlash yo'lidan o'tadi
+-- ---------------------------------------------------------------------------
+-- Ilgari faqat navbat ishi tasdiqlanardi; qo'shimcha ish va xarajat esa rasm
+-- kelishi bilanoq ball berardi. Endi uchalasi ham `submissions` ga tushadi va
+-- bir xil `confirmations` orqali tasdiqlanadi — ikkinchi tasdiqlash tizimi
+-- yaratilmadi, borisi kengaytirildi.
+--
+-- Bu fayl bir necha marta ishga tushishi mumkin, shuning uchun har bir qadam
+-- qayta bajarilsa ham xato bermaydi.
+
+-- Navbatga bog'liq bo'lmagan topshiriqlar ham bo'ladi
+ALTER TABLE submissions ALTER COLUMN turn_id DROP NOT NULL;
+
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS tur      TEXT NOT NULL DEFAULT 'navbat';
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS ish_turi TEXT;    -- musor|hammom|oshxona|xona|boshqa
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS izoh     TEXT;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS summa    BIGINT;  -- so'm, faqat xarajatda
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS ball     INT NOT NULL DEFAULT 0;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS holat    TEXT NOT NULL DEFAULT 'kutilmoqda';
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS yopildi  TIMESTAMPTZ;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS rad_sababi TEXT;
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS rad_qildi  INT REFERENCES users(id);
+
+-- ADD CONSTRAINT da IF NOT EXISTS yo'q, shuning uchun blok ichida
+DO $$ BEGIN
+  ALTER TABLE submissions ADD CONSTRAINT submissions_tur_chk
+    CHECK (tur IN ('navbat', 'ish', 'xarajat'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+  ALTER TABLE submissions ADD CONSTRAINT submissions_holat_chk
+    CHECK (holat IN ('kutilmoqda', 'tasdiqlandi', 'rad'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Navbat topshirig'ida turn_id shart, boshqasida esa bo'lmasligi kerak
+DO $$ BEGIN
+  ALTER TABLE submissions ADD CONSTRAINT submissions_turn_chk
+    CHECK ((tur = 'navbat') = (turn_id IS NOT NULL));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Summa faqat xarajatda va manfiy bo'lmasin (server tomonda ham tekshiriladi)
+DO $$ BEGIN
+  ALTER TABLE submissions ADD CONSTRAINT submissions_summa_chk
+    CHECK (summa IS NULL OR (tur = 'xarajat' AND summa >= 0));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE INDEX IF NOT EXISTS submissions_kutilmoqda_idx
+  ON submissions (holat) WHERE holat = 'kutilmoqda';
+
+-- Bitta navbatda bir vaqtda bitta ochiq topshiriq bo'lsin: ikki kishi barobar
+-- "Bajardim" bosса ham ikkinchisi qo'shilmaydi.
+CREATE UNIQUE INDEX IF NOT EXISTS submissions_faol_navbat_uniq
+  ON submissions (turn_id) WHERE tur = 'navbat' AND holat = 'kutilmoqda' AND NOT bekor;
+
+-- Daftar jadvallari endi faqat TASDIQLANGANDAN keyin to'ladi. Ball qatorning
+-- o'zida saqlanadi: sozlama keyin o'zgarsa ham eski hisob buzilmaydi va ball
+-- mijoz tomonidan emas, server tomonidan yoziladi.
+ALTER TABLE chores   ADD COLUMN IF NOT EXISTS ball          INT NOT NULL DEFAULT 0;
+ALTER TABLE chores   ADD COLUMN IF NOT EXISTS izoh          TEXT;
+ALTER TABLE chores   ADD COLUMN IF NOT EXISTS submission_id INT REFERENCES submissions(id) ON DELETE SET NULL;
+
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS ball          INT NOT NULL DEFAULT 0;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS summa         BIGINT;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS submission_id INT REFERENCES submissions(id) ON DELETE SET NULL;
+
+-- Idempotentlikning asosi: bitta topshiriqdan bitta daftar qatori. Tasdiq
+-- ikki marta hisoblansa ham ON CONFLICT DO NOTHING ikkinchisini tashlab
+-- yuboradi, ya'ni ball ikki marta berilmaydi. NULL lar takrorlanishi mumkin,
+-- shuning uchun eski qatorlar to'sib qo'ymaydi.
+CREATE UNIQUE INDEX IF NOT EXISTS chores_submission_uniq   ON chores (submission_id);
+CREATE UNIQUE INDEX IF NOT EXISTS expenses_submission_uniq ON expenses (submission_id);

@@ -28,13 +28,48 @@ export const config = {
   jarimaKunlik: 10_000,
 } as const;
 
+/**
+ * Qo'shimcha ish turlari.
+ *
+ *   tez       — pastdagi doimiy menyuda alohida tugma bo'ladi (eng ko'p
+ *               ishlatiladiganlari). Qolganlari "Boshqa ish" ichida turadi,
+ *               aks holda menyu uzayib ketardi.
+ *   izohShart — nima qilganini yozib berish majburiy
+ */
 export const ISH_TURLARI = {
-  musor: { emoji: "♻️", matn: "musorni tashlab keldi", tugma: "Musor tashladim", ball: 3 },
-  hammom: { emoji: "🧹", matn: "hammomni tozaladi", tugma: "Hammom tozaladim", ball: 15 },
-  oshxona: { emoji: "🍽", matn: "oshxonani tozaladi", tugma: "Oshxona tozaladim", ball: 15 },
+  musor: {
+    emoji: "♻️", matn: "musorni tashlab keldi", tugma: "Musor tashladim",
+    ball: 3, tez: true, izohShart: false,
+  },
+  hammom: {
+    emoji: "🧹", matn: "hammomni tozaladi", tugma: "Hammom tozaladim",
+    ball: 15, tez: true, izohShart: false,
+  },
+  oshxona: {
+    emoji: "🍽", matn: "oshxonani tozaladi", tugma: "Oshxona tozaladim",
+    ball: 15, tez: true, izohShart: false,
+  },
+  xona: {
+    emoji: "🛏", matn: "o'z xonasini tozaladi", tugma: "O'z xonamni tozaladim",
+    ball: 10, tez: false, izohShart: false,
+  },
+  boshqa: {
+    emoji: "🔧", matn: "boshqa foydali ish qildi", tugma: "Boshqa ish qildim",
+    ball: 5, tez: false, izohShart: true,
+  },
 } as const;
 
 export type IshTuri = keyof typeof ISH_TURLARI;
+
+/** Pastdagi doimiy menyuda tugmasi bor turlar. */
+export const TEZ_ISHLAR = (Object.keys(ISH_TURLARI) as IshTuri[]).filter(
+  (t) => ISH_TURLARI[t].tez,
+);
+
+/** "Boshqa ish" ro'yxatida chiqadiganlar. */
+export const SEKIN_ISHLAR = (Object.keys(ISH_TURLARI) as IshTuri[]).filter(
+  (t) => !ISH_TURLARI[t].tez,
+);
 
 /**
  * Ball tizimi. O'lchov: taxminan 2 daqiqa ish = 1 ball.

@@ -15,7 +15,8 @@
     "webhook:set": "tsx src/scripts/webhook.ts set",
     "webhook:info": "tsx src/scripts/webhook.ts info",
     "webhook:delete": "tsx src/scripts/webhook.ts delete",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "dotenv": "^16.4.7",

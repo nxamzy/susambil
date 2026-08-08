@@ -6,7 +6,8 @@ import { faolNavbat } from "../../core/rotation.js";
 import { rasmQabulQil } from "../../core/photobuffer.js";
 import { guruhId, kim } from "../group.js";
 import { tasdiqKeyboard, bekorKeyboard } from "../keyboards.js";
-import { tasdiqXabari, esc } from "../text.js";
+import { tasdiqXabari, topshiriqXabari } from "../text.js";
+import { topshiriqYarat } from "../../core/topshiriq.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
 
 /**
@@ -34,8 +35,12 @@ export function register(bot: Bot) {
     const holat = await holatOl(fromId);
 
     if (holat?.tur === "ish") {
+      if ("qadam" in holat && holat.qadam === "izoh") {
+        await ctx.reply("✍️ Avval nima qilganingizni yozing.");
+        return;
+      }
       await sorovniOchir(ctx.api, holat);
-      return ishniYakunla(ctx, u, holat.ish, eng.file_id);
+      return ishniYakunla(ctx, u, holat.ish, holat.izoh ?? null, eng.file_id);
     }
 
     // Xarajat oqimi faqat shaxsiy chatda. Aks holda odam botda xarajat
@@ -62,24 +67,41 @@ export function register(bot: Bot) {
   });
 }
 
-async function ishniYakunla(ctx: Context, u: User, ish: IshTuri, photoId: string) {
+/**
+ * Qo'shimcha ish rasmi keldi. Ilgari shu yerda darrov ball berilardi; endi
+ * topshiriq guruhga tasdiqqa chiqadi va ball faqat tasdiqdan keyin beriladi.
+ */
+async function ishniYakunla(
+  ctx: Context,
+  u: User,
+  ish: IshTuri,
+  izoh: string | null,
+  photoId: string,
+) {
   const t = ISH_TURLARI[ish];
-  await sql`INSERT INTO chores (user_id, tur, photo_id) VALUES (${u.id}, ${ish}, ${photoId})`;
+  const sub = await topshiriqYarat(u.id, { tur: "ish", ish, izoh }, [photoId]);
   if (ctx.from) await holatTozala(ctx.from.id);
 
-  const matn = `${t.emoji} <b>${esc(u.ism)}</b> ${t.matn}\n\n🏅 <b>+${t.ball} ball</b>`;
+  await ctx.reply(
+    [
+      `${t.emoji} <b>Qabul qildim.</b>`,
+      ``,
+      `Guruhga tasdiqqa qo'ydim — <b>${config.kerakliTasdiq} kishi</b> bosgach`,
+      `<b>+${t.ball} ball</b> qo'shiladi.`,
+    ].join("\n"),
+    { parse_mode: "HTML" },
+  );
+
   const guruh = await guruhId();
+  if (!guruh) return;
 
-  if (ctx.chat?.id === guruh) {
-    // Rasm allaqachon guruhda ko'rinib turibdi — qayta yubormaymiz
-    await ctx.reply(matn, { parse_mode: "HTML" });
-    return;
-  }
+  const xabar = await ctx.api.sendPhoto(guruh, photoId, {
+    caption: topshiriqXabari(sub, u.ism, [], config.kerakliTasdiq),
+    parse_mode: "HTML",
+    reply_markup: tasdiqKeyboard(sub.id, 0, config.kerakliTasdiq),
+  });
 
-  await ctx.reply(`${t.emoji} Yozib qo'ydim — <b>+${t.ball} ball</b>`, { parse_mode: "HTML" });
-  if (guruh) {
-    await ctx.api.sendPhoto(guruh, photoId, { caption: matn, parse_mode: "HTML" });
-  }
+  await sql`UPDATE submissions SET guruh_msg_id = ${xabar.message_id} WHERE id = ${sub.id}`;
 }
 
 async function navbatRasmi(ctx: Context, u: User, fileId: string) {

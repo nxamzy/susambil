@@ -1,11 +1,13 @@
 import type { Bot, Api, Context } from "grammy";
 import { sql, type Room } from "../../db/index.js";
-import { config, ISH_TURLARI, BALLAR } from "../../config.js";
-import { faolNavbat, keyingiXona, xonaAzolari } from "../../core/rotation.js";
+import { config, ISH_TURLARI, SEKIN_ISHLAR, BALLAR, type IshTuri } from "../../config.js";
+import { ochiqTopshiriqlar } from "../../core/topshiriq.js";
+import { faolNavbat, kelgusiTartib } from "../../core/rotation.js";
 import { reyting, xonaHolati, tarix } from "../../core/rating.js";
-import { oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
+import { jamiXarajat, oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
 import { guruhId, guruhIdOrnat, kim, korishXabar } from "../group.js";
 import {
+  boshqaIshKeyboard,
   ismTanlashKeyboard,
   menyuKeyboard,
   panelKeyboard,
@@ -63,36 +65,59 @@ async function navbatMatni(): Promise<string> {
   const n = await faolNavbat();
   if (!n) return "🧹 Hozircha navbat boshlanmagan.";
 
-  const keyingi = await keyingiXona(n.room);
-  const keyingiAzolar = await xonaAzolari(keyingi.id);
+  const s = [navbatXabari(n.room, n.azolar, n.turn.muddat)];
 
-  return (
-    navbatXabari(n.room, n.azolar, n.turn.muddat) +
-    `\n\n➡️ <b>Keyingi:</b> ${keyingi.raqam}-xona\n` +
-    `   👥 ${esc(ismlar(keyingiAzolar))}`
+  s.push(
+    ``,
+    AJRATGICH,
+    `<b>BAJARILISHI KERAK</b>`,
+    `   ☐ Xona`,
+    `   ☐ Hammom`,
+    `   ☐ Oshxona`,
+    ``,
+    `📷 Tugagach guruhga <b>${config.minRasm} ta rasm</b>,`,
+    `✅ <b>${config.kerakliTasdiq} kishi</b> tasdiqlaydi.`,
   );
+
+  const kelgusi = await kelgusiTartib(3);
+  if (kelgusi.length > 0) {
+    s.push(``, AJRATGICH, `➡️ <b>KEYINGI NAVBATLAR</b>`);
+    for (const [i, k] of kelgusi.entries()) {
+      s.push(`   ${i + 1}. <b>${k.room.raqam}-xona</b> — ${esc(ismlar(k.azolar))}`);
+    }
+  }
+
+  return s.join("\n");
 }
 
 async function xarajatMatni(): Promise<string> {
   const top = await xarajatReytingi(oyBoshi());
   const oxirgi = await oxirgiXarajatlar(8);
 
-  const s = [`🛒 <b>UYGA OLIB KELINGANLAR</b>`, AJRATGICH, ``];
+  const jami = await jamiXarajat(oyBoshi());
+
+  const s = [`💰 <b>UMUMIY XARAJATLAR</b>`, AJRATGICH, `<i>${oyNomi()} oyi</i>`, ``];
 
   if (top.length === 0) {
     s.push(`🤷 <i>Shu oyda hali hech kim hech narsa</i>`, `<i>olib kelmagan.</i>`);
   } else {
-    s.push(`🏆 <b>Shu oylik reyting</b>`);
     for (const [i, x] of top.entries()) {
       const medal = ["🥇", "🥈", "🥉"][i] ?? "▫️";
-      s.push(`${medal} ${esc(x.ism)} — ${x.soni} marta · <b>${x.soni * BALLAR.xarajat} ball</b>`);
+      // Pul va ball ikki xil narsa: summa sarflangan pul, ball esa har bir
+      // xarajat uchun bir xil — summaga bog'liq emas.
+      s.push(
+        `${medal} ${esc(x.ism)} — <b>${x.summa > 0 ? pul(x.summa) : "—"}</b>`,
+        `   📦 ${x.soni} marta · 🏅 ${x.soni * BALLAR.xarajat} ball`,
+      );
     }
+    s.push(``, AJRATGICH, `💵 <b>JAMI: ${pul(jami)}</b>`);
   }
 
   if (oxirgi.length > 0) {
     s.push(``, `📦 <b>Oxirgi olib kelinganlar</b>`);
     for (const x of oxirgi) {
-      s.push(`• ${esc(x.izoh)}`, `   👤 ${esc(x.ism)} · 📅 ${qisqaSana(x.created_at)}`);
+      const narx = x.summa ? ` — <b>${pul(Number(x.summa))}</b>` : "";
+      s.push(`• ${esc(x.izoh)}${narx}`, `   👤 ${esc(x.ism)} · 📅 ${qisqaSana(x.created_at)}`);
     }
   }
 
@@ -106,7 +131,7 @@ async function xarajatMatni(): Promise<string> {
   return s.join("\n");
 }
 
-async function reytingMatni(): Promise<string> {
+async function reytingMatni(telegramId?: number): Promise<string> {
   const dan = oyBoshi();
   const odamlar = await reyting(dan);
   const xonalar = await xonaHolati(dan);
@@ -123,6 +148,19 @@ async function reytingMatni(): Promise<string> {
       if (o.jami === 0) continue;
       const medal = ["🥇", "🥈", "🥉"][i] ?? `${i + 1}.`;
       s.push(`${medal} ${esc(o.ism)} — <b>${o.jami}</b> ball`);
+    }
+  }
+
+  // Ko'rayotgan odamning o'z o'rni — ro'yxat uzayganda o'zini qidirmasin
+  const men = telegramId ? await kim(telegramId) : null;
+  if (men) {
+    const orin = jamiBoyicha.findIndex((o) => o.userId === men.id);
+    if (orin !== -1) {
+      s.push(
+        ``,
+        `📊 <b>Sizning o'rningiz: ${orin + 1}</b> / ${jamiBoyicha.length}`,
+        `🏅 Ballingiz: <b>${jamiBoyicha[orin]!.jami}</b>`,
+      );
     }
   }
 
@@ -144,19 +182,18 @@ async function reytingMatni(): Promise<string> {
   }
 
   // 3) Qo'shimcha ishlar
-  const ishBoyicha = odamlar
-    .filter((o) => o.musor + o.hammom + o.oshxona > 0)
-    .sort((a, b) => b.ishBall - a.ishBall);
+  const ishBoyicha = odamlar.filter((o) => o.ishSoni > 0).sort((a, b) => b.ishBall - a.ishBall);
   s.push(``, `♻️ <b>QO'SHIMCHA ISHLAR</b>`, AJRATGICH);
   if (ishBoyicha.length === 0) {
     s.push(`🤷 <i>hali hech kim belgilamagan</i>`);
   } else {
     for (const [i, o] of ishBoyicha.entries()) {
       const medal = ["🥇", "🥈", "🥉"][i] ?? "▫️";
-      s.push(
-        `${medal} ${esc(o.ism)} — <b>${o.ishBall}</b> ball`,
-        `   ${ISH_TURLARI.musor.emoji}${o.musor}  ${ISH_TURLARI.hammom.emoji}${o.hammom}  ${ISH_TURLARI.oshxona.emoji}${o.oshxona}`,
-      );
+      const tafsil = (Object.keys(ISH_TURLARI) as IshTuri[])
+        .filter((t) => (o.ishlar[t] ?? 0) > 0)
+        .map((t) => `${ISH_TURLARI[t].emoji}${o.ishlar[t]}`)
+        .join("  ");
+      s.push(`${medal} ${esc(o.ism)} — <b>${o.ishBall}</b> ball`, `   ${tafsil}`);
     }
   }
 
@@ -233,7 +270,15 @@ async function javob(ctx: any, matn: string, extra: Record<string, unknown> = {}
   await korishXabar(ctx.api, chatId, toza, bilan);
 }
 
-export type Korinish = "navbat" | "reyting" | "tarix" | "xarajat" | "tanishtirish" | "panel";
+export type Korinish =
+  | "navbat"
+  | "reyting"
+  | "tarix"
+  | "xarajat"
+  | "profil"
+  | "tanishtirish"
+  | "boshqaish"
+  | "panel";
 
 /**
  * Bir xil ko'rinishlar ikki joydan chaqiriladi: guruhdagi inline paneldan va
@@ -244,7 +289,7 @@ export async function korinish(ctx: Context, nom: Korinish): Promise<void> {
     case "navbat":
       return javob(ctx, await navbatMatni());
     case "reyting":
-      return javob(ctx, await reytingMatni());
+      return javob(ctx, await reytingMatni(ctx.from?.id));
     case "tarix":
       return javob(ctx, await tarixMatni());
     case "xarajat": {
@@ -255,11 +300,80 @@ export async function korinish(ctx: Context, nom: Korinish): Promise<void> {
         bot ? { reply_markup: xarajatQoshishKeyboard(bot) } : {},
       );
     }
+    case "profil":
+      return javob(ctx, await profilMatni(ctx.from?.id));
+    case "boshqaish":
+      return javob(ctx, boshqaIshMatni(), { reply_markup: boshqaIshKeyboard() });
     case "tanishtirish":
       return javob(ctx, tanishtirish(), { reply_markup: panelgaKeyboard() });
     case "panel":
       return javob(ctx, await panelMatni(), { reply_markup: panelKeyboard() });
   }
+}
+
+function boshqaIshMatni(): string {
+  return [
+    `➕ <b>BOSHQA ISH</b>`,
+    AJRATGICH,
+    ``,
+    `Nima qildingiz? Tanlang — keyin rasmini so'rayman.`,
+    ``,
+    ...SEKIN_ISHLAR.map((t) => `   ${ISH_TURLARI[t].emoji} ${ISH_TURLARI[t].tugma} — <b>+${ISH_TURLARI[t].ball} ball</b>`),
+    ``,
+    `<i>Har qanday ish guruh tasdig'idan keyin ball beradi.</i>`,
+  ].join("\n");
+}
+
+/** Odamning shaxsiy holati: shu oylik balli, o'rni va kutib turgan ishlari. */
+async function profilMatni(telegramId: number | undefined): Promise<string> {
+  const u = await kim(telegramId);
+  if (!u) return "👤 Avval /start bosib ro'yxatdan o'ting.";
+
+  const odamlar = (await reyting(oyBoshi())).sort((a, b) => b.jami - a.jami);
+  const orin = odamlar.findIndex((o) => o.userId === u.id);
+  const men = odamlar[orin];
+  if (!men) return "👤 Ma'lumot topilmadi.";
+
+  const [xona] = await sql<{ raqam: number }[]>`
+    SELECT raqam FROM rooms WHERE id = ${u.room_id}
+  `;
+  const kutayotgan = await ochiqTopshiriqlar(u.id);
+
+  const s = [
+    `👤 <b>${esc(u.ism).toUpperCase()}</b>`,
+    AJRATGICH,
+    ``,
+    `🏠 ${xona ? `${xona.raqam}-xona` : "xonasiz"}${u.admin ? " · 👑 admin" : ""}`,
+    `📅 ${oyNomi()} oyi`,
+    ``,
+    `🏅 <b>${men.jami} ball</b>`,
+    `📊 O'rningiz: <b>${orin + 1}</b> / ${odamlar.length}`,
+    ``,
+    AJRATGICH,
+    `🧹 Navbat — ${men.navbatSoni} marta · <b>${men.navbatBall}</b> ball`,
+    `♻️ Qo'shimcha ish — ${men.ishSoni} marta · <b>${men.ishBall}</b> ball`,
+    `🛒 Olib kelgan — ${men.xarajat} marta · <b>${men.xarajatBall}</b> ball`,
+    `✅ Tasdiqlagan — ${men.tasdiq} marta · <b>${men.tasdiqBall}</b> ball`,
+  ];
+
+  if (men.xarajatSumma > 0) s.push(``, `💰 Uyga sarflagan pulingiz: <b>${pul(men.xarajatSumma)}</b>`);
+  if (men.kechikkanKun > 0) s.push(`🔴 Kechikkan: ${men.kechikkanKun} kun`);
+
+  if (kutayotgan.length > 0) {
+    s.push(``, AJRATGICH, `⏳ <b>TASDIQ KUTAYOTGAN ${kutayotgan.length} TA ISH</b>`);
+    for (const k of kutayotgan) {
+      const nom =
+        k.tur === "xarajat"
+          ? `🛒 ${esc(k.izoh ?? "xarajat")}`
+          : k.ish_turi && k.ish_turi in ISH_TURLARI
+            ? `${ISH_TURLARI[k.ish_turi as IshTuri].emoji} ${ISH_TURLARI[k.ish_turi as IshTuri].tugma}`
+            : "🧹 Navbat ishi";
+      s.push(`   ${nom} — <i>+${k.ball} ball kutilmoqda</i>`);
+    }
+    s.push(`<i>Tasdiqlanmaguncha ball hisobga qo'shilmaydi.</i>`);
+  }
+
+  return s.join("\n");
 }
 
 export function register(bot: Bot) {
@@ -411,7 +525,8 @@ export function register(bot: Bot) {
     }
   });
 
-  bot.callbackQuery(/^korish:(navbat|reyting|tarix|xarajat|tanishtirish|panel)$/, async (ctx) => {
+  const korishlar = "navbat|reyting|tarix|xarajat|profil|tanishtirish|boshqaish|panel";
+  bot.callbackQuery(new RegExp(`^korish:(${korishlar})$`), async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});
     await korinish(ctx, ctx.match[1] as Korinish);
   });

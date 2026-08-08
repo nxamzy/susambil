@@ -27,10 +27,11 @@ export async function rasmQabulQil(
     `;
     if (!turn || turn.holat !== "faol") return { holat: "eskirgan" as const };
 
-    // Shu navbat uchun topshiriq allaqachon bormi?
+    // Shu navbat uchun ochiq topshiriq bormi? Rad etilgani hisobga olinmaydi —
+    // aks holda bir marta rad etilsa xona qaytadan topshira olmay qolardi.
     const [mavjud] = await tx<{ id: number; media_group_id: string | null }[]>`
       SELECT id, media_group_id FROM submissions
-      WHERE turn_id = ${turnId} AND NOT bekor
+      WHERE turn_id = ${turnId} AND NOT bekor AND holat <> 'rad'
       ORDER BY id DESC LIMIT 1
     `;
 

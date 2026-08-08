@@ -36,12 +36,32 @@ export type Turn = {
   oxirgi_ping: Date | null;
 };
 
+/** Topshiriq turi. Uchalasi ham bir xil tasdiqlash yo'lidan o'tadi. */
+export type SubTur = "navbat" | "ish" | "xarajat";
+
+/** kutilmoqda → tasdiqlandi | rad */
+export type SubHolat = "kutilmoqda" | "tasdiqlandi" | "rad";
+
 export type Submission = {
   id: number;
-  turn_id: number;
+  /** Faqat tur='navbat' da to'la, boshqasida null */
+  turn_id: number | null;
   user_id: number;
   photo_ids: string[];
+  media_group_id: string | null;
   guruh_msg_id: string | null;
   bekor: boolean;
   created_at: Date;
+  tur: SubTur;
+  /** musor | hammom | oshxona | xona | boshqa — faqat tur='ish' da */
+  ish_turi: string | null;
+  izoh: string | null;
+  /** BIGINT — postgres.js uni matn qilib qaytaradi */
+  summa: string | null;
+  /** Server hisoblab yozadi; mijozdan hech qachon olinmaydi */
+  ball: number;
+  holat: SubHolat;
+  yopildi: Date | null;
+  rad_sababi: string | null;
+  rad_qildi: number | null;
 };

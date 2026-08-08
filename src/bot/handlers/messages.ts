@@ -3,10 +3,17 @@ import { sql } from "../../db/index.js";
 import { kim } from "../group.js";
 import { esc } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
-import { MENYU, menyuKeyboard, tugmaIshTuri, xonaTanlashKeyboard } from "../keyboards.js";
-import { xarajatniSaqla } from "./expense.js";
+import {
+  BOSHQA_ISH,
+  MENYU,
+  menyuKeyboard,
+  tugmaIshTuri,
+  xonaTanlashKeyboard,
+} from "../keyboards.js";
+import { summaniSora, xarajatniSaqla } from "./expense.js";
 import { korinish, panelMatni } from "./commands.js";
-import { ishniBoshla } from "./chores.js";
+import { ishniBoshla, ishRasminiSora } from "./chores.js";
+import { summaTekshir } from "../../core/topshiriq.js";
 
 /**
  * Doimiy menyu tugmasi bosilgan bo'lsa bajaradi. Bu tekshiruv jarayon
@@ -22,7 +29,10 @@ async function menyuTugmasi(ctx: Context, matn: string): Promise<boolean> {
     return true;
   }
 
-  const nom = (Object.keys(MENYU) as (keyof typeof MENYU)[]).find((k) => MENYU[k] === matn);
+  const nom =
+    matn === BOSHQA_ISH
+      ? ("boshqaish" as const)
+      : (Object.keys(MENYU) as (keyof typeof MENYU)[]).find((k) => MENYU[k] === matn);
   if (!nom) return false;
 
   if (!(await kim(ctx.from.id))) {
@@ -76,10 +86,26 @@ export function register(bot: Bot) {
       return;
     }
 
+    if (holat?.tur === "ish" && "qadam" in holat && holat.qadam === "izoh") {
+      const izoh = ctx.message.text.trim().slice(0, 300);
+      if (izoh.length < 3) return ctx.reply("Juda qisqa. Nima qilganingizni yozing.");
+      return ishRasminiSora(ctx, holat.ish, izoh);
+    }
+
     if (holat?.tur === "xarajat" && holat.qadam === "izoh") {
       const izoh = ctx.message.text.trim().slice(0, 300);
       if (izoh.length < 2) return ctx.reply("Juda qisqa. Nima olib kelganingizni yozing.");
-      return xarajatniSaqla(ctx, izoh, holat.photoId);
+      return summaniSora(ctx, izoh, holat.photoId);
+    }
+
+    if (holat?.tur === "xarajat" && holat.qadam === "summa") {
+      const xom = ctx.message.text.trim();
+      // "0" — pul ketmagan degani, bu to'g'ri javob
+      const summa = /^0+$/.test(xom.replace(/\D/g, "")) ? 0 : summaTekshir(xom);
+      if (summa === null) {
+        return ctx.reply("Faqat raqam yozing, masalan: 120000\nPul ketmagan bo'lsa: 0");
+      }
+      return xarajatniSaqla(ctx, holat.izoh, holat.photoId, summa || null);
     }
 
     if (holat?.tur === "xarajat" && holat.qadam === "rasm") {

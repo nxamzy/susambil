@@ -1,5 +1,5 @@
 import { InlineKeyboard, Keyboard } from "grammy";
-import { ISH_TURLARI, type IshTuri } from "../config.js";
+import { ISH_TURLARI, SEKIN_ISHLAR, TEZ_ISHLAR, type IshTuri } from "../config.js";
 
 /** Ish tugmasining yozuvi — inline va doimiy menyuda bir xil bo'lsin. */
 export function ishTugmasi(t: IshTuri): string {
@@ -9,12 +9,16 @@ export function ishTugmasi(t: IshTuri): string {
 
 /** Doimiy menyudagi ko'rinish tugmalari. */
 export const MENYU = {
-  navbat: "📋 Navbat kimda?",
-  xarajat: "🛒 Xarajat",
+  navbat: "📋 Navbat",
+  xarajat: "💰 Xarajatlar",
   reyting: "🏆 Reyting",
+  profil: "👤 Profil",
   tarix: "🕘 Tarix",
   tanishtirish: "ℹ️ Qanday ishlaydi?",
 } as const;
+
+/** Menyudagi tugmasi yo'q ish turlarini ochadigan tugma. */
+export const BOSHQA_ISH = "➕ Boshqa ish";
 
 /** Yozuv bo'yicha ish turini topadi (doimiy menyu tugmasi bosilganda). */
 export function tugmaIshTuri(matn: string): IshTuri | null {
@@ -31,30 +35,46 @@ export function tugmaIshTuri(matn: string): IshTuri | null {
  */
 export function menyuKeyboard(): Keyboard {
   const kb = new Keyboard();
-  for (const t of Object.keys(ISH_TURLARI) as IshTuri[]) kb.text(ishTugmasi(t)).row();
+  for (const t of TEZ_ISHLAR) kb.text(ishTugmasi(t)).row();
+  kb.text(BOSHQA_ISH).row();
   kb.text(MENYU.navbat).text(MENYU.xarajat).row();
-  kb.text(MENYU.reyting).text(MENYU.tarix).row();
-  kb.text(MENYU.tanishtirish);
+  kb.text(MENYU.reyting).text(MENYU.profil).row();
+  kb.text(MENYU.tarix).text(MENYU.tanishtirish);
   return kb.resized().persistent();
 }
 
+/** Menyuda tugmasi yo'q ish turlari. */
+export function boshqaIshKeyboard(): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const t of SEKIN_ISHLAR) kb.text(ishTugmasi(t), `ish:${t}`).row();
+  kb.text("✖️ Bekor qilish", "bekor");
+  return kb;
+}
+
+/**
+ * Guruhdagi tasdiqlash tugmalari. Rad etish ham shu yerda — ilgari ishni
+ * qaytarishning yo'li yo'q edi.
+ */
 export function tasdiqKeyboard(submissionId: number, soni: number, kerak: number): InlineKeyboard {
   const qoldi = Math.max(0, kerak - soni);
   const matn =
-    qoldi === 0
-      ? "✅ Tasdiqlandi"
-      : `✅ Tasdiqlayman  ·  yana ${qoldi} kishi kerak`;
-  return new InlineKeyboard().text(matn, `tasdiq:${submissionId}`);
+    qoldi === 0 ? "✅ Tasdiqlandi" : `✅ Tasdiqlayman  ·  yana ${qoldi} kishi kerak`;
+  return new InlineKeyboard()
+    .text(matn, `tasdiq:${submissionId}`)
+    .row()
+    .text("✖️ Rad etish", `rad:${submissionId}`);
 }
 
 /** Guruhga pin qilinadigan (va botda ham chiqadigan) asosiy panel. */
 export function panelKeyboard(): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (const t of Object.keys(ISH_TURLARI) as IshTuri[]) kb.text(ishTugmasi(t), `ish:${t}`).row();
-  kb.text("📋 Navbat kimda?", "korish:navbat");
-  kb.text("🛒 Xarajat", "korish:xarajat").row();
-  kb.text("🏆 Reyting", "korish:reyting");
-  kb.text("🕘 Tarix", "korish:tarix").row();
+  for (const t of TEZ_ISHLAR) kb.text(ishTugmasi(t), `ish:${t}`).row();
+  kb.text(BOSHQA_ISH, "korish:boshqaish").row();
+  kb.text(MENYU.navbat, "korish:navbat");
+  kb.text(MENYU.xarajat, "korish:xarajat").row();
+  kb.text(MENYU.reyting, "korish:reyting");
+  kb.text(MENYU.profil, "korish:profil").row();
+  kb.text(MENYU.tarix, "korish:tarix").row();
   kb.text("ℹ️ Bu bot qanday ishlaydi?", "korish:tanishtirish");
   return kb;
 }

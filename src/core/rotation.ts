@@ -29,16 +29,79 @@ export async function xonaAzolari(roomId: number): Promise<User[]> {
   `;
 }
 
-/** Tartib bo'yicha keyingi xona (oxiridan boshiga qaytadi). */
+/**
+ * Navbat tartibi u yoq-bu yoq yuradi — oxiriga yetgach boshiga sakramaydi,
+ * orqasiga qaytadi:
+ *
+ *   1 → 2 → 3 → 4 → 3 → 2 → 1 → 2 → 3 → 4 → ...
+ *
+ * Yo'nalish alohida saqlanmaydi, oldingi navbatdan aniqlanadi. Shunday
+ * qilingani uchun admin /navbatber bilan qo'lda sakratsa ham tartib o'zidan
+ * tiklanadi — hech qayerda "eskirgan yo'nalish" qolib ketmaydi.
+ */
 export async function keyingiXona(hozirgi: Room): Promise<Room> {
-  const [keyingi] = await sql<Room[]>`
-    SELECT * FROM rooms WHERE tartib > ${hozirgi.tartib} ORDER BY tartib LIMIT 1
-  `;
-  if (keyingi) return keyingi;
+  const xonalar = await sql<Room[]>`SELECT * FROM rooms ORDER BY tartib`;
+  if (xonalar.length === 0) throw new Error("Bazada birorta ham xona yo'q");
 
-  const [birinchi] = await sql<Room[]>`SELECT * FROM rooms ORDER BY tartib LIMIT 1`;
-  if (!birinchi) throw new Error("Bazada birorta ham xona yo'q");
-  return birinchi;
+  const joy = xonalar.findIndex((x) => x.id === hozirgi.id);
+  if (joy === -1) return xonalar[0]!;
+
+  // Oldingi tugagan navbat boshqa xonada bo'lgan — qay tomonga yurayotganimiz
+  // shundan bilinadi. Birinchi navbatda hech nima yo'q, oldinga yuramiz.
+  const [oldingi] = await sql<{ room_id: number }[]>`
+    SELECT room_id FROM turns
+    WHERE holat <> 'faol' AND room_id <> ${hozirgi.id}
+    ORDER BY id DESC LIMIT 1
+  `;
+  const oldingiJoy = oldingi ? xonalar.findIndex((x) => x.id === oldingi.room_id) : -1;
+
+  return xonalar[keyingiJoy(joy, oldingiJoy, xonalar.length)]!;
+}
+
+/**
+ * Yuqoridagi tartibning sof mantiqi — bazasiz testlash uchun ajratilgan.
+ *
+ * @param joy        hozirgi xonaning tartibdagi o'rni (0 dan)
+ * @param oldingiJoy oldingi navbat xonasining o'rni; bilinmasa -1
+ * @param soni       jami xonalar soni
+ */
+/**
+ * Kelgusi navbatlar tartibi. Hozirgi navbatdan keyin kim kelishini oldindan
+ * ko'rsatish uchun — bazaga tegmasdan, o'sha tartib mantiqi bilan hisoblanadi.
+ */
+export async function kelgusiTartib(nechta = 3): Promise<{ room: Room; azolar: User[] }[]> {
+  const navbat = await faolNavbat();
+  if (!navbat) return [];
+
+  const xonalar = await sql<Room[]>`SELECT * FROM rooms ORDER BY tartib`;
+  if (xonalar.length < 2) return [];
+
+  const [oldingi] = await sql<{ room_id: number }[]>`
+    SELECT room_id FROM turns
+    WHERE holat <> 'faol' AND room_id <> ${navbat.room.id}
+    ORDER BY id DESC LIMIT 1
+  `;
+
+  let joy = xonalar.findIndex((x) => x.id === navbat.room.id);
+  let oldingiJoy = oldingi ? xonalar.findIndex((x) => x.id === oldingi.room_id) : -1;
+  if (joy === -1) return [];
+
+  const natija: { room: Room; azolar: User[] }[] = [];
+  for (let i = 0; i < Math.min(nechta, xonalar.length); i++) {
+    const keyingi = keyingiJoy(joy, oldingiJoy, xonalar.length);
+    oldingiJoy = joy;
+    joy = keyingi;
+    const room = xonalar[joy]!;
+    natija.push({ room, azolar: await xonaAzolari(room.id) });
+  }
+  return natija;
+}
+
+export function keyingiJoy(joy: number, oldingiJoy: number, soni: number): number {
+  if (soni <= 1) return 0;
+  let yonalish = oldingiJoy === -1 || oldingiJoy < joy ? 1 : -1;
+  if (joy + yonalish < 0 || joy + yonalish >= soni) yonalish = -yonalish;
+  return joy + yonalish;
 }
 
 /** Muddatdan necha kun kechikkani (butun kun, kamida 0). */

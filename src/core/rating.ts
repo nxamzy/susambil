@@ -5,10 +5,12 @@ export type OdamBall = {
   userId: number;
   ism: string;
   xona: number | null;
-  musor: number;
-  hammom: number;
-  oshxona: number;
+  /** Har bir ish turidan nechtadan qilgani */
+  ishlar: Partial<Record<IshTuri, number>>;
+  ishSoni: number;
   xarajat: number;
+  /** Uyga sarflagan puli (so'm) — ball bilan aralashtirilmaydi */
+  xarajatSumma: number;
   tasdiq: number;
   navbatSoni: number;
   kechikkanKun: number;
@@ -34,10 +36,11 @@ type Qator = {
   xona: number | null;
   room_id: number | null;
   azo_soni: number;
-  musor: number;
-  hammom: number;
-  oshxona: number;
+  ish_ball: number;
+  ish_soni: number;
   xarajat: number;
+  xarajat_ball: number;
+  xarajat_summa: string;
   tasdiq: number;
 };
 
@@ -56,26 +59,38 @@ export function navbatBalli(azoSoni: number, kechikkanKun: number): number {
 
 /** @param dan — shu sanadan keyingi ma'lumot (null bo'lsa butun tarix) */
 export async function reyting(dan: Date | null = null): Promise<OdamBall[]> {
+  // Ball daftar qatorining o'zidan olinadi (chores.ball / expenses.ball).
+  // Qator esa faqat TASDIQLANGANDAN keyin paydo bo'ladi — shuning uchun
+  // kutib turgan va rad etilgan ishlar reytingga tushmaydi.
   const qatorlar = await sql<Qator[]>`
     SELECT u.id AS user_id,
            u.ism,
            r.raqam AS xona,
            u.room_id,
            (SELECT count(*)::int FROM users x WHERE x.room_id = u.room_id AND x.faol) AS azo_soni,
-           (SELECT count(*)::int FROM chores c WHERE c.user_id = u.id AND c.tur = 'musor'
-              AND (${dan}::timestamptz IS NULL OR c.created_at >= ${dan})) AS musor,
-           (SELECT count(*)::int FROM chores c WHERE c.user_id = u.id AND c.tur = 'hammom'
-              AND (${dan}::timestamptz IS NULL OR c.created_at >= ${dan})) AS hammom,
-           (SELECT count(*)::int FROM chores c WHERE c.user_id = u.id AND c.tur = 'oshxona'
-              AND (${dan}::timestamptz IS NULL OR c.created_at >= ${dan})) AS oshxona,
+           COALESCE((SELECT sum(c.ball) FROM chores c WHERE c.user_id = u.id
+              AND (${dan}::timestamptz IS NULL OR c.created_at >= ${dan})), 0)::int AS ish_ball,
+           (SELECT count(*)::int FROM chores c WHERE c.user_id = u.id
+              AND (${dan}::timestamptz IS NULL OR c.created_at >= ${dan})) AS ish_soni,
            (SELECT count(*)::int FROM expenses e WHERE e.user_id = u.id
               AND (${dan}::timestamptz IS NULL OR e.created_at >= ${dan})) AS xarajat,
+           COALESCE((SELECT sum(e.ball) FROM expenses e WHERE e.user_id = u.id
+              AND (${dan}::timestamptz IS NULL OR e.created_at >= ${dan})), 0)::int AS xarajat_ball,
+           COALESCE((SELECT sum(e.summa) FROM expenses e WHERE e.user_id = u.id
+              AND (${dan}::timestamptz IS NULL OR e.created_at >= ${dan})), 0)::bigint AS xarajat_summa,
            (SELECT count(*)::int FROM confirmations cf WHERE cf.user_id = u.id
               AND (${dan}::timestamptz IS NULL OR cf.created_at >= ${dan})) AS tasdiq
     FROM users u
     LEFT JOIN rooms r ON r.id = u.room_id
     WHERE u.faol
     ORDER BY r.raqam NULLS LAST, u.ism
+  `;
+
+  // Ish turlari bo'yicha sanoq — alohida, chunki turlar ro'yxati o'sib boradi
+  const turlar = await sql<{ user_id: number; tur: IshTuri; n: number }[]>`
+    SELECT user_id, tur, count(*)::int AS n FROM chores
+    WHERE (${dan}::timestamptz IS NULL OR created_at >= ${dan})
+    GROUP BY user_id, tur
   `;
 
   const navbatlar = await sql<{ room_id: number; kechikkan_kun: number }[]>`
@@ -90,29 +105,29 @@ export async function reyting(dan: Date | null = null): Promise<OdamBall[]> {
       (s, n) => s + navbatBalli(q.azo_soni, n.kechikkan_kun),
       0,
     );
-    const ishBall =
-      q.musor * ISH_TURLARI.musor.ball +
-      q.hammom * ISH_TURLARI.hammom.ball +
-      q.oshxona * ISH_TURLARI.oshxona.ball;
-    const xarajatBall = q.xarajat * BALLAR.xarajat;
     const tasdiqBall = q.tasdiq * BALLAR.tasdiq;
+
+    const ishlar: Partial<Record<IshTuri, number>> = {};
+    for (const t of turlar) {
+      if (t.user_id === q.user_id && t.tur in ISH_TURLARI) ishlar[t.tur] = t.n;
+    }
 
     return {
       userId: q.user_id,
       ism: q.ism,
       xona: q.xona,
-      musor: q.musor,
-      hammom: q.hammom,
-      oshxona: q.oshxona,
+      ishlar,
+      ishSoni: q.ish_soni,
       xarajat: q.xarajat,
+      xarajatSumma: Number(q.xarajat_summa),
       tasdiq: q.tasdiq,
       navbatSoni: oz.length,
       kechikkanKun: oz.reduce((s, n) => s + n.kechikkan_kun, 0),
       navbatBall,
-      ishBall,
-      xarajatBall,
+      ishBall: q.ish_ball,
+      xarajatBall: q.xarajat_ball,
       tasdiqBall,
-      jami: navbatBall + ishBall + xarajatBall + tasdiqBall,
+      jami: navbatBall + q.ish_ball + q.xarajat_ball + tasdiqBall,
     };
   });
 }

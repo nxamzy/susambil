@@ -10,11 +10,14 @@ import type { IshTuri } from "../config.js";
 type Sorov = { sorov?: { chatId: number; msgId: number } };
 
 export type Flow = (
+  /** Izoh talab qiladigan ish turi tanlandi — avval nima qilganini yozadi */
+  | { tur: "ish"; ish: IshTuri; qadam: "izoh"; chatId: number }
   /** Qo'shimcha ish belgilandi, endi rasm kutilyapti */
-  | { tur: "ish"; ish: IshTuri; chatId: number }
-  /** Yangi xarajat: avval rasm, keyin nomi */
+  | { tur: "ish"; ish: IshTuri; chatId: number; izoh?: string }
+  /** Yangi xarajat: rasm → nomi → summasi */
   | { tur: "xarajat"; qadam: "rasm" }
   | { tur: "xarajat"; qadam: "izoh"; photoId: string }
+  | { tur: "xarajat"; qadam: "summa"; photoId: string; izoh: string }
   /** Yangi a'zo ro'yxatdan o'tyapti */
   | { tur: "royxat"; qadam: "ism" }
   | { tur: "royxat"; qadam: "xona"; ism: string }

@@ -1,5 +1,5 @@
-import type { Room, User } from "../db/index.js";
-import { config, ISH_TURLARI, BALLAR } from "../config.js";
+import type { Room, SubTur, User } from "../db/index.js";
+import { config, ISH_TURLARI, BALLAR, type IshTuri } from "../config.js";
 
 const TZ = "Asia/Tashkent";
 
@@ -118,6 +118,93 @@ export function tasdiqXabari(
   ].join("\n");
 }
 
+/** Tasdiq progressi — navbat va qo'shimcha ishda bir xil ko'rinsin. */
+function bolmalar(soni: number, kerak: number): string {
+  return "🟩".repeat(Math.min(soni, kerak)) + "⬜️".repeat(Math.max(0, kerak - soni));
+}
+
+/**
+ * Qo'shimcha ish yoki xarajat guruhda tasdiq kutayotgandagi xabar.
+ * Rasm ostiga sarlavha (caption) bo'lib tushadi.
+ */
+export function topshiriqXabari(
+  sub: { tur: SubTur; ish_turi: string | null; izoh: string | null; summa: string | null; ball: number },
+  kim: string,
+  tasdiqlovchilar: string[],
+  kerak: number,
+): string {
+  const t = sub.ish_turi && sub.ish_turi in ISH_TURLARI
+    ? ISH_TURLARI[sub.ish_turi as IshTuri]
+    : null;
+
+  const sarlavha =
+    sub.tur === "xarajat"
+      ? `🛒 <b>UYGA OLIB KELDI</b>`
+      : `${t?.emoji ?? "🧹"} <b>QO'SHIMCHA ISH</b>`;
+
+  const s = [sarlavha, AJRATGICH, ``, `🙋 <b>${esc(kim)}</b>`];
+
+  if (sub.tur === "xarajat") {
+    s.push(`📦 ${esc(sub.izoh ?? "—")}`);
+    if (sub.summa) s.push(`💰 ${pul(Number(sub.summa))}`);
+  } else {
+    s.push(`🧹 ${esc(t?.matn ?? "ish qildi")}`);
+    if (sub.izoh) s.push(`📝 ${esc(sub.izoh)}`);
+  }
+
+  s.push(
+    ``,
+    `🏅 <b>+${sub.ball} ball</b> — tasdiqdan keyin`,
+    ``,
+    `${bolmalar(tasdiqlovchilar.length, kerak)}  ${tasdiqlovchilar.length}/${kerak}`,
+    tasdiqlovchilar.length
+      ? tasdiqlovchilar.map((n) => `   ✅ ${esc(n)}`).join("\n")
+      : "   <i>hali hech kim bosmagan</i>",
+    ``,
+    `👇 <i>O'zidan boshqa har kim tasdiqlashi mumkin</i>`,
+  );
+  return s.join("\n");
+}
+
+/** Qo'shimcha ish/xarajat tasdiqlangandan keyingi xabar. */
+export function topshiriqYopildi(
+  sub: { tur: SubTur; ish_turi: string | null; izoh: string | null; summa: string | null; ball: number },
+  kim: string,
+  tasdiqlovchilar: string[],
+): string {
+  const t = sub.ish_turi && sub.ish_turi in ISH_TURLARI
+    ? ISH_TURLARI[sub.ish_turi as IshTuri]
+    : null;
+
+  const s = [
+    `✅ <b>TASDIQLANDI</b>`,
+    AJRATGICH,
+    ``,
+    `🙋 <b>${esc(kim)}</b> — ${esc(sub.tur === "xarajat" ? (sub.izoh ?? "olib keldi") : (t?.matn ?? "ish qildi"))}`,
+  ];
+  if (sub.tur === "xarajat" && sub.summa) s.push(`💰 ${pul(Number(sub.summa))}`);
+  s.push(
+    `✅ Tasdiqlagan: ${tasdiqlovchilar.map(esc).join(", ")}`,
+    ``,
+    `🏅 <b>+${sub.ball} ball</b>`,
+  );
+  return s.join("\n");
+}
+
+/** Rad etilgan topshiriq. */
+export function topshiriqRad(kim: string, radQilgan: string, sabab: string | null): string {
+  const s = [
+    `✖️ <b>RAD ETILDI</b>`,
+    AJRATGICH,
+    ``,
+    `🙋 <b>${esc(kim)}</b> ning ishi qabul qilinmadi.`,
+    `👤 Rad etgan: ${esc(radQilgan)}`,
+  ];
+  if (sabab) s.push(``, `📝 Sabab: ${esc(sabab)}`);
+  s.push(``, `<i>Ball berilmadi. Qaytadan topshirish mumkin.</i>`);
+  return s.join("\n");
+}
+
 export function yopilganXabar(
   room: Room,
   kim: string,
@@ -175,18 +262,28 @@ export function tanishtirish(): string {
     ``,
     `<b>♻️ QO'SHIMCHA ISHLAR</b>`,
     AJRATGICH,
-    `Paneldan tugmani bosasiz ➡️ rasm tashlaysiz`,
-    `➡️ ball olasiz. Rasmsiz ball berilmaydi.`,
+    `Navbatda bo'lmasangiz ham ball yig'sangiz bo'ladi.`,
     ``,
-    `   ${ISH_TURLARI.musor.emoji} Musor tashlash — <b>${ISH_TURLARI.musor.ball} ball</b>`,
-    `   ${ISH_TURLARI.hammom.emoji} Hammom tozalash — <b>${ISH_TURLARI.hammom.ball} ball</b>`,
-    `   ${ISH_TURLARI.oshxona.emoji} Oshxona tozalash — <b>${ISH_TURLARI.oshxona.ball} ball</b>`,
+    `Tugmani bosasiz ➡️ rasm tashlaysiz ➡️ guruh`,
+    `tasdiqlaydi ➡️ ball qo'shiladi.`,
     ``,
-    `<b>🛒 UYGA NARSA OLIB KELISH</b>`,
+    ...(Object.keys(ISH_TURLARI) as IshTuri[]).map(
+      (t) => `   ${ISH_TURLARI[t].emoji} ${ISH_TURLARI[t].tugma} — <b>${ISH_TURLARI[t].ball} ball</b>`,
+    ),
+    ``,
+    `⚠️ <b>Rasmsiz va tasdiqsiz ball berilmaydi.</b>`,
+    `<i>Tasdiq kutayotgan ish reytingga qo'shilmaydi —</i>`,
+    `<i>uni "Profil" bo'limida ko'rasiz.</i>`,
+    ``,
+    `<b>💰 UYGA NARSA OLIB KELISH</b>`,
     AJRATGICH,
     `Fayri, gubka, qop-qog'oz olib kelsangiz —`,
-    `rasmga olib botga tashlang va nomini yozing.`,
+    `rasmga olib botga tashlang, nomini va qancha`,
+    `pul ketganini yozing.`,
     `   <b>+${BALLAR.xarajat} ball</b>`,
+    ``,
+    `<i>Pul summasi ballga ta'sir qilmaydi — u alohida</i>`,
+    `<i>hisoblanadi va "Xarajatlar" bo'limida ko'rinadi.</i>`,
     ``,
     `<b>🏅 BALL QANDAY HISOBLANADI</b>`,
     AJRATGICH,
