@@ -13,6 +13,7 @@ export const MENYU = {
   xarajat: "💰 Xarajatlar",
   reyting: "🏆 Reyting",
   profil: "👤 Profil",
+  azolar: "👥 A'zolar",
   tarix: "🕘 Tarix",
   tanishtirish: "ℹ️ Qanday ishlaydi?",
 } as const;
@@ -39,7 +40,8 @@ export function menyuKeyboard(): Keyboard {
   kb.text(BOSHQA_ISH).row();
   kb.text(MENYU.navbat).text(MENYU.xarajat).row();
   kb.text(MENYU.reyting).text(MENYU.profil).row();
-  kb.text(MENYU.tarix).text(MENYU.tanishtirish);
+  kb.text(MENYU.azolar).text(MENYU.tarix).row();
+  kb.text(MENYU.tanishtirish);
   return kb.resized().persistent();
 }
 
@@ -74,6 +76,7 @@ export function panelKeyboard(): InlineKeyboard {
   kb.text(MENYU.xarajat, "korish:xarajat").row();
   kb.text(MENYU.reyting, "korish:reyting");
   kb.text(MENYU.profil, "korish:profil").row();
+  kb.text(MENYU.azolar, "korish:azolar");
   kb.text(MENYU.tarix, "korish:tarix").row();
   kb.text("ℹ️ Bu bot qanday ishlaydi?", "korish:tanishtirish");
   return kb;

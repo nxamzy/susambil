@@ -3,7 +3,8 @@ import { sql, type Room, type User } from "../../db/index.js";
 import { config } from "../../config.js";
 import { faolNavbat, navbatniOzgartirish, xonaAzolari } from "../../core/rotation.js";
 import { kim } from "../group.js";
-import { esc, ismlar, navbatXabari } from "../text.js";
+import { esc, navbatXabari } from "../text.js";
+import { azolarMatni } from "./commands.js";
 
 async function adminmi(ctx: { from?: { id: number } }): Promise<User | null> {
   const u = await kim(ctx.from?.id);
@@ -47,6 +48,7 @@ export function register(bot: Bot) {
         "/qosh Ism 2 — odam qo'shish (2 = xona)",
         "/ochir Ism — ro'yxatdan chiqarish",
         "/xona Ism 3 — xonasini o'zgartirish",
+        "/ism EskiIsm YangiIsm — ismini o'zgartirish",
         "/navbatber 2 — navbatni 2-xonaga o'tkazish",
         "/navbatboshla — navbat yo'q bo'lsa boshlash",
       );
@@ -119,16 +121,35 @@ export function register(bot: Bot) {
     });
   });
 
+  // A'zolar ro'yxati endi hammaga ochiq ("👥 A'zolar" tugmasi), shuning
+  // uchun /royxat o'sha bilan bir xil matnni ishlatadi — ikkinchi nusxa yo'q.
   bot.command("royxat", async (ctx) => {
     if (!(await adminmi(ctx))) return;
-    const rooms = await sql<Room[]>`SELECT * FROM rooms ORDER BY tartib`;
-    const satrlar = ["<b>Ro'yxat</b>", ""];
-    for (const r of rooms) {
-      const azolar = await xonaAzolari(r.id);
-      const belgi = azolar.map((a) => (a.telegram_id ? "✅" : "⏳")).join("");
-      satrlar.push(`<b>${r.raqam}-xona</b> ${belgi}\n   ${esc(ismlar(azolar))}`);
-    }
-    satrlar.push("", "<i>✅ = botga ulangan, ⏳ = hali /start bosmagan</i>");
-    await ctx.reply(satrlar.join("\n"), { parse_mode: "HTML" });
+    await ctx.reply(await azolarMatni(), { parse_mode: "HTML" });
+  });
+
+  bot.command("ism", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+
+    const matn = ctx.match.trim();
+    const boshlik = matn.indexOf(" ");
+    if (boshlik === -1) return ctx.reply("Format: /ism EskiIsm YangiIsm");
+
+    const eski = matn.slice(0, boshlik).trim();
+    const yangi = matn.slice(boshlik + 1).trim().slice(0, 40);
+    if (yangi.length < 2) return ctx.reply("Yangi ism juda qisqa.");
+
+    const u = await odamTop(eski);
+    if (!u) return ctx.reply("Bunday odam topilmadi.");
+
+    const band = await sql<{ id: number }[]>`
+      SELECT id FROM users WHERE lower(ism) = lower(${yangi}) AND faol AND id <> ${u.id}
+    `;
+    if (band.length > 0) return ctx.reply("Bu ism band — boshqasini tanlang.");
+
+    await sql`UPDATE users SET ism = ${yangi} WHERE id = ${u.id}`;
+    await ctx.reply(`✅ <b>${esc(u.ism)}</b> endi <b>${esc(yangi)}</b> deb ataladi.`, {
+      parse_mode: "HTML",
+    });
   });
 }

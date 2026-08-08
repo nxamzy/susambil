@@ -2,7 +2,7 @@ import type { Bot, Api, Context } from "grammy";
 import { sql, type Room } from "../../db/index.js";
 import { config, ISH_TURLARI, SEKIN_ISHLAR, BALLAR, type IshTuri } from "../../config.js";
 import { ochiqTopshiriqlar } from "../../core/topshiriq.js";
-import { faolNavbat, kelgusiTartib } from "../../core/rotation.js";
+import { faolNavbat, kelgusiTartib, xonaAzolari } from "../../core/rotation.js";
 import { reyting, orinlarniHisobla, xonaHolati, tarix } from "../../core/rating.js";
 import { jamiXarajat, oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
 import { guruhId, guruhIdOrnat, kim, korishXabar } from "../group.js";
@@ -252,6 +252,7 @@ export type Korinish =
   | "tarix"
   | "xarajat"
   | "profil"
+  | "azolar"
   | "tanishtirish"
   | "boshqaish"
   | "panel";
@@ -278,6 +279,8 @@ export async function korinish(ctx: Context, nom: Korinish): Promise<void> {
     }
     case "profil":
       return javob(ctx, await profilMatni(ctx.from?.id));
+    case "azolar":
+      return javob(ctx, await azolarMatni());
     case "boshqaish":
       return javob(ctx, boshqaIshMatni(), { reply_markup: boshqaIshKeyboard() });
     case "tanishtirish":
@@ -285,6 +288,32 @@ export async function korinish(ctx: Context, nom: Korinish): Promise<void> {
     case "panel":
       return javob(ctx, await panelMatni(), { reply_markup: panelKeyboard() });
   }
+}
+
+/**
+ * Nechta odam borligi va to'liq ro'yxat — hammaga ochiq. Admin buyrug'i
+ * /royxat ham shu funksiyani ishlatadi, ikkinchi nusxa yaratilmagan.
+ */
+export async function azolarMatni(): Promise<string> {
+  const rooms = await sql<Room[]>`SELECT * FROM rooms ORDER BY tartib`;
+
+  const [hisob] = await sql<{ jami: number; ulangan: number }[]>`
+    SELECT count(*)::int AS jami, count(telegram_id)::int AS ulangan
+    FROM users WHERE faol
+  `;
+
+  const s = [`👥 <b>A'ZOLAR</b>`, AJRATGICH, ``];
+  if (hisob) s.push(`<b>${hisob.ulangan}/${hisob.jami}</b> kishi botga ulangan`, ``);
+
+  for (const r of rooms) {
+    const azolar = await xonaAzolari(r.id);
+    if (azolar.length === 0) continue;
+    s.push(`🚪 <b>${r.raqam}-xona</b>`);
+    for (const a of azolar) s.push(`   ${a.telegram_id ? "✅" : "⏳"} ${esc(a.ism)}`);
+  }
+
+  s.push(``, AJRATGICH, `<i>✅ = botga ulangan, ⏳ = hali /start bosmagan</i>`);
+  return s.join("\n");
 }
 
 function boshqaIshMatni(): string {
@@ -393,31 +422,17 @@ export function register(bot: Bot) {
     await ctx.reply(tanishtirish(), { parse_mode: "HTML" });
     await ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: menyuKeyboard() });
 
-    // Guruh ham bilsin — kim ulangani va yana kim qolgani ko'rinib tursin.
-    // Bu ikkinchi darajali: guruh biriktirilmagan bo'lsa yoki bot u yerdan
+    // Guruh ham bilsin — kim ulangani ko'rinib tursin. To'liq ro'yxat va
+    // sanoq endi "👥 A'zolar" ko'rinishida (hammaga ochiq), shuning uchun bu
+    // yerda takrorlanmaydi.
+    //
+    // Ikkinchi darajali: guruh biriktirilmagan bo'lsa yoki bot u yerdan
     // chiqarilgan bo'lsa ham ro'yxatdan o'tish buzilmasligi kerak.
     try {
-      const [hisob] = await sql<{ jami: number; ulangan: number }[]>`
-        SELECT count(*)::int AS jami,
-               count(telegram_id)::int AS ulangan
-        FROM users WHERE faol
-      `;
-
-      const s = [
-        yangimi ? `👋 <b>${esc(ism)}</b> uyga qo'shildi!` : `✅ <b>${esc(ism)}</b> botga ulandi`,
-      ];
+      const s = yangimi
+        ? [`👋 <b>${esc(ism)}</b> uyga qo'shildi!`]
+        : [`✅ <b>${esc(ism)}</b> botga ulandi`];
       if (xona) s.push(`🏠 ${xona}-xona`);
-      if (hisob) {
-        const qoldi = hisob.jami - hisob.ulangan;
-        s.push(
-          ``,
-          `👥 <b>${hisob.ulangan}/${hisob.jami}</b> kishi ulandi`,
-          qoldi > 0
-            ? `<i>Yana ${qoldi} kishi botga /start bosishi kerak.</i>`
-            : `🎉 <i>Hamma ulandi!</i>`,
-        );
-      }
-
       await guruhgaChiqar(ctx.api, s.join("\n"));
     } catch (e) {
       console.error("Ro'yxat xabarini guruhga yuborib bo'lmadi:", e);
@@ -537,7 +552,7 @@ export function register(bot: Bot) {
     }
   });
 
-  const korishlar = "navbat|reyting|tarix|xarajat|profil|tanishtirish|boshqaish|panel";
+  const korishlar = "navbat|reyting|tarix|xarajat|profil|azolar|tanishtirish|boshqaish|panel";
   bot.callbackQuery(new RegExp(`^korish:(${korishlar})$`), async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});
     await korinish(ctx, ctx.match[1] as Korinish);
