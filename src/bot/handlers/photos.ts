@@ -9,15 +9,15 @@ import { tasdiqKeyboard, bekorKeyboard } from "../keyboards.js";
 import { tasdiqXabari, topshiriqXabari } from "../text.js";
 import { topshiriqYarat } from "../../core/topshiriq.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
-import { shikoyatYuborildi } from "./reports.js";
+import { muammoRasmKeldi } from "./reports.js";
 
 /**
  * Rasm to'rt xil maqsadda kelishi mumkin. Tartib muhim — har biri holat
- * tekshiruvi bilan aniq ushlanmasa, masalan shikoyat dalili navbat rasmiga
+ * tekshiruvi bilan aniq ushlanmasa, masalan muammo dalili navbat rasmiga
  * (navbatRasmi) tushib qolib, butunlay boshqa joyga yozilib ketardi:
  *   1) qo'shimcha ish tasdig'i (tugma bosilgan, rasm kutilyapti)
  *   2) yangi xarajat rasmi — faqat shaxsiy chatda
- *   3) shikoyat dalili — faqat shaxsiy chatda
+ *   3) muammo dalili — faqat shaxsiy chatda
  *   4) navbatdagi xonaning tozalash rasmi
  */
 export function register(bot: Bot) {
@@ -67,10 +67,10 @@ export function register(bot: Bot) {
       return;
     }
 
-    // Shikoyat oqimi ham faqat shaxsiy chatda — xuddi xarajatdagi kabi,
+    // Muammo oqimi ham faqat shaxsiy chatda — xuddi xarajatdagi kabi,
     // guruhga tashlangan rasm navbat topshirig'iga ketishi kerak.
-    if (holat?.tur === "shikoyat" && holat.qadam === "rasm" && ctx.chat.type === "private") {
-      return shikoyatYuborildi(ctx, holat, eng.file_id);
+    if (holat?.tur === "muammo" && holat.qadam === "rasm" && ctx.chat.type === "private") {
+      return muammoRasmKeldi(ctx, holat, eng.file_id);
     }
 
     await navbatRasmi(ctx, u, eng.file_id);

@@ -18,9 +18,13 @@ export type OdamBall = {
   ishBall: number;
   xarajatBall: number;
   tasdiqBall: number;
-  /** Tasdiqlangan shikoyatlar uchun ayirilgan ball (musbat son, jamidan ayiriladi) */
-  shikoyatBall: number;
-  shikoyatSoni: number;
+  /**
+   * Tasdiqlangan va sababchisi aniqlangan muammolar uchun ayirilgan ball
+   * (musbat son, jamidan ayiriladi). Sababchi noma'lum bo'lgan muammolar
+   * hech kimning hisobiga tushmaydi.
+   */
+  muammoBall: number;
+  muammoSoni: number;
   jami: number;
 };
 
@@ -45,8 +49,8 @@ type Qator = {
   xarajat_ball: number;
   xarajat_summa: string;
   tasdiq: number;
-  shikoyat_ball: number;
-  shikoyat_soni: number;
+  muammo_ball: number;
+  muammo_soni: number;
 };
 
 /**
@@ -104,12 +108,14 @@ export async function reyting(dan: Date | null = null): Promise<OdamBall[]> {
               AND (${dan}::timestamptz IS NULL OR e.created_at >= ${dan})), 0)::bigint AS xarajat_summa,
            (SELECT count(*)::int FROM confirmations cf WHERE cf.user_id = u.id
               AND (${dan}::timestamptz IS NULL OR cf.created_at >= ${dan})) AS tasdiq,
+           -- reported_id NULL bo'lgan (sababchisi noma'lum) yozuvlar bu yerga
+           -- hech qachon tushmaydi — "= u.id" NULL bilan hech qachon TRUE bo'lmaydi.
            COALESCE((SELECT sum(rp.ball) FROM reports rp WHERE rp.reported_id = u.id
               AND rp.holat = 'tasdiqlandi'
-              AND (${dan}::timestamptz IS NULL OR rp.hal_qilindi >= ${dan})), 0)::int AS shikoyat_ball,
+              AND (${dan}::timestamptz IS NULL OR rp.hal_qilindi >= ${dan})), 0)::int AS muammo_ball,
            (SELECT count(*)::int FROM reports rp WHERE rp.reported_id = u.id
               AND rp.holat = 'tasdiqlandi'
-              AND (${dan}::timestamptz IS NULL OR rp.hal_qilindi >= ${dan})) AS shikoyat_soni
+              AND (${dan}::timestamptz IS NULL OR rp.hal_qilindi >= ${dan})) AS muammo_soni
     FROM users u
     LEFT JOIN rooms r ON r.id = u.room_id
     WHERE u.faol
@@ -157,9 +163,9 @@ export async function reyting(dan: Date | null = null): Promise<OdamBall[]> {
       ishBall: q.ish_ball,
       xarajatBall: q.xarajat_ball,
       tasdiqBall,
-      shikoyatBall: q.shikoyat_ball,
-      shikoyatSoni: q.shikoyat_soni,
-      jami: navbatBall + q.ish_ball + q.xarajat_ball + tasdiqBall - q.shikoyat_ball,
+      muammoBall: q.muammo_ball,
+      muammoSoni: q.muammo_soni,
+      jami: navbatBall + q.ish_ball + q.xarajat_ball + tasdiqBall - q.muammo_ball,
     };
   });
 }

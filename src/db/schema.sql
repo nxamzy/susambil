@@ -182,33 +182,53 @@ CREATE UNIQUE INDEX IF NOT EXISTS chores_submission_uniq   ON chores (submission
 CREATE UNIQUE INDEX IF NOT EXISTS expenses_submission_uniq ON expenses (submission_id);
 
 -- ---------------------------------------------------------------------------
--- ANONIM SHIKOYAT
+-- MUAMMO YOZIB QO'YISH
 -- ---------------------------------------------------------------------------
--- Har qanday a'zo boshqa birovning qoidabuzarligi haqida yozishi mumkin.
--- Ataylab submissions/confirmations dan ALOHIDA: o'sha tizim ko'p kishilik
--- tenglar-tasdiqlashi uchun (kerakliTasdiq kishi bosishi kerak) va yuklagan
--- odam har doim ochiq ko'rsatiladi. Shikoyatda esa bitta admin qaror qiladi
--- va kim yozgani HECH QACHON guruhga yoki oddiy a'zoga chiqmasligi shart —
--- buni umumiy kodga aralashtirish anonimlikni tasodifan buzish xavfini
--- oshirardi, shuning uchun mustaqil jadval va oqim.
+-- Uy a'zolari bir-birini ayblamaydi — shunchaki muammoni yozib qo'yadi.
+-- Kim sabab bo'lgani noaniq bo'lishi ham mumkin edi (masalan biror narsa
+-- sinib qolgan bo'lsa hech kim bilmasligi mumkin) — shuning uchun
+-- reported_id ixtiyoriy. Ataylab submissions/confirmations dan ALOHIDA:
+-- o'sha tizim ko'p kishilik tenglar-tasdiqlashi uchun va yuklagan odam har
+-- doim ochiq ko'rsatiladi. Bu yerda esa bitta admin ko'rib chiqadi va kim
+-- yozgani HECH QACHON guruhga yoki oddiy a'zoga chiqmasligi shart.
 CREATE TABLE IF NOT EXISTS reports (
   id          SERIAL PRIMARY KEY,
   reporter_id INT NOT NULL REFERENCES users(id),
-  reported_id INT NOT NULL REFERENCES users(id),
-  turkum      TEXT NOT NULL,
+  -- Sababchi noma'lum bo'lsa NULL. Admin keyinroq belgilashi ham mumkin.
+  reported_id INT REFERENCES users(id),
+  -- Reporter sababchi haqida qanchalik ishonchli ekani: aniq | gumon | nomalum
+  ishonch     TEXT NOT NULL DEFAULT 'nomalum'
+              CHECK (ishonch IN ('aniq', 'gumon', 'nomalum')),
   izoh        TEXT NOT NULL,
   photo_id    TEXT,
   ball        INT NOT NULL,
   holat       TEXT NOT NULL DEFAULT 'kutilmoqda'
               CHECK (holat IN ('kutilmoqda', 'tasdiqlandi', 'rad')),
   admin_id    INT REFERENCES users(id),
+  -- Admin qo'shgan erkin izoh — reporterning izohidan alohida.
+  admin_note  TEXT,
   hal_qilindi TIMESTAMPTZ,
   -- Bir nechta admin bo'lsa, har biriga jo'natilgan xabar shu yerda —
-  -- biri hal qilganda qolganlarining nusxasi ham yangilanadi.
+  -- biri hal qilganda yoki sababchini o'zgartirganda qolganlar ham ko'rsin.
   admin_msgs  JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- reported_id NULL bo'lsa <> solishtirishi NULL qaytaradi, CHECK buni
+  -- "o'tdi" deb hisoblaydi — demak noma'lum holat bemalol qoladi.
   CHECK (reporter_id <> reported_id)
 );
 
 CREATE INDEX IF NOT EXISTS reports_kutilmoqda_idx ON reports (holat) WHERE holat = 'kutilmoqda';
 CREATE INDEX IF NOT EXISTS reports_reported_idx ON reports (reported_id, holat);
+
+-- MIGRATSIYA: birinchi versiyada "shikoyat" deb atalgan edi (turkum ustuni,
+-- reported_id majburiy). Jadval hali bo'sh bo'lgani uchun to'g'ridan-to'g'ri
+-- o'zgartiramiz — ikkinchi jadval yaratilmaydi.
+ALTER TABLE reports ALTER COLUMN reported_id DROP NOT NULL;
+ALTER TABLE reports DROP COLUMN IF EXISTS turkum;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS ishonch TEXT NOT NULL DEFAULT 'nomalum';
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS admin_note TEXT;
+
+DO $$ BEGIN
+  ALTER TABLE reports ADD CONSTRAINT reports_ishonch_chk
+    CHECK (ishonch IN ('aniq', 'gumon', 'nomalum'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;

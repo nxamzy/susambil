@@ -1,5 +1,5 @@
 import postgres from "postgres";
-import { config } from "../config.js";
+import { config, type Ishonch } from "../config.js";
 
 /** Neon'ning "-pooler" manzili PgBouncer (transaction mode) orqali ishlaydi —
  *  u prepared statement'larni qo'llab-quvvatlamaydi, shuning uchun o'chiramiz. */
@@ -67,23 +67,26 @@ export type Submission = {
 };
 
 /** kutilmoqda → tasdiqlandi | rad (bir admin hal qiladi, ko'p kishilik tasdiq emas) */
-export type ShikoyatHolat = "kutilmoqda" | "tasdiqlandi" | "rad";
+export type ReportHolat = "kutilmoqda" | "tasdiqlandi" | "rad";
 
 /**
- * Anonim shikoyat. `reporter_id` faqat admin ko'radigan joylarda ishlatiladi
- * (adminga DM, /shikoyatlar) — guruhga yoki oddiy a'zoga chiqadigan hech
+ * Muammo yozuvi. `reporter_id` faqat admin ko'radigan joylarda ishlatiladi
+ * (adminga DM, /muammolar) — guruhga yoki oddiy a'zoga chiqadigan hech
  * qanday matnda bu maydon o'qilmasligi kerak.
  */
 export type Report = {
   id: number;
   reporter_id: number;
-  reported_id: number;
-  turkum: string;
+  /** Sababchi noma'lum bo'lsa null — admin keyinroq belgilashi mumkin */
+  reported_id: number | null;
+  ishonch: Ishonch;
   izoh: string;
   photo_id: string | null;
   ball: number;
-  holat: ShikoyatHolat;
+  holat: ReportHolat;
   admin_id: number | null;
+  /** Adminning erkin izohi — reporterning izohidan alohida */
+  admin_note: string | null;
   hal_qilindi: Date | null;
   admin_msgs: { chat_id: number; message_id: number }[];
   created_at: Date;

@@ -99,16 +99,19 @@ export const BALLAR = {
   xarajat: 10,
   /** Boshqa xonaning ishini tasdiqlagani uchun */
   tasdiq: 1,
-  /** Tasdiqlangan shikoyat uchun ayiriladigan ball */
-  shikoyatJarima: 20,
+  /** Admin tasdiqlagan va sababchisi aniqlangan muammo uchun ayiriladigan ball */
+  muammoJarima: 20,
 } as const;
 
-/** Anonim shikoyat turkumlari. */
-export const SHIKOYAT_TURKUMLARI = {
-  tozalik: { emoji: "🧹", nom: "Tozalik/intizom buzilishi" },
-  shovqin: { emoji: "🔊", nom: "Shovqin" },
-  mulk: { emoji: "💥", nom: "Mulkka zarar" },
-  boshqa: { emoji: "❓", nom: "Boshqa" },
+/**
+ * Muammo yozib qo'yilganda kim sabab bo'lgani qanchalik aniqligi. Bu
+ * ayblov emas — shunchaki reporter o'zi qanchalik ishonchli ekanini
+ * belgilaydi, admin esa buni ko'rib chiqib kerak bo'lsa o'zgartiradi.
+ */
+export const ISHONCH_DARAJASI = {
+  aniq: { emoji: "✅", nom: "Aniq bilaman" },
+  gumon: { emoji: "🤔", nom: "Gumonim bor" },
+  nomalum: { emoji: "❓", nom: "Bilmayman" },
 } as const;
 
-export type ShikoyatTurkumi = keyof typeof SHIKOYAT_TURKUMLARI;
+export type Ishonch = keyof typeof ISHONCH_DARAJASI;
