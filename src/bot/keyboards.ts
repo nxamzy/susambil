@@ -21,6 +21,7 @@ export function ishTugmasi(t: IshTuri): string {
 export const MENYU = {
   navbat: "📋 Navbat",
   xarajat: "💰 Xarajatlar",
+  tolov: "💳 Kvartira to'lovi",
   reyting: "🏆 Reyting",
   profil: "👤 Profil",
   azolar: "👥 A'zolar",
@@ -56,6 +57,7 @@ export function menyuKeyboard(): Keyboard {
   for (const t of TEZ_ISHLAR) kb.text(ishTugmasi(t)).row();
   kb.text(BOSHQA_ISH).row();
   kb.text(MENYU.navbat).text(MENYU.xarajat).row();
+  kb.text(MENYU.tolov).row();
   kb.text(MENYU.reyting).text(MENYU.profil).row();
   kb.text(MENYU.azolar).text(MENYU.tarix).row();
   kb.text(MENYU.tanishtirish).row();
@@ -250,4 +252,19 @@ export function shikoyatGuruhKeyboard(r: ReportToliq): InlineKeyboard | null {
   }
   kb.text("💬 Izoh qo'shish", `shikoyat_javobgar_izoh:${r.id}`);
   return kb;
+}
+
+/** "💳 Kvartira to'lovi" ko'rinishidagi asosiy tugmalar. */
+export function tolovKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("💳 To'lov qilish", "tolov_boshla")
+    .row()
+    .text("📊 Mening to'lovlarim tarixi", "tolov_tarix");
+}
+
+/** Adminga yuboriladigan tekshiruv xabaridagi tugmalar — faqat 'kutilmoqda'da ko'rinadi. */
+export function tolovAdminKeyboard(tolovId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✅ Tasdiqlash", `tolov_tasdiq:${tolovId}`)
+    .text("❌ Rad etish", `tolov_rad:${tolovId}`);
 }

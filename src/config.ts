@@ -129,3 +129,16 @@ export const SHIKOYAT_JOYLARI = {
 } as const;
 
 export type ShikoyatJoyi = keyof typeof SHIKOYAT_JOYLARI;
+
+/**
+ * Kvartira to'lovi — standart qiymatlar. Haqiqiy qiymat har doim
+ * `settings` jadvalidan o'qiladi (`core/tolov.ts`), bu yerdagi faqat hali
+ * hech kim o'zgartirmagan holatdagi standart — xuddi `guruhId()` .env
+ * bilan settings orasidagi naqsh kabi.
+ */
+export const TOLOV_STD = {
+  /** Har kishidan talab qilinadigan summa (so'm) */
+  talab: 900_000,
+  qabulQiluvchi: "Sorabek",
+  karta: "9860350143875127",
+} as const;

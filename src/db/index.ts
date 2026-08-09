@@ -119,3 +119,40 @@ export type Report = {
   guruh_msg_id: string | null;
   created_at: Date;
 };
+
+/** kutilmoqda -> tasdiqlandi | rad — ortga qaytmaydi. */
+export type TolovHolat = "kutilmoqda" | "tasdiqlandi" | "rad";
+
+export type TolovDalilTuri = "rasm" | "hujjat";
+
+/**
+ * Kvartira to'lovi — har bir yozuv mustaqil tranzaksiya (reports/submissions
+ * bilan bir xil falsafa). Odamning joriy holati bu jadvaldan har doim
+ * SUM(tasdiqlangan_summa) WHERE holat='tasdiqlandi' bilan hisoblanadi —
+ * alohida "jami" ustuni yo'q, shuning uchun ikki marta hisoblanish mumkin
+ * emas (`core/tolov.ts`).
+ *
+ * `kiritgan_summa` — foydalanuvchining o'zi yozgan DA'VO, hisobga
+ * qo'shilmaydi. `tasdiqlangan_summa` — admin haqiqiy tekshirib kiritgan
+ * miqdor, FAQAT shu haqiqiy hisobga tushadi. Ikkalasi hech qachon bir-birini
+ * bosib yozmaydi.
+ */
+export type Tolov = {
+  id: number;
+  user_id: number;
+  /** BIGINT — postgres.js uni matn qilib qaytaradi. Foydalanuvchining da'vosi. */
+  kiritgan_summa: string;
+  /** BIGINT — faqat 'tasdiqlandi' holatida to'ladi, admin tekshirgan haqiqiy summa. */
+  tasdiqlangan_summa: string | null;
+  dalil_id: string;
+  dalil_turi: TolovDalilTuri;
+  holat: TolovHolat;
+  /** Tasdiqlagan yoki rad etgan admin */
+  hal_qildi: number | null;
+  rad_sababi: string | null;
+  admin_msgs: { chat_id: number; message_id: number }[];
+  /** Faqat tasdiqlangandan keyin guruhga yuborilgan e'lon xabari */
+  guruh_msg_id: string | null;
+  created_at: Date;
+  hal_qilindi: Date | null;
+};

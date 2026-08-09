@@ -10,18 +10,21 @@ import { tasdiqXabari, topshiriqXabari } from "../text.js";
 import { topshiriqYarat } from "../../core/topshiriq.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
 import { shikoyatDalilKeldi } from "./reports.js";
+import { tolovDalilKeldi } from "./tolov.js";
 
 /**
- * Rasm to'rt xil maqsadda kelishi mumkin. Tartib muhim — har biri holat
+ * Rasm besh xil maqsadda kelishi mumkin. Tartib muhim — har biri holat
  * tekshiruvi bilan aniq ushlanmasa, masalan shikoyat dalili navbat rasmiga
  * (navbatRasmi) tushib qolib, butunlay boshqa joyga yozilib ketardi:
  *   1) qo'shimcha ish tasdig'i (tugma bosilgan, rasm kutilyapti)
  *   2) yangi xarajat rasmi — faqat shaxsiy chatda
  *   3) shikoyat dalili — faqat shaxsiy chatda
- *   4) navbatdagi xonaning tozalash rasmi
+ *   4) kvartira to'lovi dalili — faqat shaxsiy chatda
+ *   5) navbatdagi xonaning tozalash rasmi
  *
- * Video faqat shikoyat dalili sifatida ishlatiladi — boshqa hech qanday
- * oqim video kutmaydi, shuning uchun alohida, qisqa handler yetarli.
+ * Video faqat shikoyat dalili sifatida, PDF esa faqat to'lov dalili
+ * sifatida ishlatiladi — boshqa hech qanday oqim ularni kutmaydi, shuning
+ * uchun ikkalasi ham alohida, qisqa handler bilan yetarli.
  */
 export function register(bot: Bot) {
   bot.on("message:photo", async (ctx) => {
@@ -76,6 +79,11 @@ export function register(bot: Bot) {
       return shikoyatDalilKeldi(ctx, holat, eng.file_id, "rasm");
     }
 
+    // To'lov dalili ham faqat shaxsiy chatda — xuddi shikoyat/xarajatdagi kabi.
+    if (holat?.tur === "tolov" && holat.qadam === "dalil" && ctx.chat.type === "private") {
+      return tolovDalilKeldi(ctx, holat.summa, eng.file_id, "rasm");
+    }
+
     await navbatRasmi(ctx, u, eng.file_id);
   });
 
@@ -89,6 +97,23 @@ export function register(bot: Bot) {
     if (holat?.tur !== "shikoyat" || holat.qadam !== "dalil") return;
 
     await shikoyatDalilKeldi(ctx, holat, ctx.message.video.file_id, "video");
+  });
+
+  // Hujjat (PDF) faqat to'lov dalili sifatida qabul qilinadi — boshqa
+  // fayl turlari yoki jarayonlar bunga tegishli emas.
+  bot.on("message:document", async (ctx) => {
+    const fromId = ctx.from?.id;
+    if (!fromId || ctx.chat.type !== "private") return;
+
+    const holat = await holatOl(fromId);
+    if (holat?.tur !== "tolov" || holat.qadam !== "dalil") return;
+
+    if (ctx.message.document.mime_type !== "application/pdf") {
+      await ctx.reply("📎 Faqat rasm yoki PDF hujjat qabul qilinadi.");
+      return;
+    }
+
+    await tolovDalilKeldi(ctx, holat.summa, ctx.message.document.file_id, "hujjat");
   });
 }
 

@@ -285,3 +285,48 @@ DO $$ BEGIN
   ALTER TABLE reports ADD CONSTRAINT reports_javobgar_javobi_chk
     CHECK (javobgar_javobi IS NULL OR javobgar_javobi IN ('tan_oldi', 'rad_etdi'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- ---------------------------------------------------------------------------
+-- KVARTIRA TO'LOVI
+-- ---------------------------------------------------------------------------
+-- Har bir to'lov MUSTAQIL yozuv — bitta "paid_amount" ustunini qayta yozib
+-- turmaymiz (shikoyat/submissions bilan bir xil falsafa). Odamning joriy
+-- holati har doim SHU jadvaldan SUM(...) WHERE holat='tasdiqlandi' bilan
+-- hisoblanadi, hech qanday alohida "jami" ustuni saqlanmaydi — shu bois
+-- ikki marta tasdiqlash yoki hisoblashning chalkashishi mumkin emas.
+--
+-- Foydalanuvchi o'zi yozgan summa ("kiritgan_summa") faqat DA'VO — haqiqiy
+-- hisobga faqat admin tekshirib tasdiqlagan "tasdiqlangan_summa" qo'shiladi,
+-- va bu ikkalasi har doim ALOHIDA saqlanadi (biri ustiga yozilmaydi).
+--
+-- Hayot sikli: kutilmoqda -> tasdiqlandi | rad  (ortga qaytmaydi)
+CREATE TABLE IF NOT EXISTS tolovlar (
+  id                 SERIAL PRIMARY KEY,
+  user_id            INT NOT NULL REFERENCES users(id),
+  -- Foydalanuvchi o'zi yozgan summa — bu faqat DA'VO, hisobga qo'shilmaydi.
+  kiritgan_summa     BIGINT NOT NULL CHECK (kiritgan_summa > 0),
+  -- Admin haqiqatda qancha kelganini tekshirib kiritgan summa — FAQAT
+  -- 'tasdiqlandi' holatida to'ladi, boshqa hech qayerda o'zgarmaydi.
+  tasdiqlangan_summa BIGINT CHECK (tasdiqlangan_summa IS NULL OR tasdiqlangan_summa > 0),
+  dalil_id           TEXT NOT NULL,
+  dalil_turi         TEXT NOT NULL CHECK (dalil_turi IN ('rasm', 'hujjat')),
+  holat              TEXT NOT NULL DEFAULT 'kutilmoqda'
+                      CHECK (holat IN ('kutilmoqda', 'tasdiqlandi', 'rad')),
+  -- Kim tasdiqladi/rad etdi (admin) — reports.admin_id bilan bir xil naqsh.
+  hal_qildi          INT REFERENCES users(id),
+  rad_sababi         TEXT,
+  -- Bir nechta admin bo'lsa, har biriga yuborilgan DM xabar id'lari shu
+  -- yerda — biri hal qilganda qolganlarning nusxasi ham yangilanadi
+  -- (reports.admin_msgs bilan bir xil naqsh).
+  admin_msgs         JSONB NOT NULL DEFAULT '[]'::jsonb,
+  -- Faqat tasdiqlangandan keyin guruhga yuborilgan e'lon xabari.
+  guruh_msg_id       BIGINT,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+  hal_qilindi        TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS tolovlar_kutilmoqda_idx ON tolovlar (holat) WHERE holat = 'kutilmoqda';
+CREATE INDEX IF NOT EXISTS tolovlar_user_idx ON tolovlar (user_id);
+-- Faqat tasdiqlangan to'lovlar hisobga qo'shiladi — bu indeks aynan shu
+-- yig'indini (core/tolov.ts) tezlashtiradi.
+CREATE INDEX IF NOT EXISTS tolovlar_tasdiqlandi_idx ON tolovlar (user_id) WHERE holat = 'tasdiqlandi';

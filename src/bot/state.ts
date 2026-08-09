@@ -50,6 +50,17 @@ export type Flow = (
   | { tur: "shikoyat_izoh"; reportId: number }
   /** Guruhda "💬 Izoh qo'shish" bosgan sababchi — o'z izohini shaxsiy yozadi. */
   | { tur: "javobgar_izoh"; reportId: number }
+  /**
+   * Kvartira to'lovi: qancha to'laganini yozadi, keyin dalil (rasm/PDF)
+   * tashlaydi. Ikkalasi ham to'lov yozuvi yaratilgunga qadar — bazaga
+   * faqat dalil kelganda birga yoziladi.
+   */
+  | { tur: "tolov"; qadam: "summa" }
+  | { tur: "tolov"; qadam: "dalil"; summa: number }
+  /** Admin "✅ Tasdiqlash" bosgach — haqiqatda qancha kelganini so'raymiz. */
+  | { tur: "tolov_tasdiq"; tolovId: number }
+  /** Admin "❌ Rad etish" bosgach — sababini so'raymiz. */
+  | { tur: "tolov_rad"; tolovId: number }
 ) &
   Sorov;
 

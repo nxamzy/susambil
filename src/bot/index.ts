@@ -7,6 +7,7 @@ import * as photos from "./handlers/photos.js";
 import * as confirm from "./handlers/confirm.js";
 import * as chores from "./handlers/chores.js";
 import * as reports from "./handlers/reports.js";
+import * as tolov from "./handlers/tolov.js";
 import * as messages from "./handlers/messages.js";
 
 /** Xatoni qisqa ko'rinishda yozadi — butun ctx ni dump qilmaydi,
@@ -44,6 +45,7 @@ export function botYarat(): Bot {
   confirm.register(bot);
   chores.register(bot);
   reports.register(bot);
+  tolov.register(bot);
   photos.register(bot);
   messages.register(bot);
 

@@ -5,6 +5,7 @@ import { ochiqTopshiriqlar } from "../../core/topshiriq.js";
 import { faolNavbat, kelgusiTartib, xonaAzolari } from "../../core/rotation.js";
 import { reyting, orinlarniHisobla, xonaHolati, tarix } from "../../core/rating.js";
 import { jamiXarajat, oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
+import { foydalanuvchiTolovHolati, tolovQabulQiluvchi } from "../../core/tolov.js";
 import { guruhgaYubor, guruhId, guruhIdOrnat, kim, korishXabar } from "../group.js";
 import {
   boshqaIshKeyboard,
@@ -12,12 +13,13 @@ import {
   menyuKeyboard,
   panelKeyboard,
   panelgaKeyboard,
+  tolovKeyboard,
   xonaTanlashKeyboard,
   xarajatQoshishKeyboard,
 } from "../keyboards.js";
 import {
   AJRATGICH, chekla, esc, ismlar, muddatHolati, navbatXabari, pul, qisqaSana, reytingRoyxati,
-  sana, tanishtirish,
+  sana, tanishtirish, tolovKorinishi,
 } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat } from "../state.js";
 import { xarajatniBoshla } from "./expense.js";
@@ -130,6 +132,14 @@ async function xarajatMatni(): Promise<string> {
     `so'rayman, <b>+${BALLAR.xarajat} ball</b> qo'shiladi.`,
   );
   return s.join("\n");
+}
+
+async function tolovMatni(telegramId: number | undefined): Promise<string> {
+  const u = await kim(telegramId);
+  if (!u) return "💳 Avval /start bosib ro'yxatdan o'ting.";
+  const qabul = await tolovQabulQiluvchi();
+  const holat = await foydalanuvchiTolovHolati(u.id);
+  return tolovKorinishi(qabul, holat);
 }
 
 async function reytingMatni(telegramId?: number): Promise<string> {
@@ -249,6 +259,7 @@ export type Korinish =
   | "reyting"
   | "tarix"
   | "xarajat"
+  | "tolov"
   | "profil"
   | "azolar"
   | "tanishtirish"
@@ -275,6 +286,8 @@ export async function korinish(ctx: Context, nom: Korinish): Promise<void> {
         bot ? { reply_markup: xarajatQoshishKeyboard(bot) } : {},
       );
     }
+    case "tolov":
+      return javob(ctx, await tolovMatni(ctx.from?.id), { reply_markup: tolovKeyboard() });
     case "profil":
       return javob(ctx, await profilMatni(ctx.from?.id));
     case "azolar":
@@ -553,6 +566,10 @@ export function register(bot: Bot) {
     }
   });
 
+  // "tolov" ataylab bu yerda yo'q — u faqat shaxsiy chatdagi doimiy
+  // menyudan to'g'ridan-to'g'ri korinish() chaqiradi (guruh paneliga
+  // qo'shilmagan, chunki "To'lov qilish" oqimi shaxsiy suhbatda o'tishi
+  // shart — SHIKOYAT_TUGMA bilan bir xil sabab).
   const korishlar = "navbat|reyting|tarix|xarajat|profil|azolar|tanishtirish|boshqaish|panel";
   bot.callbackQuery(new RegExp(`^korish:(${korishlar})$`), async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});

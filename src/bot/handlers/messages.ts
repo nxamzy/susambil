@@ -15,6 +15,7 @@ import { summaniSora, xarajatniSaqla } from "./expense.js";
 import { korinish, panelMatni } from "./commands.js";
 import { ishniBoshla, ishRasminiSora } from "./chores.js";
 import { javobgarIzohiSaqlandi, shikoyatBoshla, shikoyatIzohSaqlandi, shikoyatJoySora } from "./reports.js";
+import { tolovDalilSora, tolovRadEtish, tolovTasdiqlash } from "./tolov.js";
 import { summaTekshir } from "../../core/topshiriq.js";
 
 /**
@@ -148,6 +149,24 @@ export function register(bot: Bot) {
       const izoh = ctx.message.text.trim().slice(0, 500);
       if (izoh.length < 2) return ctx.reply("Juda qisqa. Qaytadan yozing.");
       return javobgarIzohiSaqlandi(ctx, holat.reportId, izoh);
+    }
+
+    if (holat?.tur === "tolov" && holat.qadam === "summa") {
+      const summa = summaTekshir(ctx.message.text.trim());
+      if (summa === null) return ctx.reply("Faqat musbat raqam yozing, masalan: 400000");
+      return tolovDalilSora(ctx, summa);
+    }
+
+    if (holat?.tur === "tolov" && holat.qadam === "dalil") {
+      return ctx.reply("📎 Avval to'lov dalilini (rasm yoki PDF) tashlang.");
+    }
+
+    if (holat?.tur === "tolov_tasdiq") {
+      return tolovTasdiqlash(ctx, holat.tolovId, ctx.message.text.trim());
+    }
+
+    if (holat?.tur === "tolov_rad") {
+      return tolovRadEtish(ctx, holat.tolovId, ctx.message.text.trim());
     }
 
     if (holat?.tur === "ish") {

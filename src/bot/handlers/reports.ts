@@ -35,7 +35,7 @@ import {
   shikoyatYuborish,
   type ReportToliq,
 } from "../../core/reports.js";
-import { guruhAzosimi, guruhId, kim, shaxsiy } from "../group.js";
+import { adminlarRoyxati, guruhAzosimi, guruhId, kim, shaxsiy } from "../group.js";
 import {
   bekorKeyboard,
   ishonchKeyboard,
@@ -325,9 +325,7 @@ function faolKlaviatura(r: ReportToliq): InlineKeyboardType {
 
 /** Har bir bog'langan adminga to'liq DM qiladi, xabar id'larini saqlaydi. */
 async function adminlargaYubor(api: Api, r: ReportToliq): Promise<void> {
-  const adminlar = await sql<User[]>`
-    SELECT * FROM users WHERE admin AND faol AND telegram_id IS NOT NULL
-  `;
+  const adminlar = await adminlarRoyxati();
 
   const matn = shikoyatAdminXabari(r);
   const kb = faolKlaviatura(r);
@@ -355,10 +353,7 @@ async function panelniYangila(api: Api, r: ReportToliq, kb: InlineKeyboardType):
 
 /** Barcha bog'langan adminlarga qisqa DM eslatma — panel tahrirlanishi doim ham bildirishnoma bermaydi. */
 async function adminlargaEslatma(api: Api, matn: string): Promise<void> {
-  const adminlar = await sql<User[]>`
-    SELECT * FROM users WHERE admin AND faol AND telegram_id IS NOT NULL
-  `;
-  for (const a of adminlar) await shaxsiy(api, a, matn);
+  for (const a of await adminlarRoyxati()) await shaxsiy(api, a, matn);
 }
 
 /**

@@ -5,6 +5,9 @@ import {
 } from "../config.js";
 import { orinlarniHisobla, type OdamBall } from "../core/rating.js";
 import type { ReportToliq } from "../core/reports.js";
+import type {
+  TolovDashboard, TolovDaraja, TolovHolatMalumoti, TolovTarix, TolovToliq,
+} from "../core/tolov.js";
 
 const TZ = "Asia/Tashkent";
 
@@ -563,16 +566,256 @@ export function tanishtirish(): string {
     `yozib qo'yasiz — sababchisi kim ekanini bilmasangiz`,
     `ham bo'ladi.`,
     ``,
-    `<i>Kim yozganini FAQAT admin biladi. Guruhga faqat</i>`,
-    `<i>joyi va nima bo'lgani ketadi — hech kimning ismi</i>`,
-    `<i>(sizniki ham, sababchiniki ham) chiqmaydi.</i>`,
+    `<i>Kim yozganini FAQAT admin biladi — bu hech qachon</i>`,
+    `<i>guruhga chiqmaydi. Sababchi esa buning aksi: aniq</i>`,
+    `<i>yoki gumon qilingan bo'lsa ismi guruhda ko'rinadi</i>`,
+    `<i>(gumon bo'lsa "tasdiqlanmagan" deb belgilanib) —</i>`,
+    `<i>maqsad muammoni hal qilish.</i>`,
+    ``,
+    `Sababchi guruhdagi tugmalar orqali "Men qildim" /`,
+    `"Men qilmadim" deb javob berishi mumkin — bu faqat`,
+    `ma'lumot, admin baribir mustaqil qaror qiladi.`,
     ``,
     `Admin tasdiqlasa, sababchiga tuzatish uchun`,
     `imkoniyat beriladi. Tuzatilmasa undan`,
     `<b>-${BALLAR.shikoyatJarima} ball</b> ayiriladi.`,
     ``,
+    `<b>💳 KVARTIRA TO'LOVI</b>`,
+    AJRATGICH,
+    `"💳 Kvartira to'lovi" tugmasidan qancha to'laganingizni`,
+    `yozib, dalil (chek rasmi yoki PDF) tashlaysiz.`,
+    ``,
+    `To'lov avval "kutilmoqda" holatida turadi — admin`,
+    `haqiqatda qancha kelganini tekshirib tasdiqlagach`,
+    `hisobingizga qo'shiladi. Bir necha marta qisman`,
+    `to'lasangiz ham bo'ladi, hammasi qo'shib boriladi.`,
+    ``,
+    `<i>Kim qancha to'lagani guruhga ko'rinadi (faqat</i>`,
+    `<i>tasdiqlangandan keyin) — lekin karta va chek</i>`,
+    `<i>rasmi hech qachon chiqmaydi.</i>`,
+    ``,
     AJRATGICH,
     `💬 Botga hech qanday buyruq yozish shart emas —`,
     `istalgan narsa yozsangiz panel chiqadi.`,
   ].join("\n");
+}
+
+/** To'lov darajasining emoji va nomi — hamma joyda shu bir xil belgi ishlatiladi. */
+export function tolovDarajaBelgisi(daraja: TolovDaraja): { emoji: string; nom: string } {
+  return {
+    tolanmagan: { emoji: "🔴", nom: "TO'LANMAGAN" },
+    qisman: { emoji: "🟡", nom: "QISMAN TO'LANGAN" },
+    tola: { emoji: "🟢", nom: "TO'LIQ TO'LANGAN" },
+  }[daraja];
+}
+
+/**
+ * "💳 Kvartira to'lovi" ko'rinishi — talab, qabul qiluvchi va foydalanuvchining
+ * joriy holati. Faqat TASDIQLANGAN summalar hisobga kiradi — buni
+ * `foydalanuvchiTolovHolati` (core/tolov.ts) hisoblab beradi, bu yerda faqat
+ * ko'rinish.
+ */
+export function tolovKorinishi(qabul: { ism: string; karta: string }, h: TolovHolatMalumoti): string {
+  const daraja = tolovDarajaBelgisi(h.daraja);
+  const s = [
+    `🏠 <b>KVARTIRA TO'LOVI</b>`,
+    AJRATGICH,
+    ``,
+    `💰 Talab: <b>${pul(h.talab)}</b>`,
+    ``,
+    `💳 Qabul qiluvchi: <b>${esc(qabul.ism)}</b>`,
+    `💳 Karta: <code>${esc(qabul.karta)}</code>`,
+    ``,
+    AJRATGICH,
+    `💵 To'landi: <b>${pul(h.tasdiqlangan)}</b>`,
+    `📉 Qoldi: <b>${pul(h.qoldiq)}</b>`,
+    ``,
+    `Holat: ${daraja.emoji} <b>${daraja.nom}</b>`,
+  ];
+
+  // "DO NOT say Paid or Completed" — qisman holatda buni aniq ta'kidlaymiz.
+  if (h.daraja === "qisman") {
+    s.push(``, `⚠️ Siz ${pul(h.tasdiqlangan)} to'ladingiz.`, `${pul(h.qoldiq)} qoldi.`);
+  } else if (h.daraja === "tola") {
+    s.push(``, `✅ Kvartira to'lovingiz to'liq amalga oshirilgan.`);
+  }
+
+  if (h.kutilmoqdaSoni > 0) {
+    s.push(
+      ``,
+      `⏳ <b>${h.kutilmoqdaSoni} ta to'lovingiz tekshirilmoqda</b>`,
+      `— hali hisobga qo'shilmagan.`,
+    );
+  }
+
+  return s.join("\n");
+}
+
+/** Yangi to'lov yuborilgandan keyin foydalanuvchiga darhol chiqadigan tasdiq. */
+export function tolovYuborildiXabari(kiritganSumma: number): string {
+  return [
+    `✅ <b>Qabul qildim.</b>`,
+    AJRATGICH,
+    ``,
+    `💵 Siz kiritgan summa: <b>${pul(kiritganSumma)}</b>`,
+    ``,
+    `Admin tekshirib tasdiqlagach hisobingizga qo'shiladi.`,
+    `Holatini "💳 Kvartira to'lovi" bo'limidan kuzatasiz.`,
+  ].join("\n");
+}
+
+/**
+ * Adminga yuboriladigan tekshiruv xabari. `joriyTasdiqlangan` — shu odamning
+ * BU to'lovdan oldingi jami tasdiqlangan summasi (faqat 'kutilmoqda'
+ * holatida ko'rsatiladi, "agar to'liq tasdiqlansa qancha bo'ladi" degan
+ * proyeksiya uchun).
+ */
+export function tolovAdminXabari(t: TolovToliq, joriyTasdiqlangan: number): string {
+  const kiritgan = Number(t.kiritgan_summa);
+  const s = [
+    `💰 <b>YANGI KVARTIRA TO'LOVI</b>`,
+    AJRATGICH,
+    ``,
+    `👤 Kim: <b>${esc(t.ism)}</b>`,
+    `💵 O'zi yozgan summa: <b>${pul(kiritgan)}</b>`,
+    `📎 ${t.dalil_turi === "hujjat" ? "PDF hujjat" : "Rasm"} dalil biriktirilgan`,
+  ];
+
+  if (t.holat === "kutilmoqda") {
+    const keyingi = joriyTasdiqlangan + kiritgan;
+    s.push(
+      ``,
+      `📊 Joriy tasdiqlangan jami: <b>${pul(joriyTasdiqlangan)}</b>`,
+      `📊 Agar to'liq tasdiqlansa: <b>${pul(keyingi)}</b>`,
+      ``,
+      `Holat: ⏳ <b>Tasdiq kutilmoqda</b>`,
+    );
+  } else if (t.holat === "tasdiqlandi") {
+    s.push(
+      ``,
+      `✅ Tasdiqlangan summa: <b>${pul(Number(t.tasdiqlangan_summa))}</b>`,
+      t.hal_qilindi ? `📅 ${sana(t.hal_qilindi)}` : ``,
+    );
+  } else {
+    s.push(``, `❌ Rad etildi.`);
+    if (t.rad_sababi) s.push(`✏️ Sabab: ${esc(t.rad_sababi)}`);
+  }
+
+  s.push(``, `<i>Bu xabar faqat sizga (admin) yuborilgan.</i>`);
+  return s.join("\n");
+}
+
+/**
+ * Guruhga chiqadigan e'lon — FAQAT admin tasdiqlagandan keyin yuboriladi.
+ * Karta, chek rasmi va boshqa bank ma'lumotlari hech qachon bu yerda
+ * ko'rsatilmaydi — faqat kim, qancha va joriy holat.
+ */
+export function tolovGuruhXabari(ism: string, h: TolovHolatMalumoti): string {
+  const daraja = tolovDarajaBelgisi(h.daraja);
+  const s = [
+    `💰 <b>KVARTIRA TO'LOVI</b>`,
+    AJRATGICH,
+    ``,
+    `👤 ${esc(ism)}`,
+    `💵 To'landi: <b>${pul(h.tasdiqlangan)}</b>`,
+  ];
+  if (h.daraja !== "tola") s.push(`📉 Qoldi: <b>${pul(h.qoldiq)}</b>`);
+  s.push(``, `Holat: ${daraja.emoji} <b>${daraja.nom}</b>`);
+  return s.join("\n");
+}
+
+/** Admin tasdiqlagach foydalanuvchiga yuboriladigan shaxsiy DM. */
+export function tolovTasdiqXabari(
+  qabulIsm: string,
+  tasdiqlanganSumma: number,
+  h: TolovHolatMalumoti,
+): string {
+  const daraja = tolovDarajaBelgisi(h.daraja);
+  const s = [
+    `🔔 <b>To'lov tasdiqlandi</b>`,
+    AJRATGICH,
+    ``,
+    `${esc(qabulIsm)} to'lovingizni tasdiqladi.`,
+    ``,
+    `✅ Tasdiqlangan summa: <b>${pul(tasdiqlanganSumma)}</b>`,
+    `💵 Jami to'langan: <b>${pul(h.tasdiqlangan)}</b>`,
+  ];
+  if (h.daraja !== "tola") s.push(`📉 Qoldi: <b>${pul(h.qoldiq)}</b>`);
+  s.push(``, `Holat: ${daraja.emoji} <b>${daraja.nom}</b>`);
+  if (h.daraja === "tola") s.push(``, `✅ Kvartira to'lovingiz to'liq amalga oshirilgan.`);
+  return s.join("\n");
+}
+
+/** Admin rad etgach foydalanuvchiga yuboriladigan shaxsiy DM. */
+export function tolovRadXabari(sabab: string): string {
+  return [
+    `❌ <b>To'lov rad etildi</b>`,
+    AJRATGICH,
+    ``,
+    `Yuborgan to'lov dalilingizni tasdiqlab bo'lmadi.`,
+    ``,
+    `✏️ Sabab: ${esc(sabab)}`,
+    ``,
+    `Iltimos, to'g'ri to'lov dalilini qayta yuboring.`,
+  ].join("\n");
+}
+
+/** "📊 Mening to'lovlarim" — har bir yozuv mustaqil ko'rsatiladi, ustma-ust yozilmagan. */
+export function tolovTarixi(payments: TolovTarix[]): string {
+  if (payments.length === 0) {
+    return [
+      `📊 <b>MENING TO'LOVLARIM</b>`,
+      AJRATGICH,
+      ``,
+      `🤷 <i>Hali to'lov yubormagansiz.</i>`,
+    ].join("\n");
+  }
+
+  const s = [`📊 <b>MENING TO'LOVLARIM</b>`, AJRATGICH, ``];
+  payments.forEach((p, i) => {
+    s.push(`<b>${i + 1}.</b> ${pul(Number(p.kiritgan_summa))}`);
+    if (p.holat === "tasdiqlandi") {
+      s.push(`   ✅ Tasdiqlandi — <b>${pul(Number(p.tasdiqlangan_summa))}</b>`);
+      if (p.hal_qildi_ism) s.push(`   👮 Tekshirdi: ${esc(p.hal_qildi_ism)}`);
+    } else if (p.holat === "rad") {
+      s.push(`   ❌ Rad etildi${p.rad_sababi ? `: ${esc(p.rad_sababi)}` : ""}`);
+    } else {
+      s.push(`   ⏳ Tekshirilmoqda`);
+    }
+    s.push(`   📅 Yuborilgan: ${qisqaSana(p.created_at)}`);
+    if (p.hal_qilindi) s.push(`   📅 Hal qilingan: ${qisqaSana(p.hal_qilindi)}`);
+    s.push(``);
+  });
+  return s.join("\n");
+}
+
+/** Admin/Sorabek uchun umumiy ko'rinish — kim to'lagan, kim qolgan. */
+export function tolovDashboardMatni(d: TolovDashboard): string {
+  const s = [
+    `📊 <b>KVARTIRA TO'LOVLARI</b>`,
+    AJRATGICH,
+    ``,
+    `💰 Har kishidan talab: <b>${pul(d.talab)}</b>`,
+    `📊 Jami talab: <b>${pul(d.jamiTalab)}</b>`,
+    `💵 Jami tasdiqlangan: <b>${pul(d.jamiTasdiqlangan)}</b>`,
+    `📉 Jami qoldiq: <b>${pul(d.jamiQoldiq)}</b>`,
+    ``,
+    `⏳ Tasdiq kutilmoqda: <b>${d.kutilmoqdaSoni}</b>`,
+    `❌ Rad etilgan: <b>${d.radSoni}</b>`,
+  ];
+
+  s.push(``, AJRATGICH, `🟢 <b>TO'LIQ TO'LAGANLAR (${d.tola.length})</b>`);
+  s.push(...(d.tola.length ? d.tola.map((o) => `   ✅ ${esc(o.ism)}`) : [`   🤷 <i>hali yo'q</i>`]));
+
+  s.push(``, `🟡 <b>QISMAN TO'LAGANLAR (${d.qisman.length})</b>`);
+  s.push(
+    ...(d.qisman.length
+      ? d.qisman.map((o) => `   ${esc(o.ism)} — ${pul(o.tasdiqlangan)} · qoldi ${pul(o.qoldiq)}`)
+      : [`   🤷 <i>hali yo'q</i>`]),
+  );
+
+  s.push(``, `🔴 <b>TO'LAMAGANLAR (${d.tolanmagan.length})</b>`);
+  s.push(...(d.tolanmagan.length ? d.tolanmagan.map((o) => `   ${esc(o.ism)}`) : [`   🤷 <i>yo'q</i>`]));
+
+  return s.join("\n");
 }

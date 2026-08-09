@@ -85,6 +85,15 @@ export async function kim(telegramId: number | undefined): Promise<User | null> 
 }
 
 /**
+ * Botga DM yuborish mumkin bo'lgan hamma admin — shikoyat va to'lov kabi
+ * har qanday "adminlarga xabar/tasdiq" oqimi shu bir xil ro'yxatdan
+ * foydalanadi, ikkinchi nusxa yozilmaydi.
+ */
+export async function adminlarRoyxati(): Promise<User[]> {
+  return sql<User[]>`SELECT * FROM users WHERE admin AND faol AND telegram_id IS NOT NULL`;
+}
+
+/**
  * Shaxsiy xabar yuboradi. Odam hali ulanmagan bo'lsa (`telegram_id` yo'q)
  * jimgina o'tkazib yuboriladi — bu normal holat, log kerak emas. Yuborish
  * o'zi muvaffaqiyatsiz bo'lsa esa (bot bloklangan, hisob o'chirilgan,
