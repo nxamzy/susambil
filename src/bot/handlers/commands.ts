@@ -1,4 +1,5 @@
 import type { Bot, Api, Context } from "grammy";
+import { InlineKeyboard } from "grammy";
 import { sql, type Room } from "../../db/index.js";
 import { config, ISH_TURLARI, NAVBAT_ISHLARI, SEKIN_ISHLAR, BALLAR, type IshTuri } from "../../config.js";
 import { ochiqTopshiriqlar } from "../../core/topshiriq.js";
@@ -456,7 +457,52 @@ export function register(bot: Bot) {
     await guruhgaYubor(ctx.api, s.join("\n"));
   }
 
+  /**
+   * ILDIZ SABAB TUZATISH: ilgari "men:<id>" tugmasi bosilgan zahoti profilni
+   * darhol egallardi — hech qanday tasdiq yo'q edi. Aynan shu tarzda
+   * Sorabek shoshilib "Diyorbek"ni bosib qo'ygan (ikkalasi ham haqiqiy,
+   * bo'sh profil edi — xato Telegram identifikatsiyasida emas, inson
+   * xatosida edi). Endi bosilganda avval "Siz ISMmisiz?" deb tasdiq
+   * so'raladi, faqat "Ha" bosilgach haqiqatan bog'lanadi.
+   */
   bot.callbackQuery(/^men:(\d+)$/, async (ctx) => {
+    const userId = Number(ctx.match[1]);
+    if (await kim(ctx.from.id)) {
+      return ctx.answerCallbackQuery({ text: "Siz allaqachon ro'yxatdasiz." });
+    }
+
+    const [nomzod] = await sql<{ ism: string }[]>`
+      SELECT ism FROM users WHERE id = ${userId} AND telegram_id IS NULL
+    `;
+    if (!nomzod) {
+      return ctx.answerCallbackQuery({ text: "Bu ismni boshqa kimdir olib bo'lgan.", show_alert: true });
+    }
+
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx
+      .editMessageText(`❓ <b>Siz ${esc(nomzod.ism)}misiz?</b>`, {
+        parse_mode: "HTML",
+        reply_markup: new InlineKeyboard()
+          .text("✅ Ha, bu men", `mentasdiq:${userId}`)
+          .text("❌ Yo'q, orqaga", "menortga"),
+      })
+      .catch(() => {});
+  });
+
+  bot.callbackQuery("menortga", async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const bosh = await sql<{ id: number; ism: string }[]>`
+      SELECT id, ism FROM users WHERE telegram_id IS NULL AND faol ORDER BY id
+    `;
+    await ctx
+      .editMessageText(`👋 <b>Ismingizni ro'yxatdan tanlang.</b>`, {
+        parse_mode: "HTML",
+        reply_markup: ismTanlashKeyboard(bosh),
+      })
+      .catch(() => {});
+  });
+
+  bot.callbackQuery(/^mentasdiq:(\d+)$/, async (ctx) => {
     const userId = Number(ctx.match[1]);
     if (await kim(ctx.from.id)) {
       return ctx.answerCallbackQuery({ text: "Siz allaqachon ro'yxatdasiz." });

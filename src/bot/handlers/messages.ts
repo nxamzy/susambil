@@ -16,6 +16,12 @@ import { korinish, panelMatni } from "./commands.js";
 import { ishniBoshla, ishRasminiSora } from "./chores.js";
 import { javobgarIzohiSaqlandi, shikoyatBoshla, shikoyatIzohSaqlandi, shikoyatJoySora } from "./reports.js";
 import { tolovDalilSora, tolovRadEtish, tolovTasdiqlash } from "./tolov.js";
+import {
+  adminBallTuzatishKeldi,
+  adminIsmTahrirKeldi,
+  adminTgIdTahrirKeldi,
+  adminYangiIsmiKeldi,
+} from "./adminUsers.js";
 import { summaTekshir } from "../../core/topshiriq.js";
 
 /**
@@ -171,6 +177,28 @@ export function register(bot: Bot) {
 
     if (holat?.tur === "navbat_ish") {
       return ctx.reply("📷 Avval rasmini tashlang.");
+    }
+
+    if (holat?.tur === "admin_yangi" && holat.qadam === "ism") {
+      const ism = ctx.message.text.trim().slice(0, 40);
+      if (ism.length < 2) return ctx.reply("Juda qisqa. Qaytadan yozing.");
+      return adminYangiIsmiKeldi(ctx, ism);
+    }
+
+    if (holat?.tur === "admin_yangi" && holat.qadam === "xona") {
+      return ctx.reply("👆 Yuqoridagi tugmalardan xonani tanlang.");
+    }
+
+    if (holat?.tur === "admin_tahrir_ism") {
+      return adminIsmTahrirKeldi(ctx, holat.userId, ctx.message.text.trim());
+    }
+
+    if (holat?.tur === "admin_tahrir_tgid") {
+      return adminTgIdTahrirKeldi(ctx, holat.userId, ctx.message.text.trim());
+    }
+
+    if (holat?.tur === "admin_ball") {
+      return adminBallTuzatishKeldi(ctx, holat.userId, ctx.message.text.trim());
     }
 
     if (holat?.tur === "ish") {

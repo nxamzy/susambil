@@ -26,6 +26,8 @@ export type OdamBall = {
    */
   shikoyatBall: number;
   shikoyatSoni: number;
+  /** Admin qo'lda kiritgan tuzatish (musbat yoki manfiy) — core/users.ts */
+  tuzatishBall: number;
   jami: number;
 };
 
@@ -52,6 +54,7 @@ type Qator = {
   tasdiq: number;
   shikoyat_ball: number;
   shikoyat_soni: number;
+  tuzatish_ball: number;
 };
 
 /**
@@ -119,7 +122,12 @@ export async function reyting(dan: Date | null = null): Promise<OdamBall[]> {
               AND (${dan}::timestamptz IS NULL OR rp.hal_qilindi >= ${dan})), 0)::int AS shikoyat_ball,
            (SELECT count(*)::int FROM reports rp WHERE rp.reported_id = u.id
               AND rp.holat = 'jarima'
-              AND (${dan}::timestamptz IS NULL OR rp.hal_qilindi >= ${dan})) AS shikoyat_soni
+              AND (${dan}::timestamptz IS NULL OR rp.hal_qilindi >= ${dan})) AS shikoyat_soni,
+           -- Admin qo'lda kiritgan tuzatish — mavjud manbalar (ish/xarajat/
+           -- tasdiq/shikoyat) qatoriga qo'shiladi, alohida "users.ball"
+           -- ustuni yaratilmaydi (core/users.ts).
+           COALESCE((SELECT sum(bt.ball) FROM ball_tuzatish bt WHERE bt.user_id = u.id
+              AND (${dan}::timestamptz IS NULL OR bt.created_at >= ${dan})), 0)::int AS tuzatish_ball
     FROM users u
     LEFT JOIN rooms r ON r.id = u.room_id
     WHERE u.faol
@@ -169,7 +177,8 @@ export async function reyting(dan: Date | null = null): Promise<OdamBall[]> {
       tasdiqBall,
       shikoyatBall: q.shikoyat_ball,
       shikoyatSoni: q.shikoyat_soni,
-      jami: navbatBall + q.ish_ball + q.xarajat_ball + tasdiqBall - q.shikoyat_ball,
+      tuzatishBall: q.tuzatish_ball,
+      jami: navbatBall + q.ish_ball + q.xarajat_ball + tasdiqBall - q.shikoyat_ball + q.tuzatish_ball,
     };
   });
 }
@@ -239,6 +248,19 @@ export async function tarix(limit = 10, offset = 0): Promise<TarixYozuvi[]> {
     WHERE t.holat <> 'faol'
     ORDER BY t.id DESC
     LIMIT ${limit} OFFSET ${offset}
+  `;
+}
+
+/** Bitta odamning qo'lda kiritilgan ball tuzatishlari — admin User Details ko'rinishida. */
+export async function ballTuzatishTarixi(
+  userId: number,
+  limit = 10,
+): Promise<{ ball: number; sabab: string | null; admin_ism: string; created_at: Date }[]> {
+  return sql`
+    SELECT bt.ball, bt.sabab, a.ism AS admin_ism, bt.created_at
+    FROM ball_tuzatish bt JOIN users a ON a.id = bt.admin_id
+    WHERE bt.user_id = ${userId}
+    ORDER BY bt.id DESC LIMIT ${limit}
   `;
 }
 

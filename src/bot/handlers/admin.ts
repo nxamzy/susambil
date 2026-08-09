@@ -10,6 +10,7 @@ import { azolarMatni } from "./commands.js";
 import { kutayotganlarniJonat } from "./reports.js";
 import { tolovDashboardKorsat } from "./tolov.js";
 import { navbatAdminDashboard } from "./navbat.js";
+import { adminPanelKorsat } from "./adminUsers.js";
 
 async function adminmi(ctx: { from?: { id: number } }): Promise<User | null> {
   const u = await kim(ctx.from?.id);
@@ -62,6 +63,8 @@ export function register(bot: Bot) {
         "/tolovlar — kvartira to'lovlari dashboard",
         "/tolovtalab 900000 — har kishidan talab summasini o'zgartirish",
         "/tolovsozla Sorabek 9860350143875127 — qabul qiluvchi/karta",
+        "/adminpanel — foydalanuvchilarni to'liq boshqarish (qo'shish/",
+        "  tahrirlash/o'chirish, ball tuzatish, o'zgarishlar tarixi)",
       );
     }
 
@@ -233,5 +236,12 @@ export function register(bot: Bot) {
       [`✅ Qabul qiluvchi: <b>${esc(ism)}</b>`, `💳 Karta: <code>${esc(karta)}</code>`].join("\n"),
       { parse_mode: "HTML" },
     );
+  });
+
+  // To'liq foydalanuvchi boshqaruvi — qo'shish/tahrirlash/o'chirish/ball
+  // tuzatish, hammasi bitta interaktiv panelda (bot/handlers/adminUsers.ts).
+  bot.command("adminpanel", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+    await adminPanelKorsat(ctx);
   });
 }

@@ -10,8 +10,9 @@ import {
   type IshTuri,
   type ShikoyatJoyi,
 } from "../config.js";
-import type { TurnIshlar } from "../db/index.js";
+import type { TurnIshlar, User } from "../db/index.js";
 import type { ReportToliq } from "../core/reports.js";
+import type { FoydalanuvchiToliq } from "../core/users.js";
 
 /** Ish tugmasining yozuvi — inline va doimiy menyuda bir xil bo'lsin. */
 export function ishTugmasi(t: IshTuri): string {
@@ -302,4 +303,96 @@ export function navbatAdminKeyboard(turnId: number): InlineKeyboard {
     .text("🔄 Qaytadan boshlash", `navbat_admin_qayta:${turnId}`)
     .row()
     .text("🔔 Hozir eslatish", `navbat_admin_eslatma:${turnId}`);
+}
+
+/** Admin panelining bosh menyusi — mavjud bo'limlarga havolalar, ikkinchi nusxa yaratilmaydi. */
+export function adminPanelKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("👥 Foydalanuvchilar", "admin_users")
+    .row()
+    .text("💰 To'lovlar", "admin_link_tolovlar")
+    .text("🧹 Navbat", "admin_link_navbat")
+    .row()
+    .text("🚨 Shikoyatlar", "admin_link_shikoyatlar")
+    .row()
+    .text("⚠️ Kelishmovchiliklar", "admin_conflicts")
+    .text("📜 Tarix", "admin_logs");
+}
+
+/** Har bir foydalanuvchi — bitta qatorda bitta tugma, holat matnda ko'rinadi. */
+export function foydalanuvchilarKeyboard(
+  royxat: (User & { xona_raqami: number | null })[],
+  yozuv: (u: User & { xona_raqami: number | null }) => string,
+): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const u of royxat) kb.text(yozuv(u), `admin_user:${u.id}`).row();
+  kb.text("➕ Yangi foydalanuvchi", "admin_add").row();
+  kb.text("⬅️ Admin panel", "admin_panel");
+  return kb;
+}
+
+/** Foydalanuvchi tafsilotidagi harakatlar — mavjud holatga qarab moslashadi. */
+export function foydalanuvchiDetalKeyboard(
+  u: FoydalanuvchiToliq,
+  ochirishMumkin: boolean,
+): InlineKeyboard {
+  const kb = new InlineKeyboard()
+    .text("✏️ Ism", `admin_edit_name:${u.id}`)
+    .text("📱 Telegram ID", `admin_edit_tgid:${u.id}`)
+    .row()
+    .text("🏠 Xona", `admin_edit_room:${u.id}`)
+    .text(u.admin ? "👑 Admin — o'chirish" : "👑 Admin qilish", `admin_toggle_admin:${u.id}`)
+    .row()
+    .text("⭐ Ball tuzatish", `admin_ball:${u.id}`)
+    .row();
+
+  kb.text(
+    u.faol ? "🚫 Faolsizlantirish" : "✅ Qayta faollashtirish",
+    `admin_toggle_faol:${u.id}`,
+  ).row();
+
+  if (ochirishMumkin) kb.text("⚠️ Butunlay o'chirish", `admin_delete:${u.id}`).row();
+  kb.text("⬅️ Ro'yxatga qaytish", "admin_users");
+  return kb;
+}
+
+/** Xona tanlash — yangi foydalanuvchi qo'shishda. */
+export function adminYangiXonaKeyboard(xonalar: number[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const r of xonalar) kb.text(`🚪 ${r}-xona`, `admin_add_room:${r}`).row();
+  kb.text("➖ Xonasiz qoldirish", "admin_add_room:0").row();
+  kb.text("✖️ Bekor qilish", "bekor");
+  return kb;
+}
+
+/** Xona tanlash — mavjud foydalanuvchining xonasini o'zgartirishda. */
+export function adminXonaOzgartirKeyboard(userId: number, xonalar: number[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const r of xonalar) kb.text(`🚪 ${r}-xona`, `admin_room_set:${userId}:${r}`).row();
+  kb.text("✖️ Bekor qilish", "bekor");
+  return kb;
+}
+
+export function telegramIdTasdiqKeyboard(userId: number, yangi: number | null): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✅ Ha, o'zgartir", `admin_tgid_ok:${userId}:${yangi ?? 0}`)
+    .text("❌ Yo'q", `admin_tgid_yoq:${userId}`);
+}
+
+export function adminHuquqTasdiqKeyboard(userId: number, yangiQiymat: boolean): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✅ Ha", `admin_admin_ok:${userId}:${yangiQiymat ? 1 : 0}`)
+    .text("❌ Yo'q", `admin_admin_yoq:${userId}`);
+}
+
+export function faollikTasdiqKeyboard(userId: number, yangiFaol: boolean): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✅ Ha", `admin_faollik_ok:${userId}:${yangiFaol ? 1 : 0}`)
+    .text("❌ Yo'q", `admin_faollik_yoq:${userId}`);
+}
+
+export function ochirishTasdiqKeyboard(userId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("⚠️ Ha, butunlay o'chir", `admin_delete_ok:${userId}`)
+    .text("❌ Yo'q", `admin_delete_yoq:${userId}`);
 }

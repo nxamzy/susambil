@@ -66,6 +66,18 @@ export type Flow = (
    * musor) tugmasi bosildi — o'sha vazifaning rasmi kutilyapti.
    */
   | { tur: "navbat_ish"; ish: NavbatIshi; turnId: number }
+  /**
+   * Admin panel: yangi foydalanuvchi qo'shish — ism yozadi, keyin xonani
+   * tugma bilan tanlaydi (shu bosqichda holat allaqachon "xona"da bo'ladi).
+   */
+  | { tur: "admin_yangi"; qadam: "ism" }
+  | { tur: "admin_yangi"; qadam: "xona"; ism: string }
+  /** Admin: mavjud foydalanuvchi ismini o'zgartirish. */
+  | { tur: "admin_tahrir_ism"; userId: number }
+  /** Admin: Telegram ID'ni qo'lda o'zgartirish — yozgach tasdiq so'raladi. */
+  | { tur: "admin_tahrir_tgid"; userId: number }
+  /** Admin: ball qo'lda tuzatiladi — "+10 sabab" yoki "-5 sabab" shaklida. */
+  | { tur: "admin_ball"; userId: number }
 ) &
   Sorov;
 

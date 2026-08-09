@@ -8,6 +8,9 @@ import type { ReportToliq } from "../core/reports.js";
 import type {
   TolovDashboard, TolovDaraja, TolovHolatMalumoti, TolovTarix, TolovToliq,
 } from "../core/tolov.js";
+import type { FoydalanuvchiToliq } from "../core/users.js";
+import type { AdminLogToliq } from "../core/adminlog.js";
+import type { AzolikHolati } from "./group.js";
 
 const TZ = "Asia/Tashkent";
 
@@ -935,5 +938,171 @@ export function tolovDashboardMatni(d: TolovDashboard): string {
   s.push(``, `🔴 <b>TO'LAMAGANLAR (${d.tolanmagan.length})</b>`);
   s.push(...(d.tolanmagan.length ? d.tolanmagan.map((o) => `   ${esc(o.ism)}`) : [`   🤷 <i>yo'q</i>`]));
 
+  return s.join("\n");
+}
+
+/** Admin panelining bosh sahifasi. */
+export function adminPanelMatni(): string {
+  return [
+    `👑 <b>ADMIN PANEL</b>`,
+    AJRATGICH,
+    ``,
+    `Bazadagi ma'lumotlarni to'g'ridan-to'g'ri shu yerdan`,
+    `boshqarasiz — kod o'zgartirish shart emas.`,
+  ].join("\n");
+}
+
+/** "👥 Foydalanuvchilar" ro'yxati sarlavhasi — har bir odam alohida tugmada. */
+export function foydalanuvchilarRoyxatiMatni(
+  royxat: (User & { xona_raqami: number | null })[],
+): string {
+  const faol = royxat.filter((u) => u.faol).length;
+  const ulangan = royxat.filter((u) => u.faol && u.telegram_id).length;
+  return [
+    `👥 <b>FOYDALANUVCHILAR</b>`,
+    AJRATGICH,
+    ``,
+    `Jami: <b>${royxat.length}</b> · Faol: <b>${faol}</b> · Ulangan: <b>${ulangan}</b>`,
+    ``,
+    `Birontasini tanlang:`,
+  ].join("\n");
+}
+
+/** Foydalanuvchi ro'yxatidagi bitta tugma yozuvi — holat bir qarashda ko'rinsin. */
+export function foydalanuvchiTugmaYozuvi(u: User & { xona_raqami: number | null }): string {
+  const holat = !u.faol ? "🚫" : u.telegram_id ? "✅" : "⏳";
+  const xona = u.xona_raqami ? ` · ${u.xona_raqami}-xona` : "";
+  return `${holat} ${u.ism}${xona}${u.admin ? " 👑" : ""}`;
+}
+
+/**
+ * To'liq foydalanuvchi profili — admin bu yerdan barcha muhim ma'lumotni
+ * bir qarashda ko'radi (talab: "User Details"). Guruh holati faqat
+ * ulangan (`telegram_id` bor) bo'lsa tekshiriladi — aks holda
+ * `getChatMember` chaqirishning ma'nosi yo'q.
+ */
+export function foydalanuvchiDetalMatni(
+  u: FoydalanuvchiToliq,
+  guruhHolat: AzolikHolati | null,
+  tolov: TolovHolatMalumoti,
+  tuzatishlar: { ball: number; sabab: string | null; admin_ism: string; created_at: Date }[],
+  loglar: AdminLogToliq[],
+): string {
+  const guruhMatni: Record<AzolikHolati, string> = {
+    azo: "✅ A'zo",
+    azo_emas: "❌ A'zo emas",
+    guruh_yoq: "➖ Guruh hali sozlanmagan",
+  };
+
+  const s = [
+    `👤 <b>${esc(u.ism).toUpperCase()}</b>`,
+    AJRATGICH,
+    ``,
+    `🆔 Baza ID: <code>${u.id}</code>`,
+    `📱 Telegram ID: ${u.telegram_id ? `<code>${esc(u.telegram_id)}</code>` : "❌ <b>ULANMAGAN</b>"}`,
+    `🔖 Username: ${u.username ? `@${esc(u.username)}` : "—"}`,
+  ];
+  if (u.telegram_id) s.push(`👥 Guruh holati: ${guruhHolat ? guruhMatni[guruhHolat] : "—"}`);
+  s.push(
+    `🏠 Xona: ${u.xona_raqami ? `${u.xona_raqami}-xona` : "—"}`,
+    `👑 Admin: ${u.admin ? "Ha" : "Yo'q"}`,
+    `📊 Holat: ${u.faol ? "✅ Faol" : "🚫 Faolsizlantirilgan"}`,
+    ``,
+    AJRATGICH,
+    `🏅 Jami ball (butun tarix): <b>${u.jami_ball}</b>`,
+    `💳 Kvartira to'lovi: <b>${pul(tolov.tasdiqlangan)}</b> / ${pul(tolov.talab)}`,
+  );
+
+  if (tuzatishlar.length > 0) {
+    s.push(``, `<b>Oxirgi ball tuzatishlari:</b>`);
+    for (const t of tuzatishlar.slice(0, 5)) {
+      s.push(
+        `   ${t.ball > 0 ? "+" : ""}${t.ball} — ${esc(t.sabab ?? "sababsiz")} (${esc(t.admin_ism)}, ${qisqaSana(t.created_at)})`,
+      );
+    }
+  }
+
+  if (loglar.length > 0) {
+    s.push(``, `<b>Oxirgi o'zgarishlar:</b>`);
+    for (const l of loglar.slice(0, 5)) {
+      s.push(`   ${esc(l.harakat)} — ${esc(l.admin_ism)}, ${qisqaSana(l.created_at)}`);
+    }
+  }
+
+  return s.join("\n");
+}
+
+/** Telegram ID o'zgartirishdan oldingi ogohlantirish — eng sezgir amal. */
+export function telegramIdTasdiqMatni(u: User, yangi: number | null): string {
+  return [
+    `⚠️ <b>TELEGRAM ID'NI O'ZGARTIRISH</b>`,
+    AJRATGICH,
+    ``,
+    `👤 ${esc(u.ism)}`,
+    `Eski: ${u.telegram_id ? `<code>${esc(u.telegram_id)}</code>` : "❌ ulanmagan"}`,
+    `Yangi: ${yangi !== null ? `<code>${yangi}</code>` : "❌ uzish (ulanmagan holatga qaytarish)"}`,
+    ``,
+    `Bu odamning BUTUN tarixi (to'lov, navbat, ball, shikoyat)`,
+    `shu Telegram hisobiga bog'lanadi. Xato bo'lsa boshqa`,
+    `odamning ma'lumotlarini ochib qo'yishi mumkin.`,
+    ``,
+    `Aniq to'g'ri ekaniga ishonchingiz komilmi?`,
+  ].join("\n");
+}
+
+export function foydalanuvchiOchirishTasdiqMatni(u: User): string {
+  return [
+    `⚠️ <b>BUTUNLAY O'CHIRISH?</b>`,
+    AJRATGICH,
+    ``,
+    `👤 ${esc(u.ism)}`,
+    ``,
+    `Bu qaytarib bo'lmaydigan amal. Faqat hech qanday tarixi`,
+    `(navbat, to'lov, ball, shikoyat) yo'q bo'lsa ishlaydi.`,
+  ].join("\n");
+}
+
+export function foydalanuvchiFaollikTasdiqMatni(u: User, faol: boolean): string {
+  return faol
+    ? [`✅ <b>${esc(u.ism)}</b>ni qayta faollashtirasizmi?`].join("\n")
+    : [
+        `⚠️ <b>${esc(u.ism)}</b>ni faolsizlantirasizmi?`,
+        ``,
+        `Tarixi (to'lov, navbat, ball) saqlanib qoladi — faqat`,
+        `ro'yxatlarda, navbatda va reytingda ko'rinmay qoladi.`,
+      ].join("\n");
+}
+
+/** Bir xil nomli, ikkalasi ham FAOL foydalanuvchilar — nazariy jihatdan bo'lmasligi kerak. */
+export function takroriyIsmlarMatni(royxat: { ism: string; soni: number }[]): string {
+  if (royxat.length === 0) {
+    return [
+      `✅ <b>KELISHMOVCHILIK YO'Q</b>`,
+      AJRATGICH,
+      ``,
+      `Bir xil nomli faol foydalanuvchilar topilmadi.`,
+    ].join("\n");
+  }
+  const s = [`⚠️ <b>KELISHMOVCHILIKLAR</b>`, AJRATGICH, ``];
+  for (const r of royxat) {
+    s.push(`👤 <b>${esc(r.ism)}</b> — ${r.soni} ta faol yozuv bilan.`);
+  }
+  s.push(``, `<i>Har birini alohida ochib, kerakli birini faolsizlantiring.</i>`);
+  return s.join("\n");
+}
+
+/** So'nggi admin o'zgarishlari — umumiy jurnal. */
+export function adminLogMatni(loglar: AdminLogToliq[]): string {
+  if (loglar.length === 0) {
+    return [`📜 <b>O'ZGARISHLAR TARIXI</b>`, AJRATGICH, ``, `🤷 <i>Hali hech narsa yo'q.</i>`].join("\n");
+  }
+  const s = [`📜 <b>O'ZGARISHLAR TARIXI</b>`, AJRATGICH, ``];
+  for (const l of loglar) {
+    s.push(`▫️ ${esc(l.harakat)} (#${l.obyekt_id ?? "—"}) — ${esc(l.admin_ism)}`);
+    if (l.eski_qiymat || l.yangi_qiymat) {
+      s.push(`   ${esc(l.eski_qiymat ?? "—")} → ${esc(l.yangi_qiymat ?? "—")}`);
+    }
+    s.push(`   📅 ${qisqaSana(l.created_at)}`);
+  }
   return s.join("\n");
 }

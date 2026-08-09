@@ -7,7 +7,7 @@ function odam(over: Partial<OdamBall> & { userId: number; ism: string }): OdamBa
   return {
     xona: 1, ishlar: {}, ishSoni: 0, xarajat: 0, xarajatSumma: 0, tasdiq: 0,
     navbatSoni: 0, kechikkanKun: 0, navbatBall: 0, ishBall: 0, xarajatBall: 0,
-    tasdiqBall: 0, shikoyatBall: 0, shikoyatSoni: 0, jami: 0,
+    tasdiqBall: 0, shikoyatBall: 0, shikoyatSoni: 0, tuzatishBall: 0, jami: 0,
     ...over,
   };
 }

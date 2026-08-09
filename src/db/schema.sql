@@ -350,3 +350,44 @@ CREATE INDEX IF NOT EXISTS tolovlar_tasdiqlandi_idx ON tolovlar (user_id) WHERE 
 --     eslatmadan ataylab alohida (guruh har 5 soatda bezovta qilinmasin).
 ALTER TABLE turns ADD COLUMN IF NOT EXISTS ishlar JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE turns ADD COLUMN IF NOT EXISTS oxirgi_eslatma TIMESTAMPTZ;
+
+-- ---------------------------------------------------------------------------
+-- ADMIN: qo'lda ma'lumot boshqaruvi + o'zgarishlar jurnali
+-- ---------------------------------------------------------------------------
+-- Admin botdan tashqarida (kod o'zgartirmasdan) foydalanuvchi ma'lumotini
+-- to'g'irlashi kerak bo'lganda (masalan noto'g'ri Telegram hisobiga
+-- ulanib qolgan bo'lsa) shu ikki jadval orqali ishlaydi:
+--
+--   admin_log     — har bir sezgir o'zgarish: kim, nima, eski/yangi qiymat,
+--                    qachon (core/adminlog.ts). Hech qanday amal buni
+--                    chetlab o'tmaydi — core/users.ts'dagi har bir yozuvchi
+--                    funksiya shu yerga ham yozadi.
+--   ball_tuzatish — reyting hisob-kitobi har doim TARIXIY yozuvlardan
+--                   (chores/expenses/turns/reports) yig'iladi, users'da
+--                   alohida "ball" ustuni yo'q. Admin qo'lda tuzatish
+--                   kiritsa, bu ham xuddi o'sha yig'indiga bitta qo'shimcha
+--                   manba sifatida qo'shiladi (core/rating.ts) — mavjud
+--                   hisoblash mexanizmi buzilmaydi, faqat kengaytiriladi.
+CREATE TABLE IF NOT EXISTS admin_log (
+  id           SERIAL PRIMARY KEY,
+  admin_id     INT NOT NULL REFERENCES users(id),
+  harakat      TEXT NOT NULL,
+  obyekt_turi  TEXT NOT NULL,
+  obyekt_id    INT,
+  eski_qiymat  TEXT,
+  yangi_qiymat TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS admin_log_vaqt_idx ON admin_log (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS ball_tuzatish (
+  id         SERIAL PRIMARY KEY,
+  user_id    INT NOT NULL REFERENCES users(id),
+  ball       INT NOT NULL,
+  sabab      TEXT,
+  admin_id   INT NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS ball_tuzatish_user_idx ON ball_tuzatish (user_id);

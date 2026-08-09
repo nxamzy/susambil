@@ -165,3 +165,25 @@ export type Tolov = {
   created_at: Date;
   hal_qilindi: Date | null;
 };
+
+/** Admin harakatlar jurnali — kim, nima, eski/yangi qiymat, qachon. */
+export type AdminLog = {
+  id: number;
+  admin_id: number;
+  harakat: string;
+  obyekt_turi: string;
+  obyekt_id: number | null;
+  eski_qiymat: string | null;
+  yangi_qiymat: string | null;
+  created_at: Date;
+};
+
+/** Admin qo'lda kiritgan ball tuzatishi — reyting hisobiga qo'shimcha manba sifatida qo'shiladi. */
+export type BallTuzatish = {
+  id: number;
+  user_id: number;
+  ball: number;
+  sabab: string | null;
+  admin_id: number;
+  created_at: Date;
+};
