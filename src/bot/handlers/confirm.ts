@@ -6,6 +6,7 @@ import { navbatniYopish } from "../../core/rotation.js";
 import { radEt, tasdiqla, tasdiqlovchilar } from "../../core/topshiriq.js";
 import { guruhId, kim, shaxsiy } from "../group.js";
 import { tasdiqKeyboard } from "../keyboards.js";
+import { navbatKelganiniXabarQil } from "./navbat.js";
 import {
   navbatXabari,
   tasdiqXabari,
@@ -186,7 +187,12 @@ async function navbatniTasdiqla(ctx: Context, u: User, sub: Submission) {
 
   // Yetarli tasdiq yig'ildi. Ikki kishi baravar bosgan bo'lsa navbatniYopish
   // null qaytaradi — o'shanda hech narsa qilmaymiz.
-  const natija = await navbatniYopish(turn, room);
+  //
+  // MUHIM: kechikish `sub.created_at` — navbatchi "Yakuniy topshirish"ni
+  // BOSGAN payt — asosida hisoblanadi, hozirgi (3-tasdiq kelgan) vaqt
+  // asosida EMAS. Guruh a'zolari tasdiqlashni kechiktirsa ham navbatchi
+  // buning uchun jarimalanmasligi kerak.
+  const natija = await navbatniYopish(turn, room, "tasdiqlandi", sub.created_at);
   if (!natija) return;
 
   await sql`
@@ -207,24 +213,9 @@ async function navbatniTasdiqla(ctx: Context, u: User, sub: Submission) {
     );
   }
 
-  // Keyingi xonaga shaxsiy xabar — guruhni hamma ham o'qiyvermaydi.
-  // `azo` allaqachon to'liq User — qayta so'rov qilish shart emas.
-  for (const azo of natija.keyingi.azolar) {
-    await shaxsiy(
-      ctx.api,
-      azo,
-      [
-        `🧹 <b>NAVBAT SIZGA KELDI</b>`,
-        ``,
-        `🏠 ${natija.keyingi.room.raqam}-xona`,
-        ``,
-        `👇 Pastdagi tugma bilan shaxsiy panelingizni oching — har`,
-        `vazifani (xona/hammom/oshxona/musor) alohida, o'z rasmi`,
-        `bilan belgilaysiz.`,
-        ``,
-        `✅ <b>${config.kerakliTasdiq} kishi</b> tasdiqlagach ball qo'shiladi.`,
-      ].join("\n"),
-      { reply_markup: new InlineKeyboard().text("👤 Mening Navbatim", "navbat_panel") },
-    );
-  }
+  // Keyingi xonaga shaxsiy xabar — guruhni hamma ham o'qiyvermaydi. Bir xil
+  // funksiya navbat.ts'dagi admin harakatlari bilan baham ko'riladi
+  // (ikkinchi nusxa yaratilmagan) — shu bilan birga ularning pastki
+  // menyusini ham yangilaydi, "🧹 Mening navbatim" endi ko'rinadi.
+  await navbatKelganiniXabarQil(ctx.api, natija.keyingi.room, natija.keyingi.azolar);
 }

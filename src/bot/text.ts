@@ -1,9 +1,10 @@
 import type { Report, Room, SubTur, Turn, TurnIshlar, User } from "../db/index.js";
 import {
-  config, ISH_TURLARI, BALLAR, ISHONCH_DARAJASI, NAVBAT_ISHLARI, SHIKOYAT_JOYLARI,
+  config, ISH_TURLARI, BALLAR, ISHONCH_DARAJASI, NAVBAT_ISHLARI, NAVBAT_RASM_SONI, SHIKOYAT_JOYLARI,
   type IshTuri, type Ishonch, type NavbatIshi, type ShikoyatJoyi,
 } from "../config.js";
 import { orinlarniHisobla, type OdamBall } from "../core/rating.js";
+import { ishRasmlari } from "../core/rotation.js";
 import type { ReportToliq } from "../core/reports.js";
 import type {
   TolovDashboard, TolovDaraja, TolovHolatMalumoti, TolovTarix, TolovToliq,
@@ -218,7 +219,13 @@ function bolmalar(soni: number, kerak: number): string {
 
 function vazifaQatori(ish: NavbatIshi, ishlar: TurnIshlar): string {
   const t = ISH_TURLARI[ish];
-  return ishlar[ish] ? `✅ ${t.emoji} ${t.nom}` : `☐ ${t.emoji} ${t.nom}`;
+  const kerak = NAVBAT_RASM_SONI[ish];
+  const soni = ishRasmlari(ishlar[ish]).length;
+  const bajarildi = soni >= kerak;
+  // Faqat bir nechta rasm kerak bo'lgan vazifalarda (masalan hammom) sonini
+  // ko'rsatamiz — bitta rasmli vazifalarda ko'rinish avvalgidek qoladi.
+  const son = kerak > 1 ? ` (${soni}/${kerak})` : "";
+  return `${bajarildi ? "✅" : "☐"} ${t.emoji} ${t.nom}${son}`;
 }
 
 /**
@@ -239,7 +246,9 @@ export type VazifaHolati =
  */
 export function vazifaPaneli(room: Room, turn: Turn, status: VazifaHolati): string {
   const ishlar = turn.ishlar;
-  const bajarilgan = NAVBAT_ISHLARI.filter((k) => ishlar[k]).length;
+  const bajarilgan = NAVBAT_ISHLARI.filter(
+    (k) => ishRasmlari(ishlar[k]).length >= NAVBAT_RASM_SONI[k],
+  ).length;
   const qoldi = NAVBAT_ISHLARI.length - bajarilgan;
 
   const s = [
@@ -278,6 +287,32 @@ export function vazifaPaneli(room: Room, turn: Turn, status: VazifaHolati): stri
   return s.join("\n");
 }
 
+/**
+ * "Mening Navbatim" ochilganda, lekin majburiy tozalash muddat tugashiga
+ * hali `config.majburiyOchilishKuni` kundan ko'p qolgan bo'lsa — vazifa
+ * ro'yxati/tugmalar o'rniga shu ko'rsatiladi. Ixtiyoriy tozalash tugmalari
+ * (bottom menyu) bundan mustaqil — ular shu holatda ham ishlayveradi.
+ */
+export function majburiyQulfMatni(room: Room, muddat: Date): string {
+  return [
+    `👤 <b>MENING NAVBATIM</b>`,
+    AJRATGICH,
+    ``,
+    `🏠 Xona: <b>${room.raqam}-xona</b>`,
+    `📅 Muddat: <b>${sana(muddat)}</b>`,
+    `${muddatHolati(muddat)}`,
+    ``,
+    `🕐 <b>Majburiy xona tozalash hali ochilmagan.</b>`,
+    ``,
+    `Xonani majburiy tozalash imkoniyati navbatingiz tugashiga`,
+    `<b>${config.majburiyOchilishKuni} kun</b> qolganda ochiladi.`,
+    ``,
+    `<i>Shu paytgacha pastdagi ixtiyoriy tozalash tugmalaridan</i>`,
+    `<i>xohlagancha foydalanishingiz mumkin — ular bu majburiy</i>`,
+    `<i>vazifadan alohida, istalgan payt ball beradi.</i>`,
+  ].join("\n");
+}
+
 /** Navbatda bo'lmagan odam "Navbat" bo'limini ochsa — faqat umumiy ma'lumot, boshqaning tugmalari yo'q. */
 export function boshqaXonaMatni(room: Room, azolar: User[], muddat: Date): string {
   return [
@@ -297,7 +332,9 @@ export function boshqaXonaMatni(room: Room, azolar: User[], muddat: Date): strin
  */
 export function navbatAdminPaneli(room: Room, turn: Turn, azolar: User[], status: VazifaHolati): string {
   const ishlar = turn.ishlar;
-  const bajarilgan = NAVBAT_ISHLARI.filter((k) => ishlar[k]).length;
+  const bajarilgan = NAVBAT_ISHLARI.filter(
+    (k) => ishRasmlari(ishlar[k]).length >= NAVBAT_RASM_SONI[k],
+  ).length;
 
   const s = [
     `🛠 <b>JORIY NAVBAT — ADMIN</b>`,

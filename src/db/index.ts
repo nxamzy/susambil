@@ -24,8 +24,22 @@ export type User = {
   faol: boolean;
 };
 
-/** Bitta vazifaning holati — rasm kelganda to'ladi, boshqa hech narsa uni o'chirmaydi. */
-export type TurnIshBelgisi = { photo_id: string; user_id: number; vaqt: string };
+/**
+ * Bitta vazifaning holati — rasm kelganda to'ladi, boshqa hech narsa uni
+ * o'chirmaydi. `photo_ids` — yig'ilib borayotgan rasmlar (ba'zi vazifalarga
+ * bir nechtasi kerak, masalan hammom). `photo_id` — eski format, faqat
+ * deploydan oldin allaqachon bitta rasm bilan belgilangan vazifalarni
+ * o'qishda orqaga moslik uchun qoldirilgan (`core/rotation.ts` ishRasmlari()
+ * ikkalasini ham tushunadi); yangi yozuvlar hech qachon shu maydonni
+ * ishlatmaydi.
+ */
+export type TurnIshBelgisi = {
+  photo_ids?: string[];
+  /** @deprecated faqat eski yozuvlarni o'qishda ishlatiladi */
+  photo_id?: string;
+  user_id: number;
+  vaqt: string;
+};
 
 export type TurnIshlar = Partial<Record<NavbatIshi, TurnIshBelgisi>>;
 

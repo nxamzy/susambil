@@ -1,5 +1,13 @@
-import { sql, type Room, type Submission, type Turn, type TurnIshlar, type User } from "../db/index.js";
-import { config, NAVBAT_ISHLARI, type NavbatIshi } from "../config.js";
+import {
+  sql,
+  type Room,
+  type Submission,
+  type Turn,
+  type TurnIshBelgisi,
+  type TurnIshlar,
+  type User,
+} from "../db/index.js";
+import { config, NAVBAT_ISHLARI, NAVBAT_RASM_SONI, type NavbatIshi } from "../config.js";
 import { navbatBalli } from "./rating.js";
 
 const KUN_MS = 24 * 60 * 60 * 1000;
@@ -21,6 +29,18 @@ export async function faolNavbat(): Promise<FaolNavbat | null> {
   if (!room) return null;
 
   return { turn, room, azolar: await xonaAzolari(turn.room_id) };
+}
+
+/**
+ * Shu xona hozir navbatda turibdimi — "🧹 Mening navbatim" tugmasini
+ * pastki menyuda ko'rsatish/yashirish shu bilan aniqlanadi (bot/keyboards.ts
+ * `menyuKeyboard`). Xonasiz odam (`roomId === null`) hech qachon `true`
+ * bo'lmaydi.
+ */
+export async function joriyNavbatchimi(roomId: number | null): Promise<boolean> {
+  if (roomId === null) return false;
+  const n = await faolNavbat();
+  return n?.room.id === roomId;
 }
 
 export async function xonaAzolari(roomId: number): Promise<User[]> {
@@ -125,14 +145,23 @@ export type YopishNatijasi = {
  * qatori `FOR UPDATE` bilan qulflanadi va holati tranzaksiya ichida qayta
  * tekshiriladi. Allaqachon yopilgan bo'lsa `null` qaytadi — aks holda
  * ikkita keyingi navbat yaralib qolardi.
+ *
+ * @param hisoblashVaqti Kechikish shu vaqtdan hisoblanadi — navbatchi
+ *   "Yakuniy topshirish"ni BOSGAN payt (`submissions.created_at`), guruh/
+ *   admin QACHON tasdiqlagani EMAS. Aks holda tasdiqlash kechiksa (masalan
+ *   admin kechqurun ko'rib chiqsa), navbatchi o'z vazifasini vaqtida
+ *   topshirgan bo'lsa ham jarimalanib qolardi — bu uning aybi emas.
+ *   Chaqiruvchida mos submission topilmasa (masalan admin hech kim hech
+ *   narsa topshirmagan holda majburan yopsa), standart `new Date()` qoladi.
  */
 export async function navbatniYopish(
   turn: Turn,
   room: Room,
   sabab: "tasdiqlandi" | "admin_yopdi" = "tasdiqlandi",
+  hisoblashVaqti: Date = new Date(),
 ): Promise<YopishNatijasi | null> {
   const hozir = new Date();
-  const kechikdi = kechikkanKun(turn.muddat, hozir);
+  const kechikdi = kechikkanKun(turn.muddat, hisoblashVaqti);
   const keyingiRoom = await keyingiXona(room);
   const yangiMuddat = new Date(hozir.getTime() + config.siklKuni * KUN_MS);
 
@@ -205,40 +234,110 @@ export async function navbatniOzgartirish(xonaRaqami: number): Promise<FaolNavba
 }
 
 /**
- * Bitta vazifani (xona/hammom/oshxona/musor) rasm bilan belgilaydi.
- * Faqat 'faol' navbatda ishlaydi — yopilgan navbatga qo'lda callback orqali
- * urinilsa jimgina `null` qaytadi.
+ * Bitta vazifaning to'plangan rasmlari — eski ("photo_id", bitta rasm) va
+ * yangi ("photo_ids", array) formatni ikkalasini ham tushunadi, shuning
+ * uchun deploydan oldin allaqachon belgilangan vazifalar yo'qolib
+ * qolmaydi. Yangi yozuvlar hech qachon "photo_id"ni ishlatmaydi.
+ */
+export function ishRasmlari(belgi: TurnIshBelgisi | undefined): string[] {
+  if (!belgi) return [];
+  if (belgi.photo_ids) return belgi.photo_ids;
+  return belgi.photo_id ? [belgi.photo_id] : [];
+}
+
+export type IshBelgilashNatija = {
+  turn: Turn;
+  /** Shu vazifa uchun kerakli barcha rasmlar yig'ildimi. */
+  toliq: boolean;
+  soni: number;
+  kerak: number;
+  /**
+   * Shu chaqiruvdagi rasm haqiqatan saqlandimi. `false` — vazifa bu
+   * rasmdan OLDIN ham allaqachon to'liq bo'lgan (masalan odam adashib
+   * kerakidan ortiq rasm tashlab yuborsa): rasm e'tiborsiz qoldirilgan,
+   * lekin hech narsa yo'qolmagan — mavjud to'plam o'zgarishsiz qoladi.
+   */
+  yozildimi: boolean;
+};
+
+/**
+ * Bitta vazifaga (xona/hammom/oshxona/musor) rasm qo'shadi — YOZIB
+ * YUBORMAYDI, YIG'ADI. Har bir vazifaga nechta rasm kerakligi
+ * `NAVBAT_RASM_SONI`dan olinadi (hammom uchun 3, qolganlariga 1).
  *
- * Qayta bosilsa (rasmni almashtirish) ustidan yozadi — muammo emas, chunki
- * `jsonb_set` shu kalitning o'zini yangilaydi, boshqalariga tegmaydi.
+ * Bitta SQL bilan atomik qo'shiladi (o'qib-yozish emas) — aks holda odam
+ * bir nechta rasmni albom sifatida yuborsa (Telegram ularni tez-tez ketma-
+ * ket alohida yangilanish sifatida yetkazadi), ikkita chaqiruv bir xil
+ * eski qiymatni o'qib, bir-birining ustidan yozib, rasm yo'qolib qolishi
+ * mumkin edi. `jsonb_array_length(...) < kerak` sharti WHERE'da turgani
+ * uchun kerakdan ortiq rasm ham qo'shilmaydi — qayta-qayta xato bosilsa
+ * ham xavfsiz.
+ *
+ * Faqat 'faol' navbatda ishlaydi; yopilgan navbatga eski callback orqali
+ * urinilsa yoki vazifa allaqachon to'liq bo'lsa `null` emas, joriy holat
+ * qaytadi (`toliq: true`) — chaqiruvchi buni "yozilmadi" deb emas,
+ * "allaqachon tayyor" deb ko'rsatishi kerak.
  */
 export async function ishBelgila(
   turnId: number,
   ish: NavbatIshi,
   userId: number,
   photoId: string,
-): Promise<Turn | null> {
-  const qiymat = { photo_id: photoId, user_id: userId, vaqt: new Date().toISOString() };
-  const [t] = await sql<Turn[]>`
+): Promise<IshBelgilashNatija | null> {
+  const kerak = NAVBAT_RASM_SONI[ish];
+
+  const [yangilangan] = await sql<Turn[]>`
     UPDATE turns
-    SET ishlar = jsonb_set(ishlar, ARRAY[${ish}]::text[], ${sql.json(qiymat)}, true)
+    SET ishlar = jsonb_set(
+      ishlar,
+      ARRAY[${ish}]::text[],
+      jsonb_build_object(
+        'photo_ids', COALESCE(ishlar -> ${ish} -> 'photo_ids', '[]'::jsonb) || to_jsonb(${photoId}::text),
+        'user_id', ${userId}::int,
+        'vaqt', now()
+      ),
+      true
+    )
     WHERE id = ${turnId} AND holat = 'faol'
+      AND jsonb_array_length(COALESCE(ishlar -> ${ish} -> 'photo_ids', '[]'::jsonb)) < ${kerak}
     RETURNING *
   `;
-  return t ?? null;
+
+  if (yangilangan) {
+    const soni = ishRasmlari(yangilangan.ishlar[ish]).length;
+    return { turn: yangilangan, toliq: soni >= kerak, soni, kerak, yozildimi: true };
+  }
+
+  // Yozilmadi — navbat yopilganmi yoki vazifa allaqachon to'liqmi, aniqlab
+  // beramiz (ikkalasi ham chaqiruvchiga boshqa-boshqa xabar bilan kerak).
+  const [joriy] = await sql<Turn[]>`SELECT * FROM turns WHERE id = ${turnId} AND holat = 'faol'`;
+  if (!joriy) return null;
+
+  const soni = ishRasmlari(joriy.ishlar[ish]).length;
+  return { turn: joriy, toliq: soni >= kerak, soni, kerak, yozildimi: false };
 }
 
 /** Sof funksiyalar — bazasiz testlanadi. */
 export function barchaIshlarBajarildimi(ishlar: TurnIshlar): boolean {
-  return NAVBAT_ISHLARI.every((k) => ishlar[k] !== undefined);
+  return NAVBAT_ISHLARI.every((k) => ishRasmlari(ishlar[k]).length >= NAVBAT_RASM_SONI[k]);
 }
 
 export function qolganIshlar(ishlar: TurnIshlar): NavbatIshi[] {
-  return NAVBAT_ISHLARI.filter((k) => ishlar[k] === undefined);
+  return NAVBAT_ISHLARI.filter((k) => ishRasmlari(ishlar[k]).length < NAVBAT_RASM_SONI[k]);
 }
 
 export function bajarilganIshlarSoni(ishlar: TurnIshlar): number {
   return NAVBAT_ISHLARI.length - qolganIshlar(ishlar).length;
+}
+
+/**
+ * Navbatning MAJBURIY tozalash vazifalari muddat tugashiga
+ * `config.majburiyOchilishKuni` kun (yoki kamroq) qolganda ochiladi. Muddat
+ * allaqachon o'tib ketgan bo'lsa ham (kechikkan holat) ochiq hisoblanadi —
+ * lock faqat "hali erta" holatini to'sadi.
+ */
+export function majburiyOchildimi(muddat: Date, hozir: Date = new Date()): boolean {
+  return hozir.getTime() >= new Date(muddat).getTime() - config.majburiyOchilishKuni * KUN_MS;
 }
 
 /**
@@ -263,9 +362,7 @@ export async function navbatFaolTopshirigi(turnId: number): Promise<Submission |
  * bilan bir xil rolda).
  */
 export async function navbatTopshir(turn: Turn, finalizerUserId: number): Promise<Submission> {
-  const photoIds = NAVBAT_ISHLARI.map((k) => turn.ishlar[k]?.photo_id).filter(
-    (id): id is string => Boolean(id),
-  );
+  const photoIds = NAVBAT_ISHLARI.flatMap((k) => ishRasmlari(turn.ishlar[k]));
 
   const [sub] = await sql<Submission[]>`
     INSERT INTO submissions (turn_id, user_id, photo_ids, tur, holat)

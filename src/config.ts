@@ -31,6 +31,14 @@ export const config = {
   /** Kechikkan har bir kun uchun jarima (so'm). Faqat reytingda ko'rsatiladi —
    *  bot pul hisobini yuritmaydi. */
   jarimaKunlik: 10_000,
+
+  /**
+   * Navbatdagi MAJBURIY xona tozalash vazifalari ("🧹 Mening navbatim" ichida)
+   * muddat tugashiga necha kun qolganda ochiladi. Shu paytgacha xona a'zosi
+   * botni ishlatishi mumkin (masalan ixtiyoriy tozalash tugmalari orqali),
+   * lekin majburiy navbat vazifalarini boshlay olmaydi.
+   */
+  majburiyOchilishKuni: 1,
 } as const;
 
 /**
@@ -80,6 +88,18 @@ export type IshTuri = keyof typeof ISH_TURLARI;
  */
 export const NAVBAT_ISHLARI = ["xona", "hammom", "oshxona", "musor"] as const;
 export type NavbatIshi = (typeof NAVBAT_ISHLARI)[number];
+
+/**
+ * Har bir majburiy vazifa uchun nechta dalil rasmi kerakligi. Standart 1 —
+ * hammom kattaroq ish bo'lgani uchun 3 ta (turli burchak) talab qilinadi.
+ * Rasm soni shu yerdan olinadi, hech qayerda qattiq yozilgan "3" yo'q.
+ */
+export const NAVBAT_RASM_SONI: Record<NavbatIshi, number> = {
+  xona: 1,
+  hammom: 3,
+  oshxona: 1,
+  musor: 1,
+};
 
 /** Pastdagi doimiy menyuda tugmasi bor turlar. */
 export const TEZ_ISHLAR = (Object.keys(ISH_TURLARI) as IshTuri[]).filter(

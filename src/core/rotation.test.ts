@@ -1,12 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { TurnIshlar } from "../db/index.js";
+import type { TurnIshBelgisi, TurnIshlar } from "../db/index.js";
+import { NAVBAT_RASM_SONI } from "../config.js";
 import {
   keyingiJoy,
   kechikkanKun,
   barchaIshlarBajarildimi,
   qolganIshlar,
   bajarilganIshlarSoni,
+  ishRasmlari,
+  majburiyOchildimi,
 } from "./rotation.js";
 
 /** Berilgan joydan boshlab n ta qadam yuradi va bosib o'tilgan o'rinlarni qaytaradi. */
@@ -71,27 +74,76 @@ test("kechikkanKun boshlangan kunni ham to'liq kun deb sanaydi", () => {
   assert.equal(kechikkanKun(muddat, new Date("2026-08-12T00:00:00Z")), 2);
 });
 
+/** 1-rasmli vazifa (xona/oshxona/musor) uchun — eski format ham qo'llab-quvvatlanadi. */
 const fakeBelgisi = { photo_id: "x", user_id: 1, vaqt: "2026-08-09T00:00:00Z" } as const;
+
+/** Hammom uchun to'liq — NAVBAT_RASM_SONI.hammom (3) ta rasm bilan. */
+function hammomToliq(): TurnIshBelgisi {
+  return { photo_ids: ["a", "b", "c"], user_id: 1, vaqt: "2026-08-09T00:00:00Z" };
+}
 
 test("hech qanday vazifa bajarilmagan bo'lsa barchaIshlarBajarildimi=false", () => {
   assert.equal(barchaIshlarBajarildimi({}), false);
 });
 
 test("faqat ba'zi vazifalar bajarilgan bo'lsa hali false", () => {
-  const ishlar: TurnIshlar = { xona: fakeBelgisi, hammom: fakeBelgisi };
+  const ishlar: TurnIshlar = { xona: fakeBelgisi, hammom: hammomToliq() };
   assert.equal(barchaIshlarBajarildimi(ishlar), false);
   assert.deepEqual(qolganIshlar(ishlar), ["oshxona", "musor"]);
   assert.equal(bajarilganIshlarSoni(ishlar), 2);
 });
 
-test("barcha 4 ta vazifa bajarilgach barchaIshlarBajarildimi=true", () => {
+test("hammom kerakli sondan kam rasm bilan hali bajarilgan hisoblanmaydi (1/3)", () => {
   const ishlar: TurnIshlar = {
     xona: fakeBelgisi,
-    hammom: fakeBelgisi,
+    hammom: { photo_ids: ["a"], user_id: 1, vaqt: "2026-08-09T00:00:00Z" },
+    oshxona: fakeBelgisi,
+    musor: fakeBelgisi,
+  };
+  assert.equal(barchaIshlarBajarildimi(ishlar), false);
+  assert.deepEqual(qolganIshlar(ishlar), ["hammom"]);
+  assert.equal(bajarilganIshlarSoni(ishlar), 3);
+});
+
+test("barcha vazifalar (hammom kerakli 3 rasm bilan) bajarilgach barchaIshlarBajarildimi=true", () => {
+  const ishlar: TurnIshlar = {
+    xona: fakeBelgisi,
+    hammom: hammomToliq(),
     oshxona: fakeBelgisi,
     musor: fakeBelgisi,
   };
   assert.equal(barchaIshlarBajarildimi(ishlar), true);
   assert.deepEqual(qolganIshlar(ishlar), []);
   assert.equal(bajarilganIshlarSoni(ishlar), 4);
+});
+
+test("ishRasmlari eski (photo_id) va yangi (photo_ids) formatni ikkalasini ham o'qiydi", () => {
+  assert.deepEqual(ishRasmlari(undefined), []);
+  assert.deepEqual(ishRasmlari(fakeBelgisi), ["x"]);
+  assert.deepEqual(ishRasmlari(hammomToliq()), ["a", "b", "c"]);
+});
+
+test("NAVBAT_RASM_SONI: hammom 3, qolganlari 1", () => {
+  assert.equal(NAVBAT_RASM_SONI.hammom, 3);
+  assert.equal(NAVBAT_RASM_SONI.xona, 1);
+  assert.equal(NAVBAT_RASM_SONI.oshxona, 1);
+  assert.equal(NAVBAT_RASM_SONI.musor, 1);
+});
+
+test("majburiyOchildimi: muddatgacha 2 kun qolganda hali yopiq", () => {
+  const muddat = new Date("2026-08-10T00:00:00Z");
+  const ikkiKunOldin = new Date("2026-08-08T00:00:00Z");
+  assert.equal(majburiyOchildimi(muddat, ikkiKunOldin), false);
+});
+
+test("majburiyOchildimi: aynan 1 kun qolganda ochiladi", () => {
+  const muddat = new Date("2026-08-10T00:00:00Z");
+  const birKunOldin = new Date("2026-08-09T00:00:00Z");
+  assert.equal(majburiyOchildimi(muddat, birKunOldin), true);
+});
+
+test("majburiyOchildimi: muddat allaqachon o'tib ketgan bo'lsa ham ochiq", () => {
+  const muddat = new Date("2026-08-10T00:00:00Z");
+  const kechikkan = new Date("2026-08-15T00:00:00Z");
+  assert.equal(majburiyOchildimi(muddat, kechikkan), true);
 });

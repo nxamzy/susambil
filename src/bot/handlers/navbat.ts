@@ -15,7 +15,7 @@
  * (bot/handlers/confirm.ts, `tasdiqXabari`/`tasdiqKeyboard`) ulanadi —
  * ikkinchi tasdiqlash tizimi yaratilmagan.
  */
-import type { Bot, Context } from "grammy";
+import type { Api, Bot, Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import type { InputMediaPhoto } from "grammy/types";
 import { sql, type Room, type Turn, type User } from "../../db/index.js";
@@ -24,6 +24,7 @@ import {
   barchaIshlarBajarildimi,
   faolNavbat,
   ishBelgila,
+  majburiyOchildimi,
   navbatFaolTopshirigi,
   navbatniBoshlash,
   navbatniOzgartirish,
@@ -35,6 +36,7 @@ import { tasdiqlovchilar } from "../../core/topshiriq.js";
 import { guruhId, kim, shaxsiy } from "../group.js";
 import {
   bekorKeyboard,
+  menyuKeyboard,
   navbatAdminKeyboard,
   navbatBoshlashKeyboard,
   navbatXonagaOtkazishKeyboard,
@@ -43,6 +45,7 @@ import {
 } from "../keyboards.js";
 import {
   boshqaXonaMatni,
+  majburiyQulfMatni,
   navbatAdminPaneli,
   navbatXabari,
   tasdiqXabari,
@@ -69,7 +72,19 @@ async function vazifaHolatiniAniqla(turn: Turn): Promise<VazifaHolati> {
   return { tur: "faol" };
 }
 
+/**
+ * Majburiy vazifalar (xona/hammom/oshxona/musor) muddat tugashiga
+ * `config.majburiyOchilishKuni` kun qolmaguncha ko'rsatilmaydi — shu
+ * paytgacha bu yerda faqat qulf xabari chiqadi. Ixtiyoriy tozalash
+ * (bottom menyudagi tez ish tugmalari) bundan butunlay mustaqil — ular
+ * bu tekshiruvga umuman tegishli emas.
+ */
 async function panelniYubor(ctx: Context, turn: Turn, room: Room): Promise<void> {
+  if (!majburiyOchildimi(turn.muddat)) {
+    await ctx.reply(majburiyQulfMatni(room, turn.muddat), { parse_mode: "HTML" });
+    return;
+  }
+
   const status = await vazifaHolatiniAniqla(turn);
   const matn = vazifaPaneli(room, turn, status);
   const kb = status.tur === "faol" ? vazifaKeyboard(turn.id, turn.ishlar) : new InlineKeyboard();
@@ -103,7 +118,13 @@ export async function vazifaPaneliniKorsat(ctx: Context): Promise<void> {
   await panelniYubor(ctx, n.turn, n.room);
 }
 
-/** Vazifa rasmi kelgach chaqiriladi — photos.ts'dan. */
+/**
+ * Vazifa rasmi kelgach chaqiriladi — photos.ts'dan. Rasm YIG'ILADI, darrov
+ * yakunlanmaydi: kerakli sondan (`NAVBAT_RASM_SONI`) kamida bittasi qolgan
+ * bo'lsa, jarayon holati ("navbat_ish") ATAYLAB tozalanmaydi — keyingi
+ * xabar (masalan albom ichidagi navbatdagi rasm) xuddi shu vazifaga davom
+ * etadi, odam qayta tugma bosishi shart emas.
+ */
 export async function vazifaRasmiKeldi(
   ctx: Context,
   ish: NavbatIshi,
@@ -114,16 +135,45 @@ export async function vazifaRasmiKeldi(
   const u = await kim(ctx.from.id);
   if (!u) return;
 
-  await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
-  await holatTozala(ctx.from.id);
-
-  const yangi = await ishBelgila(turnId, ish, u.id, fileId);
-  if (!yangi) {
+  const natija = await ishBelgila(turnId, ish, u.id, fileId);
+  if (!natija) {
+    await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+    await holatTozala(ctx.from.id);
     await ctx.reply("Bu navbat allaqachon yopilgan.");
     return;
   }
 
-  await ctx.reply(`✅ <b>${ISH_TURLARI[ish].nom}</b> belgilandi.`, { parse_mode: "HTML" });
+  const t = ISH_TURLARI[ish];
+
+  if (!natija.yozildimi) {
+    // Vazifa bu rasmdan OLDIN ham to'liq edi — hech narsa yo'qolmadi,
+    // shu rasm shunchaki hisobga olinmadi (odam adashib qayta tashlagan).
+    await ctx.reply(
+      `✅ <b>${t.nom}</b> uchun kerakli ${natija.kerak} ta rasm allaqachon yig'ilgan — bu rasm qo'shimcha, hisobga olinmadi.`,
+      { parse_mode: "HTML" },
+    );
+  } else if (natija.toliq) {
+    await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+    await holatTozala(ctx.from.id);
+    await ctx.reply(
+      natija.kerak > 1
+        ? `✅ <b>${t.nom}</b> belgilandi — ${natija.soni}/${natija.kerak} rasm qabul qilindi.`
+        : `✅ <b>${t.nom}</b> belgilandi.`,
+      { parse_mode: "HTML" },
+    );
+  } else {
+    // Jarayonni davom ettiramiz — muddatni yangilab qo'yamiz, aks holda
+    // odam bir nechta rasmni sekin-sekin tashlasa 15 daqiqadan keyin holat
+    // eskirib, keyingi rasm hech nimaga bog'lanmay qolishi mumkin edi.
+    await holatOrnat(ctx.from.id, { tur: "navbat_ish", ish, turnId });
+    await ctx.reply(
+      [
+        `📷 <b>${t.nom}</b> — ${natija.soni}/${natija.kerak} rasm qabul qilindi.`,
+        `Yana <b>${natija.kerak - natija.soni} ta</b> kerak — shu yerga tashlang.`,
+      ].join("\n"),
+      { parse_mode: "HTML", reply_markup: bekorKeyboard() },
+    );
+  }
 
   const n = await faolNavbat();
   if (n) await panelniYubor(ctx, n.turn, n.room);
@@ -150,6 +200,35 @@ export async function navbatAdminDashboard(ctx: Context): Promise<void> {
   });
 }
 
+/**
+ * Navbat yangi xonaga o'tganda (avtomatik 3-tasdiqdan yoki har qanday admin
+ * harakatidan keyin) yangi a'zolarga DM — bitta joyda, to'rtta chaqiruvchi
+ * (confirm.ts avtomatik yopilish, va shu fayldagi uchta admin harakati)
+ * bir xil funksiyani ishlatadi, ikkinchi nusxa yaratilmagan.
+ *
+ * `reply_markup` shu bilan birga qabul qiluvchining pastki menyusini ham
+ * yangilaydi — "🧹 Mening navbatim" endi ko'rinadi. Bu shart, chunki
+ * Telegram'ning doimiy klaviaturasi FAQAT bot o'sha chatga yangi xabar
+ * yuborganda yangilanadi — boshqa hech qanday "push" usuli yo'q.
+ */
+export async function navbatKelganiniXabarQil(api: Api, room: Room, azolar: User[]): Promise<void> {
+  const matn = [
+    `🧹 <b>NAVBAT SIZGA KELDI</b>`,
+    ``,
+    `🏠 ${room.raqam}-xona`,
+    ``,
+    `👇 Pastdagi <b>"🧹 Mening navbatim"</b> tugmasi orqali kuzatib boring.`,
+    ``,
+    `<i>Majburiy xona tozalash muddat tugashiga ${config.majburiyOchilishKuni} kun</i>`,
+    `<i>qolganda ochiladi — shu paytgacha ixtiyoriy tozalash tugmalaridan</i>`,
+    `<i>foydalanishingiz mumkin.</i>`,
+  ].join("\n");
+
+  for (const a of azolar) {
+    await shaxsiy(api, a, matn, { reply_markup: menyuKeyboard(a.admin, true) });
+  }
+}
+
 export function register(bot: Bot) {
   bot.callbackQuery("navbat_panel", async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});
@@ -166,6 +245,15 @@ export function register(bot: Bot) {
     const n = await faolNavbat();
     if (!n || n.turn.id !== turnId || u.room_id !== n.room.id) {
       return ctx.answerCallbackQuery({ text: "Bu sizning navbatingiz emas.", show_alert: true });
+    }
+
+    // Backend tomonda ham tekshiramiz — eski (keshlangan) tugma hali
+    // ko'rinib tursa ham, majburiy tozalash muddatdan oldin ochilmaydi.
+    if (!majburiyOchildimi(n.turn.muddat)) {
+      return ctx.answerCallbackQuery({
+        text: `Majburiy tozalash hali ochilmagan — navbatingiz tugashiga ${config.majburiyOchilishKuni} kun qolganda ochiladi.`,
+        show_alert: true,
+      });
     }
 
     await ctx.answerCallbackQuery({ text: "📷 Rasmni shu yerga tashlang." }).catch(() => {});
@@ -233,7 +321,17 @@ export function register(bot: Bot) {
     const [room] = await sql<Room[]>`SELECT * FROM rooms WHERE id = ${turn.room_id}`;
     if (!room) return ctx.answerCallbackQuery({ text: "Xona topilmadi." });
 
-    const natija = await navbatniYopish(turn, room, "admin_yopdi");
+    // Xona allaqachon topshirgan, faqat 3-tasdiq kutilayotgan bo'lsa — o'sha
+    // topshirilgan vaqtdan hisoblaymiz (admin qachon tugatgani emas). Hech
+    // narsa topshirilmagan bo'lsa (admin haqiqatan majburan yopyapti),
+    // navbatniYopish o'zining standart `new Date()`sini ishlatadi.
+    const mavjudTopshiriq = await navbatFaolTopshirigi(turnId);
+    const natija = await navbatniYopish(
+      turn,
+      room,
+      "admin_yopdi",
+      mavjudTopshiriq ? mavjudTopshiriq.created_at : undefined,
+    );
     if (!natija) return ctx.answerCallbackQuery({ text: "Bu navbat allaqachon yopilgan." });
 
     await ctx.answerCallbackQuery({ text: "✅ Yakunlandi." }).catch(() => {});
@@ -247,6 +345,7 @@ export function register(bot: Bot) {
         { parse_mode: "HTML" },
       );
     }
+    await navbatKelganiniXabarQil(ctx.api, natija.keyingi.room, natija.keyingi.azolar);
   });
 
   bot.callbackQuery(/^navbat_admin_qayta:(\d+)$/, async (ctx) => {
@@ -309,6 +408,7 @@ export function register(bot: Bot) {
 
     await ctx.answerCallbackQuery({ text: "▶️ Boshlandi." }).catch(() => {});
     await navbatAdminDashboard(ctx);
+    await navbatKelganiniXabarQil(ctx.api, yangi.room, yangi.azolar);
   });
 
   // Eski /navbatber buyrug'ining Admin Panel'dagi o'rni — xona raqamini
@@ -335,5 +435,6 @@ export function register(bot: Bot) {
 
     await ctx.answerCallbackQuery({ text: `✅ ${raqam}-xonaga o'tkazildi.` }).catch(() => {});
     await ctx.reply(navbatXabari(yangi.room, yangi.azolar, yangi.turn.muddat), { parse_mode: "HTML" });
+    await navbatKelganiniXabarQil(ctx.api, yangi.room, yangi.azolar);
   });
 }

@@ -3,7 +3,7 @@ import { InlineKeyboard } from "grammy";
 import { sql, type Room } from "../../db/index.js";
 import { config, ISH_TURLARI, NAVBAT_ISHLARI, SEKIN_ISHLAR, BALLAR, type IshTuri } from "../../config.js";
 import { ochiqTopshiriqlar } from "../../core/topshiriq.js";
-import { faolNavbat, kelgusiTartib, xonaAzolari } from "../../core/rotation.js";
+import { faolNavbat, joriyNavbatchimi, kelgusiTartib, xonaAzolari } from "../../core/rotation.js";
 import { reyting, orinlarniHisobla, xonaHolati, tarix } from "../../core/rating.js";
 import { jamiXarajat, oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
 import { foydalanuvchiTolovHolati, tolovQabulQiluvchi } from "../../core/tolov.js";
@@ -410,7 +410,7 @@ export function register(bot: Bot) {
     if (mavjud) {
       return ctx.reply(await panelMatni(), {
         parse_mode: "HTML",
-        reply_markup: menyuKeyboard(mavjud.admin),
+        reply_markup: menyuKeyboard(mavjud.admin, await joriyNavbatchimi(mavjud.room_id)),
       });
     }
 
@@ -446,7 +446,15 @@ export function register(bot: Bot) {
       .editMessageText(`✅ <b>Xush kelibsiz, ${esc(ism)}!</b>`, { parse_mode: "HTML" })
       .catch(() => {});
     await ctx.reply(tanishtirish(), { parse_mode: "HTML" });
-    await ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: menyuKeyboard(admin) });
+
+    // Bu yerda room_id emas, xona RAQAMI bor — faolNavbat() bilan
+    // to'g'ridan-to'g'ri solishtiramiz (joriyNavbatchimi id kutadi).
+    const joriy = await faolNavbat();
+    const isDutyUser = xona !== null && joriy?.room.raqam === xona;
+    await ctx.reply(await panelMatni(), {
+      parse_mode: "HTML",
+      reply_markup: menyuKeyboard(admin, isDutyUser),
+    });
 
     // Guruh ham bilsin — kim ulangani ko'rinib tursin. To'liq ro'yxat va
     // sanoq endi "👥 A'zolar" ko'rinishida (hammaga ochiq), shuning uchun bu
@@ -606,7 +614,10 @@ export function register(bot: Bot) {
     const u = await kim(ctx.from?.id);
     if (!u?.admin) return;
     if (ctx.chat.type === "private") {
-      return ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: menyuKeyboard(u.admin) });
+      return ctx.reply(await panelMatni(), {
+        parse_mode: "HTML",
+        reply_markup: menyuKeyboard(u.admin, await joriyNavbatchimi(u.room_id)),
+      });
     }
     await guruhIdOrnat(ctx.chat.id);
     const xabar = await ctx.reply(await panelMatni(), {

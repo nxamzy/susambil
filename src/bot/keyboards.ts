@@ -3,6 +3,7 @@ import {
   ISH_TURLARI,
   ISHONCH_DARAJASI,
   NAVBAT_ISHLARI,
+  NAVBAT_RASM_SONI,
   SEKIN_ISHLAR,
   SHIKOYAT_JOYLARI,
   TEZ_ISHLAR,
@@ -12,6 +13,7 @@ import {
 } from "../config.js";
 import type { TurnIshlar, User } from "../db/index.js";
 import type { ReportToliq } from "../core/reports.js";
+import { ishRasmlari } from "../core/rotation.js";
 import type { FoydalanuvchiToliq } from "../core/users.js";
 
 /** Ish tugmasining yozuvi — inline va doimiy menyuda bir xil bo'lsin. */
@@ -49,6 +51,17 @@ export const SHIKOYAT_TUGMA = "🔒 Anonim shikoyat";
  */
 export const ADMIN_PANEL_TUGMA = "👑 Admin Panel";
 
+/**
+ * Doimiy menyudagi "joriy navbatdaman" tugmasi. Xuddi ADMIN_PANEL_TUGMA
+ * kabi shartli — faqat navbat hozir turgan xonaning a'zolariga ko'rinadi,
+ * navbat keyingi xonaga o'tsa avtomatik ko'chib o'tadi (`menyuKeyboard`
+ * har safar joriy holatdan qayta hisoblanadi). "📋 Navbat" (hammaga ochiq,
+ * faqat o'qish uchun umumiy holat) bilan almashtirilmaydi — ikkalasi ham
+ * bir xil `vazifaPaneliniKorsat()`ga olib boradi, faqat bittasi hamma
+ * uchun, bittasi faqat navbatdagi uchun ko'rinadi.
+ */
+export const MENING_NAVBATIM_TUGMA = "🧹 Mening navbatim";
+
 /** Yozuv bo'yicha ish turini topadi (doimiy menyu tugmasi bosilganda). */
 export function tugmaIshTuri(matn: string): IshTuri | null {
   for (const t of Object.keys(ISH_TURLARI) as IshTuri[]) {
@@ -62,10 +75,11 @@ export function tugmaIshTuri(matn: string): IshTuri | null {
  * hech qachon yo'qolmaydi. Guruhda ishlatilmaydi: u yerda tugmalar hammaga
  * ko'rinib, chatni bosib qo'yardi — guruh uchun `panelKeyboard()` bor.
  */
-export function menyuKeyboard(isAdmin = false): Keyboard {
+export function menyuKeyboard(isAdmin = false, isDutyUser = false): Keyboard {
   const kb = new Keyboard();
   for (const t of TEZ_ISHLAR) kb.text(ishTugmasi(t)).row();
   kb.text(BOSHQA_ISH).row();
+  if (isDutyUser) kb.text(MENING_NAVBATIM_TUGMA).row();
   kb.text(MENYU.navbat).text(MENYU.xarajat).row();
   kb.text(MENYU.tolov).row();
   kb.text(MENYU.reyting).text(MENYU.profil).row();
@@ -125,6 +139,18 @@ export function bekorKeyboard(): InlineKeyboard {
 export function rasmKutishKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("📷 Rasmim yo'q — shundoq yuboraman", "rasmsiz")
+    .row()
+    .text("✖️ Bekor qilish", "bekor");
+}
+
+/**
+ * Kamida bitta rasm kelgandan keyin — yana rasm tashlash mumkin
+ * (to'g'ridan-to'g'ri, tugma shart emas) yoki shu bilan yakunlash mumkin.
+ * "Rasmim yo'q" bu yerda yo'q — kamida bitta rasm allaqachon bor.
+ */
+export function ishTugatishKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✅ Tugatdim — yubor", "ish_tugatdi")
     .row()
     .text("✖️ Bekor qilish", "bekor");
 }
@@ -291,13 +317,16 @@ export function vazifaKeyboard(turnId: number, ishlar: TurnIshlar): InlineKeyboa
   const kb = new InlineKeyboard();
   for (const t of NAVBAT_ISHLARI) {
     const i = ISH_TURLARI[t];
-    const bajarildi = Boolean(ishlar[t]);
+    const kerak = NAVBAT_RASM_SONI[t];
+    const soni = ishRasmlari(ishlar[t]).length;
+    const bajarildi = soni >= kerak;
+    const son = kerak > 1 ? ` (${soni}/${kerak})` : "";
     kb.text(
-      bajarildi ? `✅ ${i.nom} — bajarildi` : `${i.emoji} ${i.nom}`,
+      bajarildi ? `✅ ${i.nom}${son} — bajarildi` : `${i.emoji} ${i.nom}${son}`,
       `navbat_ish:${turnId}:${t}`,
     ).row();
   }
-  if (NAVBAT_ISHLARI.every((t) => ishlar[t])) {
+  if (NAVBAT_ISHLARI.every((t) => ishRasmlari(ishlar[t]).length >= NAVBAT_RASM_SONI[t])) {
     kb.text("📸 Yakuniy topshirish", `navbat_topshir:${turnId}`);
   }
   return kb;

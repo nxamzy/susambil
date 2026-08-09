@@ -136,6 +136,31 @@ export function register(bot: Bot) {
 
     await ctx.answerCallbackQuery({ text: "Rasmsiz yuborildi" }).catch(() => {});
     await sorovniOchir(ctx.api, holat);
-    await ishniYakunla(ctx, u, holat.ish, holat.izoh ?? null, null);
+    await ishniYakunla(ctx, u, holat.ish, holat.izoh ?? null, []);
+  });
+
+  /**
+   * "✅ Tugatdim — yubor" — kamida bitta rasm allaqachon yig'ilgan bo'lsa
+   * (photos.ts har bir kelgan rasmni shu holatga qo'shib boradi), hammasini
+   * birga guruhga tasdiqqa yuboradi.
+   */
+  bot.callbackQuery("ish_tugatdi", async (ctx) => {
+    const holat = await holatOl(ctx.from.id);
+    if (
+      holat?.tur !== "ish" ||
+      ("qadam" in holat && holat.qadam === "izoh") ||
+      !holat.photoIds?.length
+    ) {
+      return ctx.answerCallbackQuery({ text: "Jarayon eskirgan. Qaytadan boshlang." });
+    }
+
+    const u = await kim(ctx.from.id);
+    if (!u) return ctx.answerCallbackQuery({ text: "Siz ro'yxatda yo'qsiz." });
+
+    await ctx
+      .answerCallbackQuery({ text: `✅ ${holat.photoIds.length} ta rasm bilan yuborildi` })
+      .catch(() => {});
+    await sorovniOchir(ctx.api, holat);
+    await ishniYakunla(ctx, u, holat.ish, holat.izoh ?? null, holat.photoIds);
   });
 }

@@ -12,8 +12,12 @@ type Sorov = { sorov?: { chatId: number; msgId: number } };
 export type Flow = (
   /** Izoh talab qiladigan ish turi tanlandi — avval nima qilganini yozadi */
   | { tur: "ish"; ish: IshTuri; qadam: "izoh"; chatId: number }
-  /** Qo'shimcha ish belgilandi, endi rasm kutilyapti */
-  | { tur: "ish"; ish: IshTuri; chatId: number; izoh?: string }
+  /**
+   * Qo'shimcha ish belgilandi, endi rasm(lar) kutilyapti. `photoIds` —
+   * shu paytgacha yig'ilgan rasmlar (ixtiyoriy, xohlagan sonda tashlash
+   * mumkin) — birinchi rasm kelgunga qadar `undefined`.
+   */
+  | { tur: "ish"; ish: IshTuri; chatId: number; izoh?: string; photoIds?: string[] }
   /** Yangi xarajat: rasm → nomi → summasi */
   | { tur: "xarajat"; qadam: "rasm" }
   | { tur: "xarajat"; qadam: "izoh"; photoId: string }

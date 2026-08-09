@@ -6,6 +6,7 @@ import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "..
 import {
   ADMIN_PANEL_TUGMA,
   BOSHQA_ISH,
+  MENING_NAVBATIM_TUGMA,
   MENYU,
   menyuKeyboard,
   SHIKOYAT_TUGMA,
@@ -15,6 +16,7 @@ import {
 import { summaniSora, xarajatniSaqla } from "./expense.js";
 import { korinish, panelMatni } from "./commands.js";
 import { ishniBoshla, ishRasminiSora } from "./chores.js";
+import { vazifaPaneliniKorsat } from "./navbat.js";
 import { javobgarIzohiSaqlandi, shikoyatBoshla, shikoyatIzohSaqlandi, shikoyatJoySora } from "./reports.js";
 import { tolovDalilSora, tolovRadEtish, tolovTasdiqlash } from "./tolov.js";
 import {
@@ -25,6 +27,7 @@ import {
   adminYangiIsmiKeldi,
 } from "./adminUsers.js";
 import { summaTekshir } from "../../core/topshiriq.js";
+import { joriyNavbatchimi } from "../../core/rotation.js";
 
 /**
  * Doimiy menyu tugmasi bosilgan bo'lsa bajaradi. Bu tekshiruv jarayon
@@ -51,6 +54,14 @@ async function menyuTugmasi(ctx: Context, matn: string): Promise<boolean> {
     const admin = await kim(ctx.from.id);
     if (!admin?.admin) return false;
     await adminPanelKorsat(ctx);
+    return true;
+  }
+
+  // Faqat navbatdagi xona a'zosiga ko'rinadi, lekin haqiqiy tekshiruv
+  // vazifaPaneliniKorsat() ICHIDA — u eskirgan/qo'lda yozilgan matnga ham
+  // ishonmaydi, har doim `kim().room_id`ni joriy navbat bilan solishtiradi.
+  if (matn === MENING_NAVBATIM_TUGMA) {
+    await vazifaPaneliniKorsat(ctx);
     return true;
   }
 
@@ -224,7 +235,7 @@ export function register(bot: Bot) {
 
     await ctx.reply(await panelMatni(), {
       parse_mode: "HTML",
-      reply_markup: menyuKeyboard(u.admin),
+      reply_markup: menyuKeyboard(u.admin, await joriyNavbatchimi(u.room_id)),
     });
   });
 }

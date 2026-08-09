@@ -1,14 +1,18 @@
 import type { Bot, Context } from "grammy";
+import type { InputMediaPhoto } from "grammy/types";
 import { sql, type User } from "../../db/index.js";
 import { config, ISH_TURLARI, type IshTuri } from "../../config.js";
 import { guruhId, kim } from "../group.js";
-import { tasdiqKeyboard, bekorKeyboard } from "../keyboards.js";
+import { tasdiqKeyboard, bekorKeyboard, ishTugatishKeyboard } from "../keyboards.js";
 import { topshiriqXabari } from "../text.js";
 import { topshiriqYarat } from "../../core/topshiriq.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
 import { shikoyatDalilKeldi } from "./reports.js";
 import { tolovDalilKeldi } from "./tolov.js";
 import { vazifaRasmiKeldi } from "./navbat.js";
+
+/** Telegram sendMediaGroup texnik chegarasi — biznes qoida emas. */
+const ISH_RASM_MAX = 10;
 
 /**
  * Rasm besh xil maqsadda kelishi mumkin — tartib muhim, har biri holat
@@ -48,8 +52,31 @@ export function register(bot: Bot) {
         await ctx.reply("✍️ Avval nima qilganingizni yozing.");
         return;
       }
+
+      // Rasm(lar) YIG'ILADI, darrov yuborilmaydi — xohlagancha rasm tashlash
+      // mumkin, "✅ Tugatdim" bosilganda yoki texnik chegaraga (10)
+      // yetganda hammasi birga guruhga tasdiqqa chiqadi.
+      const photoIds = [...(holat.photoIds ?? []), eng.file_id].slice(0, ISH_RASM_MAX);
       await sorovniOchir(ctx.api, holat);
-      return ishniYakunla(ctx, u, holat.ish, holat.izoh ?? null, eng.file_id);
+
+      if (photoIds.length >= ISH_RASM_MAX) {
+        return ishniYakunla(ctx, u, holat.ish, holat.izoh ?? null, photoIds);
+      }
+
+      const yangi = { tur: "ish", ish: holat.ish, chatId: holat.chatId, izoh: holat.izoh, photoIds } as const;
+      await holatOrnat(fromId, yangi);
+
+      const xabar = await ctx.reply(
+        [
+          `📷 <b>${photoIds.length} ta rasm qabul qilindi.</b>`,
+          ``,
+          `Yana rasm tashlashingiz yoki tayyor bo'lsangiz pastdagi`,
+          `tugmani bosishingiz mumkin.`,
+        ].join("\n"),
+        { parse_mode: "HTML", reply_markup: ishTugatishKeyboard() },
+      );
+      await sorovniEslat(fromId, yangi, xabar.chat.id, xabar.message_id);
+      return;
     }
 
     // Xarajat oqimi faqat shaxsiy chatda. Aks holda odam botda xarajat
@@ -123,18 +150,19 @@ export function register(bot: Bot) {
 }
 
 /**
- * Qo'shimcha ish rasmi keldi. Ilgari shu yerda darrov ball berilardi; endi
- * topshiriq guruhga tasdiqqa chiqadi va ball faqat tasdiqdan keyin beriladi.
+ * Qo'shimcha ish rasm(lar)i keldi/yakunlandi. Ilgari shu yerda darrov ball
+ * berilardi; endi topshiriq guruhga tasdiqqa chiqadi va ball faqat
+ * tasdiqdan keyin beriladi.
  */
 export async function ishniYakunla(
   ctx: Context,
   u: User,
   ish: IshTuri,
   izoh: string | null,
-  photoId: string | null,
+  photoIds: string[],
 ) {
   const t = ISH_TURLARI[ish];
-  const sub = await topshiriqYarat(u.id, { tur: "ish", ish, izoh }, photoId ? [photoId] : []);
+  const sub = await topshiriqYarat(u.id, { tur: "ish", ish, izoh }, photoIds);
   if (ctx.from) await holatTozala(ctx.from.id);
 
   await ctx.reply(
@@ -155,13 +183,25 @@ export async function ishniYakunla(
   const matn = topshiriqXabari(sub, u.ism, [], config.kerakliTasdiq);
   const tugma = tasdiqKeyboard(sub.id, 0, config.kerakliTasdiq);
 
-  const xabar = photoId
-    ? await ctx.api.sendPhoto(guruh, photoId, {
-        caption: matn,
-        parse_mode: "HTML",
-        reply_markup: tugma,
-      })
-    : await ctx.api.sendMessage(guruh, matn, { parse_mode: "HTML", reply_markup: tugma });
+  let xabar;
+  if (photoIds.length === 0) {
+    xabar = await ctx.api.sendMessage(guruh, matn, { parse_mode: "HTML", reply_markup: tugma });
+  } else if (photoIds.length === 1) {
+    xabar = await ctx.api.sendPhoto(guruh, photoIds[0]!, {
+      caption: matn,
+      parse_mode: "HTML",
+      reply_markup: tugma,
+    });
+  } else {
+    // Telegram media-guruhda tugma/caption bo'lmaydi — rasmlar avval alohida
+    // albom sifatida, keyin tugmali xabar alohida yuboriladi (navbat.ts'dagi
+    // yakuniy topshirish bilan bir xil naqsh, ikkinchi nusxa yaratilmagan).
+    const media: InputMediaPhoto[] = photoIds
+      .slice(0, ISH_RASM_MAX)
+      .map((file_id) => ({ type: "photo", media: file_id }));
+    await ctx.api.sendMediaGroup(guruh, media).catch(() => {});
+    xabar = await ctx.api.sendMessage(guruh, matn, { parse_mode: "HTML", reply_markup: tugma });
+  }
 
   await sql`UPDATE submissions SET guruh_msg_id = ${xabar.message_id} WHERE id = ${sub.id}`;
 }
