@@ -528,7 +528,9 @@ export function register(bot: Bot) {
   });
 
   bot.command("navbat", async (ctx) => ctx.reply(await navbatMatni(), { parse_mode: "HTML" }));
-  bot.command("reyting", async (ctx) => ctx.reply(await reytingMatni(), { parse_mode: "HTML" }));
+  bot.command("reyting", async (ctx) =>
+    ctx.reply(await reytingMatni(ctx.from?.id), { parse_mode: "HTML" }),
+  );
   bot.command("tarix", async (ctx) => ctx.reply(await tarixMatni(), { parse_mode: "HTML" }));
 
   bot.command("panel", async (ctx) => {

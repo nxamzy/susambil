@@ -86,6 +86,12 @@ export async function shikoyatYuborish(
  * degan bo'lsa ham, yoki noto'g'ri taxmin qilgan bo'lsa ham. Faqat hali
  * boshlang'ich ko'rib chiqilmagan yozuvda ishlaydi.
  *
+ * `javobgarId` callback_data'dan (raqamli tugma) keladi — normal foydalanishda
+ * u faqat bot o'zi chiqargan haqiqiy ro'yxatdan bo'ladi, lekin boshqa shu
+ * turdagi joylar (masalan shikoyat_kim) kabi bu yerda ham serverda
+ * tekshiramiz: FK xatosiga tayanib qolmaymiz, aniq "topilmadi" javobi
+ * qaytaramiz.
+ *
  * @param javobgarId null — "hech kim (noma'lum)" deb belgilash
  */
 export async function javobgarniOzgartir(
@@ -93,6 +99,13 @@ export async function javobgarniOzgartir(
   javobgarId: number | null,
   ishonch: Ishonch,
 ): Promise<Report | null> {
+  if (javobgarId !== null) {
+    const [nishon] = await sql<{ id: number }[]>`
+      SELECT id FROM users WHERE id = ${javobgarId} AND faol
+    `;
+    if (!nishon) return null;
+  }
+
   const [r] = await sql<Report[]>`
     UPDATE reports SET reported_id = ${javobgarId}, ishonch = ${ishonch}
     WHERE id = ${reportId} AND holat = 'kutilmoqda'
