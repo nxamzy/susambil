@@ -50,6 +50,7 @@ export function register(bot: Bot) {
         "/ochir Ism — ro'yxatdan chiqarish",
         "/xona Ism 3 — xonasini o'zgartirish",
         "/ism EskiIsm YangiIsm — ismini o'zgartirish",
+        "/qaytabogla Ism — botdan uzish (yangi Telegram hisobiga ulash uchun)",
         "/shikoyatlar — tasdiq kutayotgan shikoyatlar",
         "/navbatber 2 — navbatni 2-xonaga o'tkazish",
         "/navbatboshla — navbat yo'q bo'lsa boshlash",
@@ -160,5 +161,31 @@ export function register(bot: Bot) {
   bot.command("shikoyatlar", async (ctx) => {
     if (!(await adminmi(ctx))) return;
     await kutayotganlarniJonat(ctx);
+  });
+
+  /**
+   * Odam telefon/hisob almashtirsa, eski profilini yangi Telegram
+   * hisobiga ulash uchun. Identifikatsiya FAQAT telegram_id orqali —
+   * yangi hisob avtomatik ravishda BOSHQA odam deb hisoblanadi, admin
+   * buni ochiq ravishda "ulash" orqali tasdiqlashi kerak: telegram_id'ni
+   * tozalaymiz, keyin odam /start bosib o'z ismini qayta tanlaydi
+   * (mavjud "kim men?" oqimi orqali — yangi mexanizm shart emas).
+   */
+  bot.command("qaytabogla", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+    const u = await odamTop(ctx.match.trim());
+    if (!u) return ctx.reply("Bunday odam topilmadi.");
+    if (!u.telegram_id) return ctx.reply(`${esc(u.ism)} hali botga ulanmagan.`);
+
+    await sql`UPDATE users SET telegram_id = NULL, username = NULL WHERE id = ${u.id}`;
+    await ctx.reply(
+      [
+        `✅ <b>${esc(u.ism)}</b> botdan uzildi.`,
+        ``,
+        `Endi u yangi Telegram hisobidan botga /start bosib,`,
+        `ro'yxatdan o'z ismini qayta tanlashi mumkin.`,
+      ].join("\n"),
+      { parse_mode: "HTML" },
+    );
   });
 }

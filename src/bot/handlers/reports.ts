@@ -33,7 +33,7 @@ import {
   shikoyatYuborish,
   type ReportToliq,
 } from "../../core/reports.js";
-import { guruhId, kim, shaxsiy } from "../group.js";
+import { guruhAzosimi, guruhId, kim, shaxsiy } from "../group.js";
 import {
   bekorKeyboard,
   ishonchKeyboard,
@@ -53,12 +53,24 @@ import {
 } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir, type Flow } from "../state.js";
 
+/**
+ * Faqat hozir guruh a'zosi bo'lganlar shikoyat yoza oladi — Telegram'ning
+ * o'zidan tekshiriladi (`getChatMember`), bazadagi eski holatga ishonilmaydi.
+ */
+const GURUH_AZO_EMAS_XABAR =
+  "⚠️ Siz guruh a'zosi emassiz. Anonim shikoyat yozish uchun avval guruhga qo'shiling.";
+
 /** Menyudan "🔒 Anonim shikoyat" bosilganda. */
 export async function shikoyatBoshla(ctx: Context): Promise<void> {
   if (!ctx.from) return;
   const reporter = await kim(ctx.from.id);
   if (!reporter) {
     await ctx.reply("Avval /start bosib ro'yxatdan o'ting.");
+    return;
+  }
+
+  if ((await guruhAzosimi(ctx.api, ctx.from.id)) === "azo_emas") {
+    await ctx.reply(GURUH_AZO_EMAS_XABAR);
     return;
   }
 
@@ -167,6 +179,14 @@ async function shikoyatYuborildi(ctx: Context, m: YuborishManbasi): Promise<void
   const reporter = await kim(ctx.from.id);
   if (!reporter) return;
 
+  // Qadamlar orasida odam guruhdan chiqib ketgan bo'lishi mumkin — oxirgi
+  // lahzada yana tekshiramiz (kirishda tekshirilgani yetarli emas).
+  if ((await guruhAzosimi(ctx.api, ctx.from.id)) === "azo_emas") {
+    await holatTozala(ctx.from.id);
+    await ctx.reply(GURUH_AZO_EMAS_XABAR);
+    return;
+  }
+
   await holatTozala(ctx.from.id);
 
   const natija = await shikoyatYuborish(
@@ -198,10 +218,14 @@ async function shikoyatYuborildi(ctx: Context, m: YuborishManbasi): Promise<void
     { parse_mode: "HTML" },
   );
 
-  const toliq = await shikoyatniOl(natija.report.id);
-  if (!toliq) return;
+  const yangi = await shikoyatniOl(natija.report.id);
+  if (!yangi) return;
 
-  await guruhXabarniYangila(ctx.api, toliq);
+  await guruhXabarniYangila(ctx.api, yangi);
+  // Guruhga yuborish guruh_msg_id'ni yozgan bo'lishi mumkin — adminga
+  // ketadigan xabar shu yangilangan holatni ko'rsatsin (yoki yetkazib
+  // bo'lmagani haqida ogohlantirsin).
+  const toliq = (await shikoyatniOl(natija.report.id)) ?? yangi;
   await adminlargaYubor(ctx.api, toliq);
 }
 
@@ -219,7 +243,11 @@ async function mediaXabarYubor(
     : api.sendPhoto(chatId, r.photo_id, { caption: matn, parse_mode: "HTML", ...extra });
 }
 
-/** Yuqoridagi bilan bir xil, lekin mavjud xabarni tahrirlaydi. */
+/**
+ * Yuqoridagi bilan bir xil, lekin mavjud xabarni tahrirlaydi. `boolean`
+ * qaytaradi — chaqiruvchi (masalan guruh xabarini yangilash) muvaffaqiyatni
+ * bilishi kerak, shuning uchun xatoni jimgina yutib yubormaymiz.
+ */
 async function mediaXabarTahrirla(
   api: Api,
   chatId: number,
@@ -227,32 +255,58 @@ async function mediaXabarTahrirla(
   matn: string,
   r: Report,
   extra: object = {},
-): Promise<void> {
+): Promise<boolean> {
   if (!r.photo_id) {
-    await api.editMessageText(chatId, messageId, matn, { parse_mode: "HTML", ...extra }).catch(() => {});
-    return;
+    return api
+      .editMessageText(chatId, messageId, matn, { parse_mode: "HTML", ...extra })
+      .then(() => true)
+      .catch(() => false);
   }
-  await api
+  return api
     .editMessageCaption(chatId, messageId, { caption: matn, parse_mode: "HTML", ...extra })
-    .catch(() => {});
+    .then(() => true)
+    .catch(() => false);
 }
 
 /**
  * Guruhdagi yagona anonim xabarni yuboradi (birinchi marta) yoki
  * tahrirlaydi (keyingi har bir holat o'zgarishida) — qayta yubormaymiz,
  * aks holda guruh bir shikoyat uchun bir necha marta bezovta bo'lardi.
+ *
+ * Xato yutib yuborilmaydi: muvaffaqiyatsiz bo'lsa log yoziladi va `false`
+ * qaytadi — chaqiruvchi buni admin panelidagi ogohlantirish orqali
+ * ko'rsatishi uchun (`shikoyatAdminXabari` `guruh_msg_id` yo'qligini
+ * o'zi tekshiradi).
  */
-async function guruhXabarniYangila(api: Api, r: ReportToliq): Promise<void> {
+async function guruhXabarniYangila(api: Api, r: ReportToliq): Promise<boolean> {
   const chatId = await guruhId();
-  if (!chatId) return;
-  const matn = shikoyatGuruhXabari(r);
-
-  if (r.guruh_msg_id) {
-    await mediaXabarTahrirla(api, chatId, Number(r.guruh_msg_id), matn, r);
-    return;
+  if (!chatId) {
+    console.error(`[shikoyat #${r.id}] guruh sozlanmagan (guruh_id yo'q) — guruhga yuborilmadi.`);
+    return false;
   }
-  const msg = await mediaXabarYubor(api, chatId, matn, r);
-  await guruhXabarniSaqla(r.id, msg.message_id);
+
+  const matn = shikoyatGuruhXabari(r);
+  try {
+    if (r.guruh_msg_id) {
+      const ok = await mediaXabarTahrirla(api, chatId, Number(r.guruh_msg_id), matn, r);
+      if (!ok) console.error(`[shikoyat #${r.id}] guruhdagi xabarni tahrirlab bo'lmadi.`);
+      return ok;
+    }
+    const msg = await mediaXabarYubor(api, chatId, matn, r);
+    await guruhXabarniSaqla(r.id, msg.message_id);
+    return true;
+  } catch (e) {
+    console.error(`[shikoyat #${r.id}] guruhga yuborishda xato:`, e);
+    return false;
+  }
+}
+
+/** Joriy holatga mos faol klaviatura — guruhga yetmagan bo'lsa qayta urinish tugmasi bilan. */
+function faolKlaviatura(r: ReportToliq): InlineKeyboardType {
+  const guruhgaYetmadi = !r.guruh_msg_id;
+  if (r.holat === "kutilmoqda") return shikoyatAdminKeyboard(r.id, guruhgaYetmadi);
+  if (r.holat === "tuzatilmoqda") return shikoyatTekshiruvKeyboard(r.id, guruhgaYetmadi);
+  return new InlineKeyboard();
 }
 
 /** Har bir bog'langan adminga to'liq DM qiladi, xabar id'larini saqlaydi. */
@@ -262,7 +316,7 @@ async function adminlargaYubor(api: Api, r: ReportToliq): Promise<void> {
   `;
 
   const matn = shikoyatAdminXabari(r);
-  const kb = shikoyatAdminKeyboard(r.id);
+  const kb = faolKlaviatura(r);
   const yuborilganlar: { chat_id: number; message_id: number }[] = [];
 
   for (const a of adminlar) {
@@ -294,7 +348,7 @@ export async function kutayotganlarniJonat(ctx: Context): Promise<void> {
   }
   for (const r of royxat) {
     const matn = shikoyatAdminXabari(r);
-    const kb = shikoyatAdminKeyboard(r.id);
+    const kb = faolKlaviatura(r);
     if (!r.photo_id) {
       await ctx.reply(matn, { parse_mode: "HTML", reply_markup: kb });
     } else if (r.media_turi === "video") {
@@ -322,7 +376,7 @@ export async function shikoyatIzohSaqlandi(
   await ctx.reply("✅ Izoh saqlandi.");
 
   const toliq = await shikoyatniOl(reportId);
-  if (toliq) await panelniYangila(ctx.api, toliq, shikoyatAdminKeyboard(reportId));
+  if (toliq) await panelniYangila(ctx.api, toliq, faolKlaviatura(toliq));
 }
 
 async function faqatAdmin(ctx: Context): Promise<User | null> {
@@ -356,13 +410,14 @@ async function boshlangichQaror(
     .answerCallbackQuery({ text: qaror === "tasdiq" ? "✅ Tasdiqlandi." : "Rad etildi." })
     .catch(() => {});
 
-  const toliq = await shikoyatniOl(reportId);
+  let toliq = await shikoyatniOl(reportId);
   if (!toliq) return;
 
   await guruhXabarniYangila(ctx.api, toliq);
+  toliq = (await shikoyatniOl(reportId)) ?? toliq;
 
   if (qaror === "tasdiq") {
-    await panelniYangila(ctx.api, toliq, shikoyatTekshiruvKeyboard(reportId));
+    await panelniYangila(ctx.api, toliq, faolKlaviatura(toliq));
 
     if (toliq.reported_id) {
       const [reported] = await sql<User[]>`SELECT * FROM users WHERE id = ${toliq.reported_id}`;
@@ -398,10 +453,11 @@ async function tekshiruvQarori(
     .answerCallbackQuery({ text: natija === "tuzatildi" ? "✅ Hal qilindi." : "➖ Ball ayirildi." })
     .catch(() => {});
 
-  const toliq = await shikoyatniOl(reportId);
+  let toliq = await shikoyatniOl(reportId);
   if (!toliq) return;
 
   await guruhXabarniYangila(ctx.api, toliq);
+  toliq = (await shikoyatniOl(reportId)) ?? toliq;
   await panelniYangila(ctx.api, toliq, new InlineKeyboard());
 
   const [reporter] = await sql<User[]>`SELECT * FROM users WHERE id = ${toliq.reporter_id}`;
@@ -575,7 +631,7 @@ export function register(bot: Bot) {
     await ctx.answerCallbackQuery({ text: "✅ Belgilandi." }).catch(() => {});
 
     const toliq = await shikoyatniOl(reportId);
-    if (toliq) await panelniYangila(ctx.api, toliq, shikoyatAdminKeyboard(reportId));
+    if (toliq) await panelniYangila(ctx.api, toliq, faolKlaviatura(toliq));
   });
 
   bot.callbackQuery(/^shikoyat_notanilgan:(\d+)$/, async (ctx) => {
@@ -590,7 +646,7 @@ export function register(bot: Bot) {
     await ctx.answerCallbackQuery({ text: "✅ Belgilandi." }).catch(() => {});
 
     const toliq = await shikoyatniOl(reportId);
-    if (toliq) await panelniYangila(ctx.api, toliq, shikoyatAdminKeyboard(reportId));
+    if (toliq) await panelniYangila(ctx.api, toliq, faolKlaviatura(toliq));
   });
 
   bot.callbackQuery(/^shikoyat_qayta_bekor:(\d+)$/, async (ctx) => {
@@ -602,12 +658,31 @@ export function register(bot: Bot) {
     if (!toliq) return;
 
     const matn = shikoyatAdminXabari(toliq);
-    const kb = shikoyatAdminKeyboard(toliq.id);
+    const kb = faolKlaviatura(toliq);
     if (toliq.photo_id) {
       await ctx.editMessageCaption({ caption: matn, parse_mode: "HTML", reply_markup: kb }).catch(() => {});
     } else {
       await ctx.editMessageText(matn, { parse_mode: "HTML", reply_markup: kb }).catch(() => {});
     }
+  });
+
+  bot.callbackQuery(/^shikoyat_guruh_qayta:(\d+)$/, async (ctx) => {
+    const admin = await faqatAdmin(ctx);
+    if (!admin) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true });
+    }
+
+    const reportId = Number(ctx.match[1]);
+    let toliq = await shikoyatniOl(reportId);
+    if (!toliq) return ctx.answerCallbackQuery({ text: "Topilmadi." });
+
+    const ok = await guruhXabarniYangila(ctx.api, toliq);
+    await ctx
+      .answerCallbackQuery({ text: ok ? "✅ Guruhga yuborildi." : "❌ Yana muvaffaqiyatsiz bo'ldi." })
+      .catch(() => {});
+
+    toliq = (await shikoyatniOl(reportId)) ?? toliq;
+    await panelniYangila(ctx.api, toliq, faolKlaviatura(toliq));
   });
 
   bot.callbackQuery(/^shikoyat_izoh:(\d+)$/, async (ctx) => {

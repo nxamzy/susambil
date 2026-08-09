@@ -189,24 +189,31 @@ export function shikoyatKimKeyboard(odamlar: { id: number; ism: string }[]): Inl
  * Adminga yuboriladigan shikoyat xabaridagi boshlang'ich harakatlar —
  * "kutilmoqda" holatida ko'rinadi. Tasdiqlansa `shikoyatTekshiruvKeyboard`
  * bilan, rad/hal qilinsa bo'sh klaviatura bilan almashadi.
+ *
+ * @param guruhgaYetmadi guruhga yuborish muvaffaqiyatsiz bo'lgan bo'lsa
+ *   qayta urinish tugmasi qo'shiladi
  */
-export function shikoyatAdminKeyboard(reportId: number): InlineKeyboard {
-  return new InlineKeyboard()
+export function shikoyatAdminKeyboard(reportId: number, guruhgaYetmadi: boolean): InlineKeyboard {
+  const kb = new InlineKeyboard()
     .text("✅ Tasdiqlash", `shikoyat_tasdiq:${reportId}`)
     .text("➖ Rad etish", `shikoyat_rad:${reportId}`)
     .row()
     .text("👤 Boshqa odam", `shikoyat_qayta:${reportId}`)
     .text("✏️ Izoh qo'shish", `shikoyat_izoh:${reportId}`);
+  if (guruhgaYetmadi) kb.row().text("🔁 Guruhga qayta yuborish", `shikoyat_guruh_qayta:${reportId}`);
+  return kb;
 }
 
 /**
  * "tuzatilmoqda" holatidagi qayta tekshiruv tugmalari — sababchiga
  * imkoniyat berilgandan keyin admin qaytib ko'radi.
  */
-export function shikoyatTekshiruvKeyboard(reportId: number): InlineKeyboard {
-  return new InlineKeyboard()
+export function shikoyatTekshiruvKeyboard(reportId: number, guruhgaYetmadi: boolean): InlineKeyboard {
+  const kb = new InlineKeyboard()
     .text("✅ Tuzatildi", `shikoyat_tuzatildi:${reportId}`)
     .text("❌ Tuzatilmadi", `shikoyat_tuzatilmadi:${reportId}`);
+  if (guruhgaYetmadi) kb.row().text("🔁 Guruhga qayta yuborish", `shikoyat_guruh_qayta:${reportId}`);
+  return kb;
 }
 
 /** Admin "👤 Boshqa odam" bosganda — hammani ko'rsatadi, o'zini chetlab o'tirmaydi. */

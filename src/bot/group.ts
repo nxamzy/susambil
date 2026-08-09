@@ -78,3 +78,29 @@ export async function shaxsiy(api: Api, u: User, matn: string, extra: object = {
     /* bot bloklangan yoki hali /start bosilmagan */
   }
 }
+
+export type AzolikHolati = "azo" | "azo_emas" | "guruh_yoq";
+
+/**
+ * Odam hozir guruh a'zosimi — bazadagi holatga emas, Telegram'ning o'ziga
+ * so'raladi (`getChatMember`), shuning uchun guruhdan chiqib ketgan odam
+ * darrov aniqlanadi.
+ *
+ * Guruh hali sozlanmagan bo'lsa ("guruh_yoq") ataylab TO'SIQ QO'YMAYMIZ —
+ * aks holda hech kim /id bosmaguncha butun shikoyat funksiyasi butunlay
+ * ishlamay qolardi. Faqat aniq "chiqib ketgan/chiqarilgan" holatda
+ * to'siladi.
+ */
+export async function guruhAzosimi(api: Api, telegramId: number): Promise<AzolikHolati> {
+  const chatId = await guruhId();
+  if (!chatId) return "guruh_yoq";
+
+  try {
+    const azo = await api.getChatMember(chatId, telegramId);
+    return azo.status === "left" || azo.status === "kicked" ? "azo_emas" : "azo";
+  } catch {
+    // Telegram odam guruhda hech qachon bo'lmagan holatda ham xato qaytarishi
+    // mumkin — bu ham "a'zo emas" degani.
+    return "azo_emas";
+  }
+}

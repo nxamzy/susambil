@@ -381,6 +381,13 @@ export function shikoyatAdminXabari(r: ReportToliq): string {
         : `<i>Sababchi noma'lum — tuzatilmasa ham ball ayirilmaydi.</i>`,
     );
   }
+  if (!r.guruh_msg_id) {
+    s.push(
+      ``,
+      `⚠️ <b>Guruhga yuborib bo'lmadi!</b> Guruh sozlanganini (/id)`,
+      `tekshiring yoki pastdagi tugma bilan qayta urining.`,
+    );
+  }
   s.push(``, `<i>Bu xabar faqat sizga (admin) yuborilgan.</i>`);
   return s.join("\n");
 }
