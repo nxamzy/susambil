@@ -13,7 +13,15 @@ function bugun(): string {
 }
 
 /**
- * Har soatda ishlaydi:
+ * Vercel Cron orqali kuniga bir marta ishga tushadi (vercel.json:
+ * "0 4 * * *" — 09:00 Toshkent). Bu degani: agar biror sabab bilan
+ * (Telegram vaqtinchalik ishlamasa, guruh sozlanmagan bo'lsa) shu
+ * kunlik chaqiruvda yuborish muvaffaqiyatsiz bo'lsa, keyingi urinish
+ * FAQAT ERTAGA bo'ladi — shuning uchun pastdagi ikkala blok ham
+ * "yuborildi" belgisini FAQAT haqiqatan yetkazilganda qo'yadi
+ * (`guruhga` natijasini tekshirib), aks holda muvaffaqiyatsizlik
+ * abadiy o'tkazib yuborilgan bo'lib qolardi.
+ *
  *  - muddat tugashiga 1 kun qolganda bir marta eslatadi
  *  - muddat o'tgan bo'lsa kuniga bir marta ogohlantiradi
  */
@@ -37,10 +45,17 @@ export async function eslatmalarniTekshir(api: Api): Promise<void> {
       `Tozalagach shu guruhga ${config.minRasm} ta rasm tashlang.`,
     ].join("\n");
 
-    await guruhgaYubor(api, matn);
+    const guruhga = await guruhgaYubor(api, matn);
     for (const a of azolar) await shaxsiy(api, a, matn);
 
-    await sql`UPDATE turns SET eslatildi = TRUE WHERE id = ${turn.id}`;
+    // Faqat asosiy kanal (guruh) ga yetgandagina "yuborildi" deb
+    // belgilaymiz. Aks holda bir martalik muvaffaqiyatsizlik shu
+    // eslatmani butunlay o'tkazib yuborardi — bu tekshiruv faqat
+    // "muddatgacha 1 kun qolgan" tor oynada ishlaydi, keyingi chaqiruvda
+    // odatda bu shart allaqachon yolg'on bo'lib qoladi (muddat o'tib
+    // ketgani uchun 2-blokka tushadi). eslatildi=FALSE qolsa, oyna hali
+    // ochiq ekan, keyingi chaqiruv qayta urinadi.
+    if (guruhga) await sql`UPDATE turns SET eslatildi = TRUE WHERE id = ${turn.id}`;
     return;
   }
 
@@ -63,9 +78,12 @@ export async function eslatmalarniTekshir(api: Api): Promise<void> {
       `Navbat siz tugatmaguningizcha keyingi xonaga o'tmaydi.`,
     ].join("\n");
 
-    await guruhgaYubor(api, matn);
+    const guruhga = await guruhgaYubor(api, matn);
     for (const a of azolar) await shaxsiy(api, a, matn);
 
-    await sql`UPDATE turns SET oxirgi_ping = ${kun}::date WHERE id = ${turn.id}`;
+    // Xuddi yuqoridagi kabi — faqat guruhga yetganda "bugun yuborildi"
+    // deb belgilaymiz, aks holda ertaga emas, shu kunning o'zida keyingi
+    // chaqiruvda qayta urinilishi kerak.
+    if (guruhga) await sql`UPDATE turns SET oxirgi_ping = ${kun}::date WHERE id = ${turn.id}`;
   }
 }

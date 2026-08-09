@@ -3,7 +3,7 @@ import { sql, type Room, type Submission, type Turn, type User } from "../../db/
 import { config } from "../../config.js";
 import { navbatniYopish } from "../../core/rotation.js";
 import { radEt, tasdiqla, tasdiqlovchilar } from "../../core/topshiriq.js";
-import { guruhId, kim } from "../group.js";
+import { guruhId, kim, shaxsiy } from "../group.js";
 import { tasdiqKeyboard } from "../keyboards.js";
 import {
   navbatXabari,
@@ -32,17 +32,6 @@ async function xabarniYangila(
   } else {
     await ctx.editMessageText(matn, qoshimcha).catch(() => {});
   }
-}
-
-/** Odamga shaxsiy xabar — ulanmagan bo'lsa jimgina o'tkazib yuboriladi. */
-async function shaxsiy(ctx: Context, userId: number, matn: string): Promise<void> {
-  const [u] = await sql<{ telegram_id: string | null }[]>`
-    SELECT telegram_id FROM users WHERE id = ${userId}
-  `;
-  if (!u?.telegram_id) return;
-  await ctx.api
-    .sendMessage(Number(u.telegram_id), matn, { parse_mode: "HTML" })
-    .catch(() => {});
 }
 
 export function register(bot: Bot) {
@@ -97,13 +86,15 @@ export function register(bot: Bot) {
 
     await ctx.answerCallbackQuery({ text: "Rad etildi." }).catch(() => {});
 
-    const [egasi] = await sql<{ ism: string }[]>`SELECT ism FROM users WHERE id = ${sub.user_id}`;
+    const [egasi] = await sql<User[]>`SELECT * FROM users WHERE id = ${sub.user_id}`;
     await xabarniYangila(ctx, topshiriqRad(egasi?.ism ?? "—", u.ism, null));
-    await shaxsiy(
-      ctx,
-      sub.user_id,
-      `✖️ <b>Ishingiz rad etildi</b>\n\n👤 ${u.ism} qabul qilmadi.\n\n<i>Ball berilmadi. Qaytadan topshirsangiz bo'ladi.</i>`,
-    );
+    if (egasi) {
+      await shaxsiy(
+        ctx.api,
+        egasi,
+        `✖️ <b>Ishingiz rad etildi</b>\n\n👤 ${u.ism} qabul qilmadi.\n\n<i>Ball berilmadi. Qaytadan topshirsangiz bo'ladi.</i>`,
+      );
+    }
   });
 }
 
@@ -124,7 +115,7 @@ async function topshiriqniTasdiqla(ctx: Context, u: User, sub: Submission) {
 
   await ctx.answerCallbackQuery({ text: "✅ Tasdiqlandi, rahmat!" }).catch(() => {});
 
-  const [egasi] = await sql<{ ism: string }[]>`SELECT ism FROM users WHERE id = ${sub.user_id}`;
+  const [egasi] = await sql<User[]>`SELECT * FROM users WHERE id = ${sub.user_id}`;
   const ism = egasi?.ism ?? "—";
 
   if (natija.holat === "yetmadi") {
@@ -137,11 +128,13 @@ async function topshiriqniTasdiqla(ctx: Context, u: User, sub: Submission) {
   }
 
   await xabarniYangila(ctx, topshiriqYopildi(natija.sub, ism, natija.ismlar));
-  await shaxsiy(
-    ctx,
-    sub.user_id,
-    `✅ <b>Ishingiz tasdiqlandi!</b>\n\n✅ ${natija.ismlar.join(", ")}\n\n🏅 <b>+${natija.sub.ball} ball</b>`,
-  );
+  if (egasi) {
+    await shaxsiy(
+      ctx.api,
+      egasi,
+      `✅ <b>Ishingiz tasdiqlandi!</b>\n\n✅ ${natija.ismlar.join(", ")}\n\n🏅 <b>+${natija.sub.ball} ball</b>`,
+    );
+  }
 }
 
 /**
@@ -213,11 +206,12 @@ async function navbatniTasdiqla(ctx: Context, u: User, sub: Submission) {
     );
   }
 
-  // Keyingi xonaga shaxsiy xabar — guruhni hamma ham o'qiyvermaydi
+  // Keyingi xonaga shaxsiy xabar — guruhni hamma ham o'qiyvermaydi.
+  // `azo` allaqachon to'liq User — qayta so'rov qilish shart emas.
   for (const azo of natija.keyingi.azolar) {
     await shaxsiy(
-      ctx,
-      azo.id,
+      ctx.api,
+      azo,
       [
         `🧹 <b>NAVBAT SIZGA KELDI</b>`,
         ``,

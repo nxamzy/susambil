@@ -5,7 +5,7 @@ import { ochiqTopshiriqlar } from "../../core/topshiriq.js";
 import { faolNavbat, kelgusiTartib, xonaAzolari } from "../../core/rotation.js";
 import { reyting, orinlarniHisobla, xonaHolati, tarix } from "../../core/rating.js";
 import { jamiXarajat, oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
-import { guruhId, guruhIdOrnat, kim, korishXabar } from "../group.js";
+import { guruhgaYubor, guruhId, guruhIdOrnat, kim, korishXabar } from "../group.js";
 import {
   boshqaIshKeyboard,
   ismTanlashKeyboard,
@@ -217,23 +217,21 @@ async function tarixMatni(): Promise<string> {
   return s.join("\n");
 }
 
-async function guruhgaChiqar(api: Api, matn: string, extra: object = {}) {
-  const chatId = await guruhId();
-  if (chatId) await api.sendMessage(chatId, matn, { parse_mode: "HTML", ...extra });
-}
-
 /**
  * Ko'rinish xabarini chiqaradi va chatni toza tutadi:
  *  - inline tugma bosilgan bo'lsa, shaxsiy chatda o'sha xabarning o'rniga yozadi
  *  - aks holda oldingi ko'rinish xabarini o'chirib, yangisini yuboradi
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function javob(ctx: any, matn: string, extra: Record<string, unknown> = {}) {
+async function javob(ctx: any, matn: string, extra: Record<string, unknown> = {}): Promise<void> {
   const toza = chekla(matn);
   const bilan = { reply_markup: panelgaKeyboard(), ...extra };
 
   const chatId = ctx.chat?.id;
-  if (!chatId) return guruhgaChiqar(ctx.api, toza, bilan);
+  if (!chatId) {
+    await guruhgaYubor(ctx.api, toza, bilan);
+    return;
+  }
 
   if (ctx.chat.type === "private" && ctx.callbackQuery) {
     const almashdi = await ctx
@@ -430,16 +428,14 @@ export function register(bot: Bot) {
     // yerda takrorlanmaydi.
     //
     // Ikkinchi darajali: guruh biriktirilmagan bo'lsa yoki bot u yerdan
-    // chiqarilgan bo'lsa ham ro'yxatdan o'tish buzilmasligi kerak.
-    try {
-      const s = yangimi
-        ? [`👋 <b>${esc(ism)}</b> uyga qo'shildi!`]
-        : [`✅ <b>${esc(ism)}</b> botga ulandi`];
-      if (xona) s.push(`🏠 ${xona}-xona`);
-      await guruhgaChiqar(ctx.api, s.join("\n"));
-    } catch (e) {
-      console.error("Ro'yxat xabarini guruhga yuborib bo'lmadi:", e);
-    }
+    // chiqarilgan bo'lsa ham ro'yxatdan o'tish buzilmasligi kerak —
+    // guruhgaYubor() xatoni o'zi yutib, log qilib qo'yadi, bu yerda
+    // qo'shimcha try/catch shart emas.
+    const s = yangimi
+      ? [`👋 <b>${esc(ism)}</b> uyga qo'shildi!`]
+      : [`✅ <b>${esc(ism)}</b> botga ulandi`];
+    if (xona) s.push(`🏠 ${xona}-xona`);
+    await guruhgaYubor(ctx.api, s.join("\n"));
   }
 
   bot.callbackQuery(/^men:(\d+)$/, async (ctx) => {

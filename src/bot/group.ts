@@ -26,10 +26,25 @@ export async function guruhIdOrnat(id: number): Promise<void> {
   keshlanganGuruh = id;
 }
 
+/**
+ * Guruhga xabar yuboradi. Guruh hali sozlanmagan bo'lsa yoki yuborish
+ * muvaffaqiyatsiz bo'lsa (bot guruhdan chiqarilgan, guruh o'chirilgan va h.k.)
+ * `null` qaytaradi va sababini log qiladi — chaqiruvchi shu orqali "yetdi
+ * yoki yo'q"ni bilib, kerak bo'lsa (masalan eslatmalarni) ertaga qayta
+ * urinishga qoldirishi mumkin.
+ */
 export async function guruhgaYubor(api: Api, matn: string, extra: object = {}) {
   const id = await guruhId();
-  if (!id) return null;
-  return api.sendMessage(id, matn, { parse_mode: "HTML", ...extra });
+  if (!id) {
+    console.error("[guruhgaYubor] guruh sozlanmagan (guruh_id yo'q) — yuborilmadi.");
+    return null;
+  }
+  try {
+    return await api.sendMessage(id, matn, { parse_mode: "HTML", ...extra });
+  } catch (e) {
+    console.error("[guruhgaYubor] guruhga yuborishda xato:", e);
+    return null;
+  }
 }
 
 /**
@@ -69,13 +84,29 @@ export async function kim(telegramId: number | undefined): Promise<User | null> 
   return u ?? null;
 }
 
-/** Shaxsiy xabar yuboradi; odam botni bloklagan bo'lsa jim o'tadi. */
-export async function shaxsiy(api: Api, u: User, matn: string, extra: object = {}) {
-  if (!u.telegram_id) return;
+/**
+ * Shaxsiy xabar yuboradi. Odam hali ulanmagan bo'lsa (`telegram_id` yo'q)
+ * jimgina o'tkazib yuboriladi — bu normal holat, log kerak emas. Yuborish
+ * o'zi muvaffaqiyatsiz bo'lsa esa (bot bloklangan, hisob o'chirilgan,
+ * xabar noto'g'ri formatlangan) — bu odatiy emas, shuning uchun log
+ * qilinadi va kim ekani (`ism`/`id`) ko'rsatiladi, aks holda muammoni
+ * hech kim payqamas edi.
+ *
+ * @returns true — yetkazildi, false — ulanmagan yoki muvaffaqiyatsiz
+ */
+export async function shaxsiy(
+  api: Api,
+  u: User,
+  matn: string,
+  extra: object = {},
+): Promise<boolean> {
+  if (!u.telegram_id) return false;
   try {
     await api.sendMessage(Number(u.telegram_id), matn, { parse_mode: "HTML", ...extra });
-  } catch {
-    /* bot bloklangan yoki hali /start bosilmagan */
+    return true;
+  } catch (e) {
+    console.error(`[shaxsiy] ${u.ism} (id=${u.id}) ga xabar yuborib bo'lmadi:`, e);
+    return false;
   }
 }
 
