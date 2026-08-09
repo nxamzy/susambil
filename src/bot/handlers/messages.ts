@@ -4,6 +4,7 @@ import { kim } from "../group.js";
 import { esc } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
 import {
+  ADMIN_PANEL_TUGMA,
   BOSHQA_ISH,
   MENYU,
   menyuKeyboard,
@@ -20,6 +21,7 @@ import {
   adminBallTuzatishKeldi,
   adminIsmTahrirKeldi,
   adminTgIdTahrirKeldi,
+  adminPanelKorsat,
   adminYangiIsmiKeldi,
 } from "./adminUsers.js";
 import { summaTekshir } from "../../core/topshiriq.js";
@@ -40,6 +42,15 @@ async function menyuTugmasi(ctx: Context, matn: string): Promise<boolean> {
 
   if (matn === SHIKOYAT_TUGMA) {
     await shikoyatBoshla(ctx);
+    return true;
+  }
+
+  // Faqat admin bo'lsa ko'rinadi (menyuKeyboard shunday quradi), lekin
+  // bu yerda ham tekshiramiz — matn qo'lda yozilib qolsa ham himoyalangan.
+  if (matn === ADMIN_PANEL_TUGMA) {
+    const admin = await kim(ctx.from.id);
+    if (!admin?.admin) return false;
+    await adminPanelKorsat(ctx);
     return true;
   }
 
@@ -213,7 +224,7 @@ export function register(bot: Bot) {
 
     await ctx.reply(await panelMatni(), {
       parse_mode: "HTML",
-      reply_markup: menyuKeyboard(),
+      reply_markup: menyuKeyboard(u.admin),
     });
   });
 }

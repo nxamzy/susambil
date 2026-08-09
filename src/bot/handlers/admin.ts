@@ -1,7 +1,6 @@
 import type { Bot } from "grammy";
 import { sql, type Room, type User } from "../../db/index.js";
-import { config } from "../../config.js";
-import { faolNavbat, navbatniOzgartirish, xonaAzolari } from "../../core/rotation.js";
+import { navbatniBoshlash, navbatniOzgartirish } from "../../core/rotation.js";
 import { summaTekshir } from "../../core/topshiriq.js";
 import { tolovQabulQiluvchiniOrnat, tolovTalabiniOrnat } from "../../core/tolov.js";
 import { kim } from "../group.js";
@@ -17,9 +16,17 @@ async function adminmi(ctx: { from?: { id: number } }): Promise<User | null> {
   return u?.admin ? u : null;
 }
 
+/**
+ * Ismi bilan qidiradi — faqat eski, kod o'zgartirmasdan qolgan buyruqlar
+ * (/ochir, /xona, /ism, /qaytabogla) uchun. Ortiqcha bo'shliq va katta/kichik
+ * harf farqi tozalanadi, lekin baribir ANIQ moslik kerak: shuning uchun bular
+ * endi ID asosidagi 👑 Admin Panel bilan almashtirilgan — u yerda ism
+ * umuman yozilmaydi, ro'yxatdan tugma bilan tanlanadi.
+ */
 async function odamTop(ism: string): Promise<User | null> {
+  const toza = ism.trim().replace(/\s+/g, " ");
   const [u] = await sql<User[]>`
-    SELECT * FROM users WHERE lower(ism) = lower(${ism}) AND faol LIMIT 1
+    SELECT * FROM users WHERE lower(ism) = lower(${toza}) AND faol LIMIT 1
   `;
   return u ?? null;
 }
@@ -48,6 +55,11 @@ export function register(bot: Bot) {
         "",
         "<b>Admin buyruqlari</b>",
         "",
+        "<i>Eng qulayi — pastdagi \"👑 Admin Panel\" tugmasi: foydalanuvchi,",
+        "navbat, to'lov, shikoyat va ball boshqaruvining hammasi shu yerda,",
+        "hech narsa qo'lda yozish shart emas. Quyidagilar — mos keladigan",
+        "guruh buyruqlari, muvofiqlik uchun qoldirilgan.</i>",
+        "",
         "/panel — guruhga panel qo'yish va pin qilish",
         "/id — chat ID va guruhni saqlash",
         "/royxat — kim ulangan, kim yo'q",
@@ -55,7 +67,8 @@ export function register(bot: Bot) {
         "/ochir Ism — ro'yxatdan chiqarish",
         "/xona Ism 3 — xonasini o'zgartirish",
         "/ism EskiIsm YangiIsm — ismini o'zgartirish",
-        "/qaytabogla Ism — botdan uzish (yangi Telegram hisobiga ulash uchun)",
+        "/qaytabogla Ism — botdan uzish (ishonchli yo'l: 👑 Admin Panel →",
+        "  Foydalanuvchilar → kerakli odam → 🔓 Botdan uzish)",
         "/shikoyatlar — tasdiq kutayotgan shikoyatlar",
         "/navbatber 2 — navbatni 2-xonaga o'tkazish",
         "/navbatboshla — navbat yo'q bo'lsa boshlash",
@@ -63,8 +76,7 @@ export function register(bot: Bot) {
         "/tolovlar — kvartira to'lovlari dashboard",
         "/tolovtalab 900000 — har kishidan talab summasini o'zgartirish",
         "/tolovsozla Sorabek 9860350143875127 — qabul qiluvchi/karta",
-        "/adminpanel — foydalanuvchilarni to'liq boshqarish (qo'shish/",
-        "  tahrirlash/o'chirish, ball tuzatish, o'zgarishlar tarixi)",
+        "/adminpanel — 👑 Admin Panel'ni ochadi (bottom tugma bilan bir xil)",
       );
     }
 
@@ -122,15 +134,10 @@ export function register(bot: Bot) {
 
   bot.command("navbatboshla", async (ctx) => {
     if (!(await adminmi(ctx))) return;
-    if (await faolNavbat()) return ctx.reply("Navbat allaqachon ketyapti.");
+    const yangi = await navbatniBoshlash();
+    if (!yangi) return ctx.reply("Navbat allaqachon ketyapti yoki bazada xona yo'q.");
 
-    const [birinchi] = await sql<Room[]>`SELECT * FROM rooms ORDER BY tartib LIMIT 1`;
-    if (!birinchi) return ctx.reply("Bazada xona yo'q.");
-
-    const muddat = new Date(Date.now() + config.siklKuni * 86_400_000);
-    await sql`INSERT INTO turns (room_id, muddat) VALUES (${birinchi.id}, ${muddat})`;
-
-    await ctx.reply(navbatXabari(birinchi, await xonaAzolari(birinchi.id), muddat), {
+    await ctx.reply(navbatXabari(yangi.room, yangi.azolar, yangi.turn.muddat), {
       parse_mode: "HTML",
     });
   });
@@ -185,7 +192,20 @@ export function register(bot: Bot) {
   bot.command("qaytabogla", async (ctx) => {
     if (!(await adminmi(ctx))) return;
     const u = await odamTop(ctx.match.trim());
-    if (!u) return ctx.reply("Bunday odam topilmadi.");
+    if (!u) {
+      return ctx.reply(
+        [
+          `❌ <b>"${esc(ctx.match.trim())}"</b> nomli faol foydalanuvchi topilmadi.`,
+          ``,
+          `Ism xato yozilgan yoki odam faolsizlantirilgan bo'lishi mumkin —`,
+          `ismni yozib qidirish o'rniga ishonchli yo'l:`,
+          ``,
+          `👑 <b>Admin Panel</b> → 👥 <b>Foydalanuvchilar</b> → ro'yxatdan`,
+          `kerakli odamni tanlang → <b>🔓 Botdan uzish</b> tugmasini bosing.`,
+        ].join("\n"),
+        { parse_mode: "HTML" },
+      );
+    }
     if (!u.telegram_id) return ctx.reply(`${esc(u.ism)} hali botga ulanmagan.`);
 
     await sql`UPDATE users SET telegram_id = NULL, username = NULL WHERE id = ${u.id}`;

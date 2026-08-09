@@ -410,7 +410,7 @@ export function register(bot: Bot) {
     if (mavjud) {
       return ctx.reply(await panelMatni(), {
         parse_mode: "HTML",
-        reply_markup: menyuKeyboard(),
+        reply_markup: menyuKeyboard(mavjud.admin),
       });
     }
 
@@ -435,12 +435,18 @@ export function register(bot: Bot) {
   });
 
   /** Ro'yxatdan o'tgandan keyin tanishtirish + panel. */
-  async function kutibOl(ctx: Context, ism: string, xona: number | null, yangimi = false) {
+  async function kutibOl(
+    ctx: Context,
+    ism: string,
+    xona: number | null,
+    yangimi = false,
+    admin = false,
+  ) {
     await ctx
       .editMessageText(`✅ <b>Xush kelibsiz, ${esc(ism)}!</b>`, { parse_mode: "HTML" })
       .catch(() => {});
     await ctx.reply(tanishtirish(), { parse_mode: "HTML" });
-    await ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: menyuKeyboard() });
+    await ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: menyuKeyboard(admin) });
 
     // Guruh ham bilsin — kim ulangani ko'rinib tursin. To'liq ro'yxat va
     // sanoq endi "👥 A'zolar" ko'rinishida (hammaga ochiq), shuning uchun bu
@@ -510,11 +516,11 @@ export function register(bot: Bot) {
 
     // Xona alohida olinadi: UPDATE ... FROM rooms bo'lsa xonasiz odam
     // umuman yangilanmay qolardi (room_id NULL bo'lishi mumkin).
-    const natija = await sql<{ ism: string; room_id: number | null }[]>`
+    const natija = await sql<{ ism: string; room_id: number | null; admin: boolean }[]>`
       UPDATE users
       SET telegram_id = ${ctx.from.id}, username = ${ctx.from.username ?? null}
       WHERE id = ${userId} AND telegram_id IS NULL
-      RETURNING ism, room_id
+      RETURNING ism, room_id, admin
     `;
     if (natija.length === 0) {
       return ctx.answerCallbackQuery({
@@ -528,7 +534,7 @@ export function register(bot: Bot) {
     `;
 
     await ctx.answerCallbackQuery({ text: "Qabul qilindi!" }).catch(() => {});
-    await kutibOl(ctx, natija[0]!.ism, xona?.raqam ?? null);
+    await kutibOl(ctx, natija[0]!.ism, xona?.raqam ?? null, false, natija[0]!.admin);
   });
 
   bot.callbackQuery("yangiazo", async (ctx) => {
@@ -600,7 +606,7 @@ export function register(bot: Bot) {
     const u = await kim(ctx.from?.id);
     if (!u?.admin) return;
     if (ctx.chat.type === "private") {
-      return ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: menyuKeyboard() });
+      return ctx.reply(await panelMatni(), { parse_mode: "HTML", reply_markup: menyuKeyboard(u.admin) });
     }
     await guruhIdOrnat(ctx.chat.id);
     const xabar = await ctx.reply(await panelMatni(), {

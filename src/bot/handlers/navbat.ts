@@ -25,13 +25,22 @@ import {
   faolNavbat,
   ishBelgila,
   navbatFaolTopshirigi,
+  navbatniBoshlash,
+  navbatniOzgartirish,
   navbatniQaytaBoshla,
   navbatniYopish,
   navbatTopshir,
 } from "../../core/rotation.js";
 import { tasdiqlovchilar } from "../../core/topshiriq.js";
 import { guruhId, kim, shaxsiy } from "../group.js";
-import { bekorKeyboard, navbatAdminKeyboard, tasdiqKeyboard, vazifaKeyboard } from "../keyboards.js";
+import {
+  bekorKeyboard,
+  navbatAdminKeyboard,
+  navbatBoshlashKeyboard,
+  navbatXonagaOtkazishKeyboard,
+  tasdiqKeyboard,
+  vazifaKeyboard,
+} from "../keyboards.js";
 import {
   boshqaXonaMatni,
   navbatAdminPaneli,
@@ -125,11 +134,13 @@ async function faqatAdmin(ctx: Context): Promise<User | null> {
   return admin?.admin ? admin : null;
 }
 
-/** /joriynavbat admin buyrug'i uchun. */
+/** /joriynavbat admin buyrug'i va Admin Panel → Navbat havolasi uchun. */
 export async function navbatAdminDashboard(ctx: Context): Promise<void> {
   const n = await faolNavbat();
   if (!n) {
-    await ctx.reply("Hozircha navbat yo'q.");
+    await ctx.reply("🧹 Hozircha navbat boshlanmagan.", {
+      reply_markup: navbatBoshlashKeyboard(),
+    });
     return;
   }
   const status = await vazifaHolatiniAniqla(n.turn);
@@ -279,5 +290,50 @@ export function register(bot: Bot) {
     for (const a of n.azolar) {
       await shaxsiy(ctx.api, a, matn, { reply_markup: new InlineKeyboard().text("👤 Mening Navbatim", "navbat_panel") });
     }
+  });
+
+  // Hali hech qanday navbat ketmayotganda Admin Panel'dan boshlash —
+  // /navbatboshla bilan bir xil funksiyani ishlatadi, ikkinchi nusxa yo'q.
+  bot.callbackQuery("admin_navbat_boshla", async (ctx) => {
+    const admin = await faqatAdmin(ctx);
+    if (!admin) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+
+    const yangi = await navbatniBoshlash();
+    if (!yangi) {
+      return ctx
+        .answerCallbackQuery({ text: "Navbat allaqachon ketyapti yoki bazada xona yo'q.", show_alert: true })
+        .catch(() => {});
+    }
+
+    await ctx.answerCallbackQuery({ text: "▶️ Boshlandi." }).catch(() => {});
+    await navbatAdminDashboard(ctx);
+  });
+
+  // Eski /navbatber buyrug'ining Admin Panel'dagi o'rni — xona raqamini
+  // qo'lda yozish shart emas, ro'yxatdan tugma bilan tanlanadi.
+  bot.callbackQuery("admin_navbat_xonaga", async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const xonalar = await sql<{ raqam: number }[]>`SELECT raqam FROM rooms ORDER BY raqam`;
+    await ctx.reply("🔀 Navbatni qaysi xonaga o'tkazamiz?", {
+      reply_markup: navbatXonagaOtkazishKeyboard(xonalar.map((x) => x.raqam)),
+    });
+  });
+
+  bot.callbackQuery(/^admin_navbat_xona:(\d+)$/, async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+
+    const raqam = Number(ctx.match[1]);
+    const yangi = await navbatniOzgartirish(raqam);
+
+    await ctx.answerCallbackQuery({ text: `✅ ${raqam}-xonaga o'tkazildi.` }).catch(() => {});
+    await ctx.reply(navbatXabari(yangi.room, yangi.azolar, yangi.turn.muddat), { parse_mode: "HTML" });
   });
 }

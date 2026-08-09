@@ -206,6 +206,24 @@ export function register(bot: Bot) {
     await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
   });
 
+  // --- Botdan uzish (eski /qaytabogla, ID asosida bir bosishda) ---
+  // Xuddi "Telegram ID" → 0 yozish bilan bir xil natija, faqat ism yozish
+  // yoki "0" kiritish shart emas — mavjud tasdiq oqimi (admin_tgid_ok)
+  // to'g'ridan-to'g'ri qayta ishlatiladi, ikkinchi nusxa yaratilmagan.
+  bot.callbackQuery(/^admin_qaytabogla:(\d+)$/, async (ctx) => {
+    if (!(await faqatAdmin(ctx))) return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q." });
+    const userId = Number(ctx.match[1]);
+    const u = await foydalanuvchiToliqOl(userId);
+    if (!u) return ctx.answerCallbackQuery({ text: "Topilmadi." });
+    if (!u.telegram_id) return ctx.answerCallbackQuery({ text: "Bu odam hali botga ulanmagan." });
+
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.reply(telegramIdTasdiqMatni(u, null), {
+      parse_mode: "HTML",
+      reply_markup: telegramIdTasdiqKeyboard(userId, null),
+    });
+  });
+
   // --- Telegram ID tahrirlash ---
   bot.callbackQuery(/^admin_edit_tgid:(\d+)$/, async (ctx) => {
     if (!(await faqatAdmin(ctx))) return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q." });

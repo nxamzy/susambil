@@ -169,6 +169,24 @@ export async function navbatniYopish(
   };
 }
 
+/**
+ * Admin: navbatni yo'qdan boshlaydi — hech qanday navbat ketmayotgan
+ * bo'lsagina ishlaydi (aks holda ikkita faol navbat yaralib qolardi).
+ * /navbatboshla buyrug'i va Admin Panel'dagi "▶️ Navbatni boshlash"
+ * tugmasi shu bir funksiyani ishlatadi, ikkinchi nusxa yo'q.
+ */
+export async function navbatniBoshlash(): Promise<FaolNavbat | null> {
+  if (await faolNavbat()) return null;
+
+  const [birinchi] = await sql<Room[]>`SELECT * FROM rooms ORDER BY tartib LIMIT 1`;
+  if (!birinchi) return null;
+
+  const muddat = new Date(Date.now() + config.siklKuni * KUN_MS);
+  await sql`INSERT INTO turns (room_id, muddat) VALUES (${birinchi.id}, ${muddat})`;
+
+  return faolNavbat();
+}
+
 /** Navbatni admin qo'lda boshqa xonaga o'tkazadi. */
 export async function navbatniOzgartirish(xonaRaqami: number): Promise<FaolNavbat> {
   const [room] = await sql<Room[]>`SELECT * FROM rooms WHERE raqam = ${xonaRaqami}`;

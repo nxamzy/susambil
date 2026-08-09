@@ -42,6 +42,13 @@ export const BOSHQA_ISH = "➕ Boshqa ish";
  */
 export const SHIKOYAT_TUGMA = "🔒 Anonim shikoyat";
 
+/**
+ * Doimiy menyudagi admin panel tugmasi. Ataylab `MENYU`ga qo'shilmagan —
+ * u hammaga bir xil ko'rinadi, bu esa faqat admin bo'lsa `menyuKeyboard`
+ * chaqirilganda qo'shiladi (xuddi SHIKOYAT_TUGMA kabi maxsus holat).
+ */
+export const ADMIN_PANEL_TUGMA = "👑 Admin Panel";
+
 /** Yozuv bo'yicha ish turini topadi (doimiy menyu tugmasi bosilganda). */
 export function tugmaIshTuri(matn: string): IshTuri | null {
   for (const t of Object.keys(ISH_TURLARI) as IshTuri[]) {
@@ -55,7 +62,7 @@ export function tugmaIshTuri(matn: string): IshTuri | null {
  * hech qachon yo'qolmaydi. Guruhda ishlatilmaydi: u yerda tugmalar hammaga
  * ko'rinib, chatni bosib qo'yardi — guruh uchun `panelKeyboard()` bor.
  */
-export function menyuKeyboard(): Keyboard {
+export function menyuKeyboard(isAdmin = false): Keyboard {
   const kb = new Keyboard();
   for (const t of TEZ_ISHLAR) kb.text(ishTugmasi(t)).row();
   kb.text(BOSHQA_ISH).row();
@@ -65,6 +72,7 @@ export function menyuKeyboard(): Keyboard {
   kb.text(MENYU.azolar).text(MENYU.tarix).row();
   kb.text(MENYU.tanishtirish).row();
   kb.text(SHIKOYAT_TUGMA);
+  if (isAdmin) kb.row().text(ADMIN_PANEL_TUGMA);
   return kb.resized().persistent();
 }
 
@@ -302,7 +310,22 @@ export function navbatAdminKeyboard(turnId: number): InlineKeyboard {
     .row()
     .text("🔄 Qaytadan boshlash", `navbat_admin_qayta:${turnId}`)
     .row()
-    .text("🔔 Hozir eslatish", `navbat_admin_eslatma:${turnId}`);
+    .text("🔔 Hozir eslatish", `navbat_admin_eslatma:${turnId}`)
+    .row()
+    .text("🔀 Boshqa xonaga o'tkazish", "admin_navbat_xonaga");
+}
+
+/** Admin: hali navbat boshlanmagan bo'lsa — boshlash tugmasi. */
+export function navbatBoshlashKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text("▶️ Navbatni boshlash", "admin_navbat_boshla");
+}
+
+/** Admin: navbatni qo'lda qaysi xonaga o'tkazishni tanlash (eski /navbatber). */
+export function navbatXonagaOtkazishKeyboard(xonalar: number[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const r of xonalar) kb.text(`🚪 ${r}-xona`, `admin_navbat_xona:${r}`).row();
+  kb.text("✖️ Bekor qilish", "bekor");
+  return kb;
 }
 
 /** Admin panelining bosh menyusi — mavjud bo'limlarga havolalar, ikkinchi nusxa yaratilmaydi. */
@@ -345,6 +368,12 @@ export function foydalanuvchiDetalKeyboard(
     .row()
     .text("⭐ Ball tuzatish", `admin_ball:${u.id}`)
     .row();
+
+  // Eski /qaytabogla buyrug'ining bir bosishlik, ID asosidagi o'rnini
+  // bosuvchisi — ism yozish shart emas, faqat ulangan bo'lsa ko'rinadi.
+  if (u.telegram_id) {
+    kb.text("🔓 Botdan uzish (qayta bog'lash uchun)", `admin_qaytabogla:${u.id}`).row();
+  }
 
   kb.text(
     u.faol ? "🚫 Faolsizlantirish" : "✅ Qayta faollashtirish",
