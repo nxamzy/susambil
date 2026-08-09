@@ -1,6 +1,6 @@
 import type { Bot, Api, Context } from "grammy";
 import { sql, type Room } from "../../db/index.js";
-import { config, ISH_TURLARI, SEKIN_ISHLAR, BALLAR, type IshTuri } from "../../config.js";
+import { config, ISH_TURLARI, NAVBAT_ISHLARI, SEKIN_ISHLAR, BALLAR, type IshTuri } from "../../config.js";
 import { ochiqTopshiriqlar } from "../../core/topshiriq.js";
 import { faolNavbat, kelgusiTartib, xonaAzolari } from "../../core/rotation.js";
 import { reyting, orinlarniHisobla, xonaHolati, tarix } from "../../core/rating.js";
@@ -23,6 +23,7 @@ import {
 } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat } from "../state.js";
 import { xarajatniBoshla } from "./expense.js";
+import { vazifaPaneliniKorsat } from "./navbat.js";
 
 function oyBoshi(): Date {
   const d = new Date();
@@ -74,11 +75,10 @@ async function navbatMatni(): Promise<string> {
     ``,
     AJRATGICH,
     `<b>BAJARILISHI KERAK</b>`,
-    `   ☐ Xona`,
-    `   ☐ Hammom`,
-    `   ☐ Oshxona`,
+    ...NAVBAT_ISHLARI.map((t) => `   ${ISH_TURLARI[t].emoji} ${ISH_TURLARI[t].nom}`),
     ``,
-    `📷 Tugagach guruhga <b>${config.minRasm} ta rasm</b>,`,
+    `👤 Navbatdagi xona a'zolari botda "Mening Navbatim"`,
+    `   orqali har birini alohida belgilaydi.`,
     `✅ <b>${config.kerakliTasdiq} kishi</b> tasdiqlaydi.`,
   );
 
@@ -273,6 +273,11 @@ export type Korinish =
 export async function korinish(ctx: Context, nom: Korinish): Promise<void> {
   switch (nom) {
     case "navbat":
+      // Shaxsiy chatda navbatdagi xona a'zosi bo'lsa — interaktiv vazifa
+      // paneli (tugmalar bilan); guruh panelida esa har doim umumiy,
+      // faqat o'qish uchun ko'rinish — tugmalar boshqa a'zolarga
+      // ko'rinib qolmasligi kerak (SHIKOYAT_TUGMA bilan bir xil sabab).
+      if (ctx.chat?.type === "private") return vazifaPaneliniKorsat(ctx);
       return javob(ctx, await navbatMatni());
     case "reyting":
       return javob(ctx, await reytingMatni(ctx.from?.id));
@@ -536,7 +541,10 @@ export function register(bot: Bot) {
     await ctx.deleteMessage().catch(() => ctx.editMessageText("✖️ Bekor qilindi."));
   });
 
-  bot.command("navbat", async (ctx) => ctx.reply(await navbatMatni(), { parse_mode: "HTML" }));
+  bot.command("navbat", async (ctx) => {
+    if (ctx.chat.type === "private") return vazifaPaneliniKorsat(ctx);
+    return ctx.reply(await navbatMatni(), { parse_mode: "HTML" });
+  });
   bot.command("reyting", async (ctx) =>
     ctx.reply(await reytingMatni(ctx.from?.id), { parse_mode: "HTML" }),
   );

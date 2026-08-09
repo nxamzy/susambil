@@ -1,4 +1,5 @@
-import type { Bot, Context, InlineKeyboard } from "grammy";
+import type { Bot, Context } from "grammy";
+import { InlineKeyboard } from "grammy";
 import { sql, type Room, type Submission, type Turn, type User } from "../../db/index.js";
 import { config } from "../../config.js";
 import { navbatniYopish } from "../../core/rotation.js";
@@ -217,14 +218,13 @@ async function navbatniTasdiqla(ctx: Context, u: User, sub: Submission) {
         ``,
         `🏠 ${natija.keyingi.room.raqam}-xona`,
         ``,
-        `Tozalash kerak:`,
-        `   ☐ Xona`,
-        `   ☐ Hammom`,
-        `   ☐ Oshxona`,
+        `👇 Pastdagi tugma bilan shaxsiy panelingizni oching — har`,
+        `vazifani (xona/hammom/oshxona/musor) alohida, o'z rasmi`,
+        `bilan belgilaysiz.`,
         ``,
-        `📷 Tugatgach guruhga <b>${config.minRasm} ta rasm</b> tashlang.`,
         `✅ <b>${config.kerakliTasdiq} kishi</b> tasdiqlagach ball qo'shiladi.`,
       ].join("\n"),
+      { reply_markup: new InlineKeyboard().text("👤 Mening Navbatim", "navbat_panel") },
     );
   }
 }

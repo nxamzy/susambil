@@ -2,6 +2,7 @@ import { InlineKeyboard, Keyboard } from "grammy";
 import {
   ISH_TURLARI,
   ISHONCH_DARAJASI,
+  NAVBAT_ISHLARI,
   SEKIN_ISHLAR,
   SHIKOYAT_JOYLARI,
   TEZ_ISHLAR,
@@ -9,6 +10,7 @@ import {
   type IshTuri,
   type ShikoyatJoyi,
 } from "../config.js";
+import type { TurnIshlar } from "../db/index.js";
 import type { ReportToliq } from "../core/reports.js";
 
 /** Ish tugmasining yozuvi — inline va doimiy menyuda bir xil bo'lsin. */
@@ -267,4 +269,37 @@ export function tolovAdminKeyboard(tolovId: number): InlineKeyboard {
   return new InlineKeyboard()
     .text("✅ Tasdiqlash", `tolov_tasdiq:${tolovId}`)
     .text("❌ Rad etish", `tolov_rad:${tolovId}`);
+}
+
+/**
+ * "Mening Navbatim" panelidagi 4 ta vazifa tugmasi — har biri alohida
+ * bosiladi (bittalik "Bajardim" emas). Hammasi bajarilganda "Yakuniy
+ * topshirish" qo'shiladi; hali kamida bittasi qolgan bo'lsa umuman
+ * chiqmaydi — talab qilingan vazifalarsiz yakunlab bo'lmasligi shu bilan
+ * kafolatlanadi (server tomonda ham tekshiriladi).
+ */
+export function vazifaKeyboard(turnId: number, ishlar: TurnIshlar): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const t of NAVBAT_ISHLARI) {
+    const i = ISH_TURLARI[t];
+    const bajarildi = Boolean(ishlar[t]);
+    kb.text(
+      bajarildi ? `✅ ${i.nom} — bajarildi` : `${i.emoji} ${i.nom}`,
+      `navbat_ish:${turnId}:${t}`,
+    ).row();
+  }
+  if (NAVBAT_ISHLARI.every((t) => ishlar[t])) {
+    kb.text("📸 Yakuniy topshirish", `navbat_topshir:${turnId}`);
+  }
+  return kb;
+}
+
+/** Admin: joriy navbatni qo'lda boshqarish tugmalari. */
+export function navbatAdminKeyboard(turnId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✅ Yakunlangan deb belgilash", `navbat_admin_tugat:${turnId}`)
+    .row()
+    .text("🔄 Qaytadan boshlash", `navbat_admin_qayta:${turnId}`)
+    .row()
+    .text("🔔 Hozir eslatish", `navbat_admin_eslatma:${turnId}`);
 }

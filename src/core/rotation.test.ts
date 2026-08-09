@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { keyingiJoy, kechikkanKun } from "./rotation.js";
+import type { TurnIshlar } from "../db/index.js";
+import {
+  keyingiJoy,
+  kechikkanKun,
+  barchaIshlarBajarildimi,
+  qolganIshlar,
+  bajarilganIshlarSoni,
+} from "./rotation.js";
 
 /** Berilgan joydan boshlab n ta qadam yuradi va bosib o'tilgan o'rinlarni qaytaradi. */
 function yurish(boshJoy: number, soni: number, qadam: number): number[] {
@@ -62,4 +69,29 @@ test("kechikkanKun boshlangan kunni ham to'liq kun deb sanaydi", () => {
   const muddat = new Date("2026-08-10T00:00:00Z");
   assert.equal(kechikkanKun(muddat, new Date("2026-08-10T00:00:01Z")), 1);
   assert.equal(kechikkanKun(muddat, new Date("2026-08-12T00:00:00Z")), 2);
+});
+
+const fakeBelgisi = { photo_id: "x", user_id: 1, vaqt: "2026-08-09T00:00:00Z" } as const;
+
+test("hech qanday vazifa bajarilmagan bo'lsa barchaIshlarBajarildimi=false", () => {
+  assert.equal(barchaIshlarBajarildimi({}), false);
+});
+
+test("faqat ba'zi vazifalar bajarilgan bo'lsa hali false", () => {
+  const ishlar: TurnIshlar = { xona: fakeBelgisi, hammom: fakeBelgisi };
+  assert.equal(barchaIshlarBajarildimi(ishlar), false);
+  assert.deepEqual(qolganIshlar(ishlar), ["oshxona", "musor"]);
+  assert.equal(bajarilganIshlarSoni(ishlar), 2);
+});
+
+test("barcha 4 ta vazifa bajarilgach barchaIshlarBajarildimi=true", () => {
+  const ishlar: TurnIshlar = {
+    xona: fakeBelgisi,
+    hammom: fakeBelgisi,
+    oshxona: fakeBelgisi,
+    musor: fakeBelgisi,
+  };
+  assert.equal(barchaIshlarBajarildimi(ishlar), true);
+  assert.deepEqual(qolganIshlar(ishlar), []);
+  assert.equal(bajarilganIshlarSoni(ishlar), 4);
 });

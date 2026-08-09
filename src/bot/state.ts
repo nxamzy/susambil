@@ -4,7 +4,7 @@
  */
 import type { Api } from "grammy";
 import { sql } from "../db/index.js";
-import type { IshTuri, Ishonch, ShikoyatJoyi } from "../config.js";
+import type { IshTuri, Ishonch, NavbatIshi, ShikoyatJoyi } from "../config.js";
 
 /** Bot yuborgan "rasm tashlang" kabi so'rov — jarayon tugagach o'chiriladi. */
 type Sorov = { sorov?: { chatId: number; msgId: number } };
@@ -61,6 +61,11 @@ export type Flow = (
   | { tur: "tolov_tasdiq"; tolovId: number }
   /** Admin "❌ Rad etish" bosgach — sababini so'raymiz. */
   | { tur: "tolov_rad"; tolovId: number }
+  /**
+   * Navbat: "Mening Navbatim" panelida bitta vazifa (xona/hammom/oshxona/
+   * musor) tugmasi bosildi — o'sha vazifaning rasmi kutilyapti.
+   */
+  | { tur: "navbat_ish"; ish: NavbatIshi; turnId: number }
 ) &
   Sorov;
 

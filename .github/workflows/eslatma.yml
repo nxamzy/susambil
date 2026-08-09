@@ -1,0 +1,23 @@
+name: Navbat eslatmasi (soatlik ping)
+
+# Vercel Cron Hobby rejada kuniga faqat BIR MARTA ishga tushadi (bu haqiqiy
+# platforma cheklovi, pullik rejasiz oshirib bo'lmaydi) — 5 soatlik navbat
+# eslatmasi uchun bu kifoya emas edi. Shu workflow /api/cron ni soatiga bir
+# marta chaqiradi; ichkaridagi mantiq DB'dagi oxirgi_eslatma vaqtidan kelib
+# chiqib "hozir kerakmi"ni o'zi hal qiladi (src/jobs/reminders.ts) — shuning
+# uchun soatlik ping bilan chaqirilsa ham eslatma haqiqatan ham faqat har
+# ~5 soatda bir marta yuboriladi, ikkinchi marta emas.
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: /api/cron ni chaqirish
+        run: |
+          curl -sf -X GET "https://uy-navbat-bot.vercel.app/api/cron" \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -o /dev/null -w "HTTP %{http_code}\n"

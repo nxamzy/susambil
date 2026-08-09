@@ -14,14 +14,19 @@ export const config = {
   /** Har xonaga beriladigan muddat (kun) */
   siklKuni: 5,
 
-  /** Muddat tugashiga necha kun qolganda eslatilsin */
+  /**
+   * Muddat tugashiga necha kun qolganda "oxirgi kun" oynasi boshlanadi —
+   * shu paytdan e'tiboran `eslatmaOraligiSoat` har necha soatda navbatdagi
+   * xonaga shaxsiy eslatma boradi (jobs/reminders.ts), navbat
+   * yakunlanguncha davom etadi.
+   */
   eslatmaKuni: 1,
+
+  /** "Oxirgi kun" oynasida shaxsiy eslatma necha soatda bir qaytarilsin. */
+  eslatmaOraligiSoat: 5,
 
   /** Ishni qabul qilish uchun kerak bo'lgan tasdiqlar soni */
   kerakliTasdiq: 3,
-
-  /** Rasmning minimal soni */
-  minRasm: 3,
 
   /** Kechikkan har bir kun uchun jarima (so'm). Faqat reytingda ko'rsatiladi —
    *  bot pul hisobini yuritmaydi. */
@@ -31,6 +36,7 @@ export const config = {
 /**
  * Qo'shimcha ish turlari.
  *
+ *   nom       — qisqa nom, ro'yxat/checklist ko'rinishlarida ishlatiladi
  *   tez       — pastdagi doimiy menyuda alohida tugma bo'ladi (eng ko'p
  *               ishlatiladiganlari). Qolganlari "Boshqa ish" ichida turadi,
  *               aks holda menyu uzayib ketardi.
@@ -38,32 +44,42 @@ export const config = {
  */
 export const ISH_TURLARI = {
   musor: {
-    emoji: "♻️", matn: "musorni tashlab keldi", tugma: "Musor tashladim",
+    nom: "Musor", emoji: "♻️", matn: "musorni tashlab keldi", tugma: "Musor tashladim",
     ball: 3, tez: true, izohShart: false,
   },
   hammom: {
-    emoji: "🧹", matn: "hammomni tozaladi", tugma: "Hammom tozaladim",
+    nom: "Hammom", emoji: "🧹", matn: "hammomni tozaladi", tugma: "Hammom tozaladim",
     ball: 15, tez: true, izohShart: false,
   },
   oshxona: {
-    emoji: "🍽", matn: "oshxonani tozaladi", tugma: "Oshxona tozaladim",
+    nom: "Oshxona", emoji: "🍽", matn: "oshxonani tozaladi", tugma: "Oshxona tozaladim",
     ball: 15, tez: true, izohShart: false,
   },
   xona: {
-    emoji: "🛏", matn: "o'z xonasini tozaladi", tugma: "O'z xonamni tozaladim",
+    nom: "Xona", emoji: "🛏", matn: "o'z xonasini tozaladi", tugma: "O'z xonamni tozaladim",
     ball: 5, tez: true, izohShart: false,
   },
   tamir: {
-    emoji: "🔧", matn: "uyda biror narsani ta'mirladi", tugma: "Nimadurni ta'mirladim",
+    nom: "Ta'mirlash", emoji: "🔧", matn: "uyda biror narsani ta'mirladi", tugma: "Nimadurni ta'mirladim",
     ball: 10, tez: true, izohShart: true,
   },
   boshqa: {
-    emoji: "➕", matn: "boshqa foydali ish qildi", tugma: "Boshqa ish",
+    nom: "Boshqa", emoji: "➕", matn: "boshqa foydali ish qildi", tugma: "Boshqa ish",
     ball: 10, tez: false, izohShart: true,
   },
 } as const;
 
 export type IshTuri = keyof typeof ISH_TURLARI;
+
+/**
+ * Navbat davomida bajarilishi SHART bo'lgan vazifalar — har biriga alohida
+ * tugma va rasm. `ISH_TURLARI`dan farqli: bular istalgan payt qo'shimcha
+ * ball uchun emas, aynan shu navbatni yakunlash uchun MAJBURIY. Nomlari
+ * ataylab `ISH_TURLARI` bilan bir xil — emoji/nom ikkinchi marta
+ * yozilmaydi, o'sha yerdan olinadi.
+ */
+export const NAVBAT_ISHLARI = ["xona", "hammom", "oshxona", "musor"] as const;
+export type NavbatIshi = (typeof NAVBAT_ISHLARI)[number];
 
 /** Pastdagi doimiy menyuda tugmasi bor turlar. */
 export const TEZ_ISHLAR = (Object.keys(ISH_TURLARI) as IshTuri[]).filter(

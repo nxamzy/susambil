@@ -1,26 +1,25 @@
 import type { Bot, Context } from "grammy";
-import type { InputMediaPhoto } from "grammy/types";
 import { sql, type User } from "../../db/index.js";
 import { config, ISH_TURLARI, type IshTuri } from "../../config.js";
-import { faolNavbat } from "../../core/rotation.js";
-import { rasmQabulQil } from "../../core/photobuffer.js";
 import { guruhId, kim } from "../group.js";
 import { tasdiqKeyboard, bekorKeyboard } from "../keyboards.js";
-import { tasdiqXabari, topshiriqXabari } from "../text.js";
+import { topshiriqXabari } from "../text.js";
 import { topshiriqYarat } from "../../core/topshiriq.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
 import { shikoyatDalilKeldi } from "./reports.js";
 import { tolovDalilKeldi } from "./tolov.js";
+import { vazifaRasmiKeldi } from "./navbat.js";
 
 /**
- * Rasm besh xil maqsadda kelishi mumkin. Tartib muhim — har biri holat
- * tekshiruvi bilan aniq ushlanmasa, masalan shikoyat dalili navbat rasmiga
- * (navbatRasmi) tushib qolib, butunlay boshqa joyga yozilib ketardi:
+ * Rasm besh xil maqsadda kelishi mumkin — tartib muhim, har biri holat
+ * tekshiruvi bilan aniq ushlanadi, aks holda masalan shikoyat dalili
+ * boshqa oqimga tushib qolib, butunlay boshqa joyga yozilib ketardi:
  *   1) qo'shimcha ish tasdig'i (tugma bosilgan, rasm kutilyapti)
  *   2) yangi xarajat rasmi — faqat shaxsiy chatda
  *   3) shikoyat dalili — faqat shaxsiy chatda
  *   4) kvartira to'lovi dalili — faqat shaxsiy chatda
- *   5) navbatdagi xonaning tozalash rasmi
+ *   5) navbat vazifasi dalili — faqat shaxsiy chatda, "Mening Navbatim"
+ *      panelida tugma bosilgandan keyin (`navbat_ish` holati)
  *
  * Video faqat shikoyat dalili sifatida, PDF esa faqat to'lov dalili
  * sifatida ishlatiladi — boshqa hech qanday oqim ularni kutmaydi, shuning
@@ -84,7 +83,13 @@ export function register(bot: Bot) {
       return tolovDalilKeldi(ctx, holat.summa, eng.file_id, "rasm");
     }
 
-    await navbatRasmi(ctx, u, eng.file_id);
+    // Navbat vazifasi dalili — "Mening Navbatim" panelida tugma bosilgach,
+    // faqat shaxsiy chatda. Boshqa hech qanday holatda rasm hech nimaga
+    // bog'lanmaydi — guruhga tasodifan tashlangan rasm endi avtomatik
+    // navbatga hisoblanmaydi (aniq vazifa tugmasi bosilishi shart).
+    if (holat?.tur === "navbat_ish" && ctx.chat.type === "private") {
+      return vazifaRasmiKeldi(ctx, holat.ish, holat.turnId, eng.file_id);
+    }
   });
 
   // Video faqat shikoyat dalili sifatida qabul qilinadi — boshqa hech
@@ -159,56 +164,4 @@ export async function ishniYakunla(
     : await ctx.api.sendMessage(guruh, matn, { parse_mode: "HTML", reply_markup: tugma });
 
   await sql`UPDATE submissions SET guruh_msg_id = ${xabar.message_id} WHERE id = ${sub.id}`;
-}
-
-async function navbatRasmi(ctx: Context, u: User, fileId: string) {
-  const navbat = await faolNavbat();
-  if (!navbat) return;
-
-  if (u.room_id !== navbat.room.id) {
-    if (ctx.chat?.type === "private") {
-      await ctx.reply(`Hozir navbat ${navbat.room.raqam}-xonada. Rasmingiz hisobga olinmadi.`);
-    }
-    return;
-  }
-
-  const natija = await rasmQabulQil(
-    navbat.turn.id,
-    u.id,
-    ctx.chat!.id,
-    fileId,
-    ctx.message?.media_group_id ?? null,
-  );
-
-  if (natija.holat === "kutilyapti") {
-    const yana = natija.kerak - natija.soni;
-    await ctx.reply(`📷 ${natija.soni} ta rasm qabul qilindi — yana <b>${yana} ta</b> kerak.`, {
-      parse_mode: "HTML",
-    });
-    return;
-  }
-  if (natija.holat !== "topshirildi") return;
-
-  const chatId = await guruhId();
-  if (!chatId) return;
-
-  const media: InputMediaPhoto[] = natija.photoIds
-    .slice(0, 10)
-    .map((file_id) => ({ type: "photo", media: file_id }));
-
-  await ctx.api.sendMediaGroup(chatId, media);
-
-  const xabar = await ctx.api.sendMessage(
-    chatId,
-    tasdiqXabari(navbat.room, u.ism, [], config.kerakliTasdiq),
-    {
-      parse_mode: "HTML",
-      reply_markup: tasdiqKeyboard(natija.submissionId, 0, config.kerakliTasdiq),
-    },
-  );
-
-  await sql`
-    UPDATE submissions SET guruh_msg_id = ${xabar.message_id}
-    WHERE id = ${natija.submissionId}
-  `;
 }

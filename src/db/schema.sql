@@ -330,3 +330,23 @@ CREATE INDEX IF NOT EXISTS tolovlar_user_idx ON tolovlar (user_id);
 -- Faqat tasdiqlangan to'lovlar hisobga qo'shiladi — bu indeks aynan shu
 -- yig'indini (core/tolov.ts) tezlashtiradi.
 CREATE INDEX IF NOT EXISTS tolovlar_tasdiqlandi_idx ON tolovlar (user_id) WHERE holat = 'tasdiqlandi';
+
+-- ---------------------------------------------------------------------------
+-- MIGRATSIYA: navbat — interaktiv shaxsiy panel + ishonchli eslatma
+-- ---------------------------------------------------------------------------
+-- Ilgari navbat "kamida N ta rasm tashla" degan yagona to'plam edi — qaysi
+-- ish qilingani alohida kuzatilmasdi. Endi har bir vazifa (xona/hammom/
+-- oshxona/musor) o'z rasmi va holati bilan ALOHIDA saqlanadi, shuning
+-- uchun bot restart bo'lsa ham "kim nima qilib bo'lgani" yo'qolmaydi.
+--
+-- `eslatildi`/`oxirgi_ping` ustunlari BAZADA qoladi (hech narsa
+-- o'chirilmaydi), lekin kod endi ulardan foydalanmaydi — o'rniga:
+--   - `oxirgi_eslatma`: har 5 soatda bir marta yuboriladigan SHAXSIY
+--     eslatmaning oxirgi vaqti (`jobs/reminders.ts`). Bu ustun NULL'dan
+--     birinchi marta to'lganda bir martalik "oxirgi kun boshlandi" guruh
+--     e'loni ham yuboriladi — alohida bayroq shart emas.
+--   - `oxirgi_ping` eski ma'nosida QOLADI: muddat o'tib ketganda kuniga
+--     bir marta yuboriladigan GURUH ogohlantirishi, 5 soatlik shaxsiy
+--     eslatmadan ataylab alohida (guruh har 5 soatda bezovta qilinmasin).
+ALTER TABLE turns ADD COLUMN IF NOT EXISTS ishlar JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE turns ADD COLUMN IF NOT EXISTS oxirgi_eslatma TIMESTAMPTZ;

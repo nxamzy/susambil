@@ -1,5 +1,5 @@
-import { sql, type Room, type Turn, type User } from "../db/index.js";
-import { config } from "../config.js";
+import { sql, type Room, type Submission, type Turn, type TurnIshlar, type User } from "../db/index.js";
+import { config, NAVBAT_ISHLARI, type NavbatIshi } from "../config.js";
 import { navbatBalli } from "./rating.js";
 
 const KUN_MS = 24 * 60 * 60 * 1000;
@@ -148,9 +148,6 @@ export async function navbatniYopish(
       WHERE id = ${turn.id}
     `;
 
-    // Chala qolgan rasmlar keyingi navbatga o'tib ketmasin
-    await tx`DELETE FROM pending_photos WHERE turn_id = ${turn.id}`;
-
     await tx`
       INSERT INTO turns (room_id, muddat) VALUES (${keyingiRoom.id}, ${yangiMuddat})
     `;
@@ -187,4 +184,93 @@ export async function navbatniOzgartirish(xonaRaqami: number): Promise<FaolNavba
   const yangi = await faolNavbat();
   if (!yangi) throw new Error("Yangi navbat yaratilmadi");
   return yangi;
+}
+
+/**
+ * Bitta vazifani (xona/hammom/oshxona/musor) rasm bilan belgilaydi.
+ * Faqat 'faol' navbatda ishlaydi — yopilgan navbatga qo'lda callback orqali
+ * urinilsa jimgina `null` qaytadi.
+ *
+ * Qayta bosilsa (rasmni almashtirish) ustidan yozadi — muammo emas, chunki
+ * `jsonb_set` shu kalitning o'zini yangilaydi, boshqalariga tegmaydi.
+ */
+export async function ishBelgila(
+  turnId: number,
+  ish: NavbatIshi,
+  userId: number,
+  photoId: string,
+): Promise<Turn | null> {
+  const qiymat = { photo_id: photoId, user_id: userId, vaqt: new Date().toISOString() };
+  const [t] = await sql<Turn[]>`
+    UPDATE turns
+    SET ishlar = jsonb_set(ishlar, ARRAY[${ish}]::text[], ${sql.json(qiymat)}, true)
+    WHERE id = ${turnId} AND holat = 'faol'
+    RETURNING *
+  `;
+  return t ?? null;
+}
+
+/** Sof funksiyalar — bazasiz testlanadi. */
+export function barchaIshlarBajarildimi(ishlar: TurnIshlar): boolean {
+  return NAVBAT_ISHLARI.every((k) => ishlar[k] !== undefined);
+}
+
+export function qolganIshlar(ishlar: TurnIshlar): NavbatIshi[] {
+  return NAVBAT_ISHLARI.filter((k) => ishlar[k] === undefined);
+}
+
+export function bajarilganIshlarSoni(ishlar: TurnIshlar): number {
+  return NAVBAT_ISHLARI.length - qolganIshlar(ishlar).length;
+}
+
+/**
+ * Shu navbat uchun hali rad etilmagan topshiriq bormi (kutilmoqda yoki
+ * tasdiqlangan). Rad etilgan ataylab hisobga kirmaydi — aks holda bir marta
+ * rad etilgach xona qaytadan topshira olmay qolardi (eski buferdagi bilan
+ * bir xil qoida, `submissions_faol_navbat_uniq` indeksi ham shunga mos).
+ */
+export async function navbatFaolTopshirigi(turnId: number): Promise<Submission | null> {
+  const [sub] = await sql<Submission[]>`
+    SELECT * FROM submissions
+    WHERE turn_id = ${turnId} AND tur = 'navbat' AND NOT bekor AND holat <> 'rad'
+    ORDER BY id DESC LIMIT 1
+  `;
+  return sub ?? null;
+}
+
+/**
+ * Barcha vazifalar bajarilgach yakuniy topshiriqni yaratadi — guruh
+ * tasdig'iga tayyor. `finalizerUserId` — "✅ Yakuniy topshirish" tugmasini
+ * bosgan odam (guruh xabarida shu ko'rsatiladi, xuddi eski "kim yukladi"
+ * bilan bir xil rolda).
+ */
+export async function navbatTopshir(turn: Turn, finalizerUserId: number): Promise<Submission> {
+  const photoIds = NAVBAT_ISHLARI.map((k) => turn.ishlar[k]?.photo_id).filter(
+    (id): id is string => Boolean(id),
+  );
+
+  const [sub] = await sql<Submission[]>`
+    INSERT INTO submissions (turn_id, user_id, photo_ids, tur, holat)
+    VALUES (${turn.id}, ${finalizerUserId}, ${photoIds}, 'navbat', 'kutilmoqda')
+    RETURNING *
+  `;
+  if (!sub) throw new Error("Navbat topshirig'i yaratilmadi");
+  return sub;
+}
+
+/** Admin: navbatni boshidan boshlaydi — vazifalar tozalanadi, oldingi rad etilgan/kutilmoqda topshiriq bekor qilinadi. */
+export async function navbatniQaytaBoshla(turnId: number): Promise<Turn | null> {
+  return sql.begin(async (tx) => {
+    const [t] = await tx<Turn[]>`
+      UPDATE turns SET ishlar = '{}'::jsonb, oxirgi_eslatma = NULL
+      WHERE id = ${turnId} AND holat = 'faol'
+      RETURNING *
+    `;
+    if (!t) return null;
+    await tx`
+      UPDATE submissions SET bekor = TRUE
+      WHERE turn_id = ${turnId} AND tur = 'navbat' AND holat = 'kutilmoqda'
+    `;
+    return t;
+  });
 }

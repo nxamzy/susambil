@@ -1,7 +1,7 @@
-import type { Report, Room, SubTur, User } from "../db/index.js";
+import type { Report, Room, SubTur, Turn, TurnIshlar, User } from "../db/index.js";
 import {
-  config, ISH_TURLARI, BALLAR, ISHONCH_DARAJASI, SHIKOYAT_JOYLARI,
-  type IshTuri, type Ishonch, type ShikoyatJoyi,
+  config, ISH_TURLARI, BALLAR, ISHONCH_DARAJASI, NAVBAT_ISHLARI, SHIKOYAT_JOYLARI,
+  type IshTuri, type Ishonch, type NavbatIshi, type ShikoyatJoyi,
 } from "../config.js";
 import { orinlarniHisobla, type OdamBall } from "../core/rating.js";
 import type { ReportToliq } from "../core/reports.js";
@@ -95,7 +95,8 @@ export function navbatXabari(room: Room, azolar: User[], muddat: Date): string {
     `${muddatHolati(muddat)}`,
     ``,
     AJRATGICH,
-    `📷 Tozalagach guruhga <b>${config.minRasm} ta rasm</b> tashlang.`,
+    `👤 Vazifalar ro'yxati botdagi "👤 Mening Navbatim"da —`,
+    `   har biriga alohida rasm bilan belgilanadi.`,
     `✅ Boshqa xonalardan <b>${config.kerakliTasdiq} kishi</b> tasdiqlasa,`,
     `   navbat keyingi xonaga o'tadi.`,
   ].join("\n");
@@ -210,6 +211,120 @@ export function reytingRoyxati(
 /** Tasdiq progressi — navbat va qo'shimcha ishda bir xil ko'rinsin. */
 function bolmalar(soni: number, kerak: number): string {
   return "🟩".repeat(Math.min(soni, kerak)) + "⬜️".repeat(Math.max(0, kerak - soni));
+}
+
+function vazifaQatori(ish: NavbatIshi, ishlar: TurnIshlar): string {
+  const t = ISH_TURLARI[ish];
+  return ishlar[ish] ? `✅ ${t.emoji} ${t.nom}` : `☐ ${t.emoji} ${t.nom}`;
+}
+
+/**
+ * "Mening Navbatim" panelidagi joriy holat — bitta vaqtda faqat bittasi
+ * to'g'ri: hali davom etmoqda, guruh tasdig'ini kutmoqda, yoki oxirgi
+ * topshiriq rad etilgan (qaytadan yuborish mumkin).
+ */
+export type VazifaHolati =
+  | { tur: "faol" }
+  | { tur: "kutilmoqda"; tasdiqlovchilar: string[]; kerak: number }
+  | { tur: "rad"; sabab: string | null };
+
+/**
+ * Navbatdagi xonaning shaxsiy vazifa paneli — FAQAT o'sha xona a'zolariga
+ * ko'rinadi (handler serverda `room_id` ni tekshiradi). Har vazifa alohida
+ * qatorda, holati bazadagi `turns.ishlar`dan to'g'ridan-to'g'ri o'qiladi —
+ * bot qayta ishga tushsa ham yo'qolmaydi.
+ */
+export function vazifaPaneli(room: Room, turn: Turn, status: VazifaHolati): string {
+  const ishlar = turn.ishlar;
+  const bajarilgan = NAVBAT_ISHLARI.filter((k) => ishlar[k]).length;
+  const qoldi = NAVBAT_ISHLARI.length - bajarilgan;
+
+  const s = [
+    `👤 <b>MENING NAVBATIM</b>`,
+    AJRATGICH,
+    ``,
+    `🏠 Xona: <b>${room.raqam}-xona</b>`,
+    `📅 Muddat: <b>${sana(turn.muddat)}</b>`,
+    `${muddatHolati(turn.muddat)}`,
+    ``,
+    `<b>Vazifalar:</b>`,
+    ...NAVBAT_ISHLARI.map((k) => `   ${vazifaQatori(k, ishlar)}`),
+    ``,
+    `🟢 Bajarilgan: <b>${bajarilgan}</b>   🔴 Qoldi: <b>${qoldi}</b>`,
+  ];
+
+  if (status.tur === "rad") {
+    s.push(``, `❌ <b>Oldingi topshiriq rad etildi.</b>`);
+    if (status.sabab) s.push(`✏️ Sabab: ${esc(status.sabab)}`);
+    s.push(
+      `<i>Kerak bo'lsa vazifa rasmini qaytadan tashlab,</i>`,
+      `<i>yakuniy topshirishni qayta bosing.</i>`,
+    );
+  } else if (status.tur === "kutilmoqda") {
+    s.push(
+      ``,
+      `⏳ <b>Topshirilgan — guruh tasdig'ini kutmoqda.</b>`,
+      `${bolmalar(status.tasdiqlovchilar.length, status.kerak)}  ${status.tasdiqlovchilar.length}/${status.kerak}`,
+    );
+  } else if (qoldi > 0) {
+    s.push(``, `⚠️ <b>${qoldi} ta vazifa qoldi.</b>`);
+  } else {
+    s.push(``, `✅ <b>Barcha vazifalar bajarildi!</b>`, `👇 Pastdagi tugma bilan yakuniy topshiring.`);
+  }
+
+  return s.join("\n");
+}
+
+/** Navbatda bo'lmagan odam "Navbat" bo'limini ochsa — faqat umumiy ma'lumot, boshqaning tugmalari yo'q. */
+export function boshqaXonaMatni(room: Room, azolar: User[], muddat: Date): string {
+  return [
+    `ℹ️ <b>Siz hozir navbatda emassiz.</b>`,
+    AJRATGICH,
+    ``,
+    `👤 Joriy navbat: <b>${room.raqam}-xona</b>`,
+    `👥 ${esc(ismlar(azolar))}`,
+    `📅 Muddat: <b>${sana(muddat)}</b>`,
+    `${muddatHolati(muddat)}`,
+  ].join("\n");
+}
+
+/**
+ * Admin uchun joriy navbat dashboard'i — vazifalar, dalil, eslatma holati.
+ * Real vaqtda qayta hisoblanadi, alohida "admin ko'rinishi" jadvali yo'q.
+ */
+export function navbatAdminPaneli(room: Room, turn: Turn, azolar: User[], status: VazifaHolati): string {
+  const ishlar = turn.ishlar;
+  const bajarilgan = NAVBAT_ISHLARI.filter((k) => ishlar[k]).length;
+
+  const s = [
+    `🛠 <b>JORIY NAVBAT — ADMIN</b>`,
+    AJRATGICH,
+    ``,
+    `🏠 Xona: <b>${room.raqam}-xona</b>`,
+    `👥 ${esc(ismlar(azolar))}`,
+    `📅 Boshlandi: ${sana(turn.boshlandi)}`,
+    `📅 Muddat: ${sana(turn.muddat)}`,
+    `${muddatHolati(turn.muddat)}`,
+    ``,
+    `<b>Vazifalar (${bajarilgan}/${NAVBAT_ISHLARI.length}):</b>`,
+    ...NAVBAT_ISHLARI.map((k) => `   ${vazifaQatori(k, ishlar)}`),
+  ];
+
+  if (status.tur === "kutilmoqda") {
+    s.push(``, `📤 Holat: <b>Topshirilgan</b> — ${status.tasdiqlovchilar.length}/${status.kerak} tasdiq`);
+  } else if (status.tur === "rad") {
+    s.push(``, `📤 Holat: <b>Rad etilgan</b>${status.sabab ? ` — ${esc(status.sabab)}` : ""}`);
+  } else {
+    s.push(``, `📤 Holat: <b>Davom etmoqda</b>`);
+  }
+
+  s.push(``, `🔔 Oxirgi shaxsiy eslatma: ${turn.oxirgi_eslatma ? sana(turn.oxirgi_eslatma) : "hali yuborilmagan"}`);
+  if (turn.oxirgi_eslatma) {
+    const keyingi = new Date(new Date(turn.oxirgi_eslatma).getTime() + config.eslatmaOraligiSoat * 3_600_000);
+    s.push(`⏭ Keyingi eslatma taxminan: ${sana(keyingi)}`);
+  }
+
+  return s.join("\n");
 }
 
 /**
@@ -506,14 +621,17 @@ export function tanishtirish(): string {
     `ikkinchisiga o'tadi:`,
     `   1-xona ➡️ 2-xona ➡️ 3-xona ➡️ 4-xona ➡️ ...`,
     ``,
-    `Navbatingiz kelganda:`,
-    `   1️⃣ Kvartirani tozalaysiz`,
-    `   2️⃣ Guruhga <b>${config.minRasm} ta rasm</b> tashlaysiz`,
-    `   3️⃣ Boshqa xonadan <b>${config.kerakliTasdiq} kishi</b> ✅ bosadi`,
-    `   4️⃣ Navbat keyingi xonaga o'tadi`,
+    `Navbatingiz kelganda shaxsiy "👤 Mening Navbatim" paneli`,
+    `ochiladi — har vazifaning o'z tugmasi va rasmi bilan:`,
+    ...NAVBAT_ISHLARI.map((t) => `   ${ISH_TURLARI[t].emoji} ${ISH_TURLARI[t].nom}`),
+    ``,
+    `Hammasi bajarilgach "📸 Yakuniy topshirish" tugmasi chiqadi:`,
+    `   ✅ Boshqa xonadan <b>${config.kerakliTasdiq} kishi</b> tasdiqlasa,`,
+    `   navbat keyingi xonaga o'tadi.`,
     ``,
     `⚠️ <b>${config.kerakliTasdiq} kishi tasdiqlamaguncha navbat o'tmaydi.</b>`,
-    `⏰ Muddatga 1 kun qolganda eslataman.`,
+    `⏰ Oxirgi kun boshlanganda har ${config.eslatmaOraligiSoat} soatda eslataman —`,
+    `   navbatni tugatmaguningizcha to'xtamaydi.`,
     `🔴 Kechiksangiz har kun ball kamayadi.`,
     ``,
     `<b>♻️ QO'SHIMCHA ISHLAR</b>`,

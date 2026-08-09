@@ -1,5 +1,5 @@
 import postgres from "postgres";
-import { config, type Ishonch, type ShikoyatJoyi } from "../config.js";
+import { config, type Ishonch, type NavbatIshi, type ShikoyatJoyi } from "../config.js";
 
 /** Neon'ning "-pooler" manzili PgBouncer (transaction mode) orqali ishlaydi —
  *  u prepared statement'larni qo'llab-quvvatlamaydi, shuning uchun o'chiramiz. */
@@ -24,6 +24,11 @@ export type User = {
   faol: boolean;
 };
 
+/** Bitta vazifaning holati — rasm kelganda to'ladi, boshqa hech narsa uni o'chirmaydi. */
+export type TurnIshBelgisi = { photo_id: string; user_id: number; vaqt: string };
+
+export type TurnIshlar = Partial<Record<NavbatIshi, TurnIshBelgisi>>;
+
 export type Turn = {
   id: number;
   room_id: number;
@@ -32,8 +37,12 @@ export type Turn = {
   tasdiqlandi: Date | null;
   holat: "faol" | "tasdiqlandi" | "admin_yopdi";
   kechikkan_kun: number;
-  eslatildi: boolean;
+  /** Muddat o'tgach kunda 1 marta yuboriladigan GURUH ogohlantirishi — o'zgarmagan eski maydon. */
   oxirgi_ping: Date | null;
+  /** Har bir vazifaning (xona/hammom/oshxona/musor) rasmi va kim bajargani */
+  ishlar: TurnIshlar;
+  /** "Oxirgi kun" oynasida 5 soatda bir yuboriladigan SHAXSIY eslatmaning oxirgi vaqti */
+  oxirgi_eslatma: Date | null;
 };
 
 /** Topshiriq turi. Uchalasi ham bir xil tasdiqlash yo'lidan o'tadi. */

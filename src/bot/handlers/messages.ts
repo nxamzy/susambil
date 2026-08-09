@@ -169,6 +169,10 @@ export function register(bot: Bot) {
       return tolovRadEtish(ctx, holat.tolovId, ctx.message.text.trim());
     }
 
+    if (holat?.tur === "navbat_ish") {
+      return ctx.reply("📷 Avval rasmini tashlang.");
+    }
+
     if (holat?.tur === "ish") {
       return ctx.reply("📷 Rasm kutyapman — qilgan ishingizning rasmini tashlang.");
     }
