@@ -219,6 +219,11 @@ CREATE TABLE IF NOT EXISTS reports (
   admin_id     INT REFERENCES users(id),
   -- Admin qo'shgan erkin izoh — reporterning izohidan alohida.
   admin_note   TEXT,
+  -- Sababchining o'zi guruhdagi tugmalar orqali bergan javobi va izohi —
+  -- reporterning va adminning izohidan alohida.
+  javobgar_javobi      TEXT CHECK (javobgar_javobi IN ('tan_oldi', 'rad_etdi')),
+  javobgar_izohi       TEXT,
+  javobgar_javob_vaqti TIMESTAMPTZ,
   -- Admin tasdiqlab, tuzatish uchun imkoniyat bergan payt.
   confirmed_at TIMESTAMPTZ,
   hal_qilindi  TIMESTAMPTZ,
@@ -267,4 +272,16 @@ ALTER TABLE reports DROP CONSTRAINT IF EXISTS reports_holat_check;
 DO $$ BEGIN
   ALTER TABLE reports ADD CONSTRAINT reports_holat_check
     CHECK (holat IN ('kutilmoqda', 'tuzatilmoqda', 'tuzatildi', 'jarima', 'rad'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- MIGRATSIYA 3: guruh xabari endi interaktiv — sababchi "Men qildim/
+-- qilmadim/izoh" tugmalari bilan javob beradi. Javob va izoh reporter/admin
+-- izohidan ALOHIDA saqlanadi (uchtasi ham turli kishidan keladi).
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS javobgar_javobi TEXT;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS javobgar_izohi TEXT;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS javobgar_javob_vaqti TIMESTAMPTZ;
+
+DO $$ BEGIN
+  ALTER TABLE reports ADD CONSTRAINT reports_javobgar_javobi_chk
+    CHECK (javobgar_javobi IS NULL OR javobgar_javobi IN ('tan_oldi', 'rad_etdi'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;

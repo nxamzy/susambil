@@ -77,10 +77,19 @@ export type Submission = {
  */
 export type ReportHolat = "kutilmoqda" | "tuzatilmoqda" | "tuzatildi" | "jarima" | "rad";
 
+/** Guruh tugmalari orqali sababchining o'zi bergan javob. */
+export type JavobgarJavobi = "tan_oldi" | "rad_etdi";
+
 /**
- * Anonim shikoyat. `reporter_id` va `reported_id` faqat admin ko'radigan
- * joylarda ishlatiladi (adminga DM, /shikoyatlar) — guruhga yoki oddiy
- * a'zoga chiqadigan hech qanday matnda bu maydonlar o'qilmasligi kerak.
+ * Anonim shikoyat.
+ *
+ * `reporter_id` HECH QACHON guruhga yoki oddiy a'zoga chiqadigan matnda
+ * ishlatilmaydi — faqat admin ko'radigan joylarda (adminga DM, /shikoyatlar).
+ *
+ * `reported_id` esa buning aksi: aniq yoki gumon qilingan bo'lsa, guruh
+ * xabarida ISM sifatida ko'rsatiladi ("gumon" holatida aniq "tasdiqlanmagan"
+ * deb belgilab) — maqsad muammoni hal qilish, shuning uchun bu odam kim
+ * ekani yashirilmaydi. Faqat "kim shikoyat qildi" (reporter) maxfiy qoladi.
  */
 export type Report = {
   id: number;
@@ -97,6 +106,11 @@ export type Report = {
   admin_id: number | null;
   /** Adminning erkin izohi — reporterning izohidan alohida */
   admin_note: string | null;
+  /** Sababchining guruh tugmalari orqali bergan javobi (tan oldi/rad etdi) */
+  javobgar_javobi: JavobgarJavobi | null;
+  /** Sababchining o'z izohi — reporter va adminning izohidan alohida */
+  javobgar_izohi: string | null;
+  javobgar_javob_vaqti: Date | null;
   /** Admin tasdiqlab, tuzatish uchun imkoniyat bergan payt */
   confirmed_at: Date | null;
   hal_qilindi: Date | null;

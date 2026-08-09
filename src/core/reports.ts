@@ -20,7 +20,7 @@
  * qanday qo'shimcha mantiq kerak emas: holatning o'zi ballning berilgan-
  * berilmaganini bildiradi.
  */
-import { sql, type Report } from "../db/index.js";
+import { sql, type JavobgarJavobi, type Report } from "../db/index.js";
 import { BALLAR, type Ishonch, type ShikoyatJoyi } from "../config.js";
 
 /** Bir kishi bir odam haqida shuncha vaqt ichida qayta yoza olmaydi. */
@@ -119,6 +119,37 @@ export async function adminIzohQoshish(reportId: number, izoh: string): Promise<
   const [r] = await sql<Report[]>`
     UPDATE reports SET admin_note = ${izoh.trim().slice(0, 500)}
     WHERE id = ${reportId} AND holat = 'kutilmoqda'
+    RETURNING *
+  `;
+  return r ?? null;
+}
+
+/**
+ * Sababchining o'zi guruhdagi tugmalar orqali javob beradi ("Men qildim" /
+ * "Men qilmadim"). Bu FAQAT ma'lumot — ball yoki holatga tegmaydi, admin
+ * baribir mustaqil qaror qiladi (shu jumladan tan olingan bo'lsa ham).
+ *
+ * Ikkala faol holatda (kutilmoqda va tuzatilmoqda) ishlaydi — sababchi
+ * admin ko'rib chiqishidan oldin ham, tuzatish davrida ham javob berishi
+ * mumkin.
+ */
+export async function javobgarJavobiniSaqla(
+  reportId: number,
+  javob: JavobgarJavobi,
+): Promise<Report | null> {
+  const [r] = await sql<Report[]>`
+    UPDATE reports SET javobgar_javobi = ${javob}, javobgar_javob_vaqti = now()
+    WHERE id = ${reportId} AND holat IN ('kutilmoqda', 'tuzatilmoqda')
+    RETURNING *
+  `;
+  return r ?? null;
+}
+
+/** Sababchining o'z izohi — reporter va adminning izohidan alohida saqlanadi. */
+export async function javobgarIzohiniSaqla(reportId: number, izoh: string): Promise<Report | null> {
+  const [r] = await sql<Report[]>`
+    UPDATE reports SET javobgar_izohi = ${izoh.trim().slice(0, 500)}
+    WHERE id = ${reportId} AND holat IN ('kutilmoqda', 'tuzatilmoqda')
     RETURNING *
   `;
   return r ?? null;

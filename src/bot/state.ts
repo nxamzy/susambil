@@ -48,6 +48,8 @@ export type Flow = (
     }
   /** Admin shikoyatga erkin izoh yozayotganda — reporterning o'z holatidan alohida. */
   | { tur: "shikoyat_izoh"; reportId: number }
+  /** Guruhda "💬 Izoh qo'shish" bosgan sababchi — o'z izohini shaxsiy yozadi. */
+  | { tur: "javobgar_izoh"; reportId: number }
 ) &
   Sorov;
 

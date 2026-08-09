@@ -18,12 +18,14 @@
  */
 import type { Bot, Context, Api, InlineKeyboard as InlineKeyboardType } from "grammy";
 import { InlineKeyboard } from "grammy";
-import { sql, type Report, type User } from "../../db/index.js";
+import { sql, type JavobgarJavobi, type Report, type User } from "../../db/index.js";
 import { SHIKOYAT_JOYLARI, type Ishonch, type ShikoyatJoyi } from "../../config.js";
 import {
   adminIzohQoshish,
   adminXabarlarniSaqla,
   guruhXabarniSaqla,
+  javobgarIzohiniSaqla,
+  javobgarJavobiniSaqla,
   javobgarniOzgartir,
   kutayotganShikoyatlar,
   shikoyatniOl,
@@ -39,6 +41,7 @@ import {
   ishonchKeyboard,
   shikoyatAdminKeyboard,
   shikoyatDalilKeyboard,
+  shikoyatGuruhKeyboard,
   shikoyatJoyKeyboard,
   shikoyatKimKeyboard,
   shikoyatQaytaKeyboard,
@@ -46,6 +49,7 @@ import {
 } from "../keyboards.js";
 import {
   AJRATGICH,
+  esc,
   shikoyatAdminXabari,
   shikoyatGuruhXabari,
   shikoyatJarimaXabari,
@@ -269,6 +273,15 @@ async function mediaXabarTahrirla(
 }
 
 /**
+ * Guruh xabaridagi sababchining javob tugmalari — har doim konkret qiymat
+ * qaytaradi (tugma kerak bo'lmasa bo'sh klaviatura), aks holda tahrirlashda
+ * eski tugmalar o'chmay qolib ketardi.
+ */
+function guruhKlaviaturasi(r: ReportToliq): InlineKeyboardType {
+  return shikoyatGuruhKeyboard(r) ?? new InlineKeyboard();
+}
+
+/**
  * Guruhdagi yagona anonim xabarni yuboradi (birinchi marta) yoki
  * tahrirlaydi (keyingi har bir holat o'zgarishida) — qayta yubormaymiz,
  * aks holda guruh bir shikoyat uchun bir necha marta bezovta bo'lardi.
@@ -286,13 +299,14 @@ async function guruhXabarniYangila(api: Api, r: ReportToliq): Promise<boolean> {
   }
 
   const matn = shikoyatGuruhXabari(r);
+  const kb = guruhKlaviaturasi(r);
   try {
     if (r.guruh_msg_id) {
-      const ok = await mediaXabarTahrirla(api, chatId, Number(r.guruh_msg_id), matn, r);
+      const ok = await mediaXabarTahrirla(api, chatId, Number(r.guruh_msg_id), matn, r, { reply_markup: kb });
       if (!ok) console.error(`[shikoyat #${r.id}] guruhdagi xabarni tahrirlab bo'lmadi.`);
       return ok;
     }
-    const msg = await mediaXabarYubor(api, chatId, matn, r);
+    const msg = await mediaXabarYubor(api, chatId, matn, r, { reply_markup: kb });
     await guruhXabarniSaqla(r.id, msg.message_id);
     return true;
   } catch (e) {
@@ -337,6 +351,82 @@ async function panelniYangila(api: Api, r: ReportToliq, kb: InlineKeyboardType):
   for (const m of r.admin_msgs) {
     await mediaXabarTahrirla(api, m.chat_id, m.message_id, matn, r, { reply_markup: kb });
   }
+}
+
+/** Barcha bog'langan adminlarga qisqa DM eslatma — panel tahrirlanishi doim ham bildirishnoma bermaydi. */
+async function adminlargaEslatma(api: Api, matn: string): Promise<void> {
+  const adminlar = await sql<User[]>`
+    SELECT * FROM users WHERE admin AND faol AND telegram_id IS NOT NULL
+  `;
+  for (const a of adminlar) await shaxsiy(api, a, matn);
+}
+
+/**
+ * Guruhdagi "🙋 Men qildim" / "❌ Men qilmadim" tugmalari — faqat aynan shu
+ * shikoyatda ko'rsatilgan (`reported_id`) odamga tegishli, boshqa hech kim
+ * (o'sha odamning ismi allaqachon guruh xabarida ochiq bo'lsa ham) bosa
+ * olmaydi. Bu FAQAT ma'lumot: holat yoki ball o'zgarmaydi, admin baribir
+ * mustaqil qaror qiladi — shu jumladan tan olingan bo'lsa ham.
+ */
+async function javobgarQarori(ctx: Context, reportId: number, javob: JavobgarJavobi): Promise<void> {
+  const kishi = await kim(ctx.from?.id);
+  const toliq = await shikoyatniOl(reportId);
+  if (!toliq) {
+    await ctx.answerCallbackQuery({ text: "Topilmadi." }).catch(() => {});
+    return;
+  }
+  if (!kishi || toliq.reported_id !== kishi.id) {
+    await ctx
+      .answerCallbackQuery({
+        text: "Bu tugmalar faqat shikoyatda ko'rsatilgan odamga tegishli.",
+        show_alert: true,
+      })
+      .catch(() => {});
+    return;
+  }
+
+  const yangi = await javobgarJavobiniSaqla(reportId, javob);
+  if (!yangi) {
+    await ctx.answerCallbackQuery({ text: "Bu shikoyat allaqachon yopilgan." }).catch(() => {});
+    return;
+  }
+
+  await ctx
+    .answerCallbackQuery({ text: "✅ Javobingiz qabul qilindi. Admin ko'rib chiqadi." })
+    .catch(() => {});
+
+  const toliq2 = (await shikoyatniOl(reportId)) ?? toliq;
+  await guruhXabarniYangila(ctx.api, toliq2);
+  await panelniYangila(ctx.api, toliq2, faolKlaviatura(toliq2));
+
+  const xabar =
+    javob === "tan_oldi"
+      ? `🙋 <b>${esc(kishi.ism)}</b> #${reportId}-shikoyatda mas'uliyatni tan oldi.`
+      : `🙅 <b>${esc(kishi.ism)}</b> #${reportId}-shikoyatda mas'uliyatni rad etdi.`;
+  await adminlargaEslatma(ctx.api, xabar);
+}
+
+/** Guruhdagi "💬 Izoh qo'shish" bosilgach — messages.ts'dan chaqiriladi. Guruhga chiqmaydi, faqat admin ko'radi. */
+export async function javobgarIzohiSaqlandi(ctx: Context, reportId: number, izoh: string): Promise<void> {
+  if (!ctx.from) return;
+  await holatTozala(ctx.from.id);
+
+  const yangi = await javobgarIzohiniSaqla(reportId, izoh);
+  if (!yangi) {
+    await ctx.reply("Bu shikoyat allaqachon yopilgan yoki topilmadi.");
+    return;
+  }
+  await ctx.reply("✅ Izohingiz saqlandi. Bu faqat adminga ko'rinadi.");
+
+  const toliq = await shikoyatniOl(reportId);
+  if (!toliq) return;
+  await panelniYangila(ctx.api, toliq, faolKlaviatura(toliq));
+
+  const kishi = await kim(ctx.from.id);
+  await adminlargaEslatma(
+    ctx.api,
+    `💬 <b>${esc(kishi?.ism ?? "Kimdir")}</b> #${reportId}-shikoyatga izoh qo'shdi.`,
+  );
 }
 
 /** /shikoyatlar buyrug'i uchun ham ishlatiladi — bir xil ko'rinish, ikkinchi nusxa yo'q. */
@@ -699,5 +789,44 @@ export function register(bot: Bot) {
 
     const xabar = await ctx.reply("✏️ Izohingizni yozing:", { reply_markup: bekorKeyboard() });
     await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
+  });
+
+  bot.callbackQuery(/^shikoyat_javobgar_ha:(\d+)$/, (ctx) =>
+    javobgarQarori(ctx, Number(ctx.match[1]), "tan_oldi"),
+  );
+  bot.callbackQuery(/^shikoyat_javobgar_yoq:(\d+)$/, (ctx) =>
+    javobgarQarori(ctx, Number(ctx.match[1]), "rad_etdi"),
+  );
+
+  bot.callbackQuery(/^shikoyat_javobgar_izoh:(\d+)$/, async (ctx) => {
+    const reportId = Number(ctx.match[1]);
+    const kishi = await kim(ctx.from.id);
+    const toliq = await shikoyatniOl(reportId);
+    if (!toliq) {
+      return ctx.answerCallbackQuery({ text: "Topilmadi." }).catch(() => {});
+    }
+    if (!kishi || toliq.reported_id !== kishi.id) {
+      return ctx
+        .answerCallbackQuery({
+          text: "Bu tugma faqat shikoyatda ko'rsatilgan odamga tegishli.",
+          show_alert: true,
+        })
+        .catch(() => {});
+    }
+    if (toliq.holat !== "kutilmoqda" && toliq.holat !== "tuzatilmoqda") {
+      return ctx.answerCallbackQuery({ text: "Bu shikoyat allaqachon yopilgan." }).catch(() => {});
+    }
+
+    await ctx
+      .answerCallbackQuery({ text: "Botga shaxsiy yozib izohingizni yuboring.", show_alert: true })
+      .catch(() => {});
+
+    const holat = { tur: "javobgar_izoh", reportId } as const;
+    await holatOrnat(ctx.from.id, holat);
+    await shaxsiy(
+      ctx.api,
+      kishi,
+      "💬 <b>Izohingizni shu yerga yozing.</b>\n\nBu faqat adminga ko'rinadi, guruhga chiqmaydi.",
+    );
   });
 }

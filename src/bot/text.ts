@@ -365,6 +365,9 @@ export function shikoyatAdminXabari(r: ReportToliq): string {
   if (r.confirmed_at) s.push(`   ↳ Tasdiqlangan: ${sana(r.confirmed_at)}`);
   if (r.hal_qilindi) s.push(`   ↳ Yopilgan: ${sana(r.hal_qilindi)}`);
   if (r.admin_note) s.push(``, `✏️ Sizning izohingiz: ${esc(r.admin_note)}`);
+  if (r.javobgar_javobi === "tan_oldi") s.push(``, `🙋 Sababchining javobi: <b>Tan oldi</b>`);
+  else if (r.javobgar_javobi === "rad_etdi") s.push(``, `🙅 Sababchining javobi: <b>Rad etdi</b>`);
+  if (r.javobgar_izohi) s.push(`💬 Sababchining izohi: ${esc(r.javobgar_izohi)}`);
 
   if (r.holat === "kutilmoqda") {
     s.push(
@@ -424,9 +427,27 @@ export function shikoyatJarimaXabari(r: ReportToliq, adminIsm: string): string {
 }
 
 /**
- * Guruhga chiqadigan yagona xabar — qayta yuborilmaydi, holat
- * o'zgargan sayin shu tahrirlanadi. Reporter HAM, sababchi HAM hech
- * qachon ko'rsatilmaydi — faqat joyi, tavsif va joriy holat.
+ * Guruh xabarida "kim javobgar" qatori. Reporter HECH QACHON bu yerda (yoki
+ * boshqa guruhga chiqadigan joyda) ko'rsatilmaydi — faqat sababchi: aniq
+ * bo'lsa ismi bilan, gumon bo'lsa aniq "tasdiqlanmagan" belgisi bilan,
+ * hech kim bilmasa "Noma'lum".
+ */
+function javobgarQatori(r: ReportToliq): string {
+  if (!r.reported_id) return `👤 Sababchi: <b>Noma'lum</b>`;
+  if (r.ishonch === "gumon") {
+    return `👤 Gumon qilinuvchi: <b>${esc(r.reported_ism ?? "")}</b> <i>(tasdiqlanmagan)</i>`;
+  }
+  return `👤 Sababchi: <b>${esc(r.reported_ism ?? "")}</b>`;
+}
+
+/**
+ * Guruhga chiqadigan yagona xabar — qayta yuborilmaydi, holat o'zgargan
+ * sayin shu tahrirlanadi. Reporter HECH QACHON ko'rsatilmaydi — buni yozgan
+ * kim ekani faqat adminga ma'lum. Sababchi esa buning aksi: aniq yoki gumon
+ * qilingan bo'lsa ISM bilan ko'rsatiladi (maqsad — muammoni hal qilish),
+ * gumon bo'lsa aniq "tasdiqlanmagan" deb belgilanadi, hali tan olish/rad
+ * etish sababchining o'zi bosadigan tugmalar orqali keladi va faqat
+ * "tan oldi" holati shu yerda ko'rsatiladi (rad etish va izoh — admin-only).
  */
 export function shikoyatGuruhXabari(r: ReportToliq): string {
   const joy = shikoyatJoyi(r.joy);
@@ -434,11 +455,15 @@ export function shikoyatGuruhXabari(r: ReportToliq): string {
     `🚨 <b>ANONIM SHIKOYAT</b>`,
     AJRATGICH,
     ``,
-    `${joy.emoji} ${joy.nom}`,
+    `${joy.emoji} Joyi: ${joy.nom}`,
     ``,
     `📝 ${esc(r.izoh)}`,
   ];
   if (r.photo_id) s.push(``, `${r.media_turi === "video" ? "🎥 Video" : "📸 Rasm"} dalil biriktirilgan.`);
+  s.push(``, javobgarQatori(r));
+  if (r.javobgar_javobi === "tan_oldi") {
+    s.push(``, `🙋 <b>${esc(r.reported_ism ?? "")}</b> mas'uliyatni tan oldi.`);
+  }
   s.push(``);
   switch (r.holat) {
     case "kutilmoqda":

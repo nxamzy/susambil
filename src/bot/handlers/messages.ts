@@ -14,7 +14,7 @@ import {
 import { summaniSora, xarajatniSaqla } from "./expense.js";
 import { korinish, panelMatni } from "./commands.js";
 import { ishniBoshla, ishRasminiSora } from "./chores.js";
-import { shikoyatBoshla, shikoyatIzohSaqlandi, shikoyatJoySora } from "./reports.js";
+import { javobgarIzohiSaqlandi, shikoyatBoshla, shikoyatIzohSaqlandi, shikoyatJoySora } from "./reports.js";
 import { summaTekshir } from "../../core/topshiriq.js";
 
 /**
@@ -142,6 +142,12 @@ export function register(bot: Bot) {
       const izoh = ctx.message.text.trim().slice(0, 500);
       if (izoh.length < 2) return ctx.reply("Juda qisqa. Qaytadan yozing.");
       return shikoyatIzohSaqlandi(ctx, holat.reportId, izoh);
+    }
+
+    if (holat?.tur === "javobgar_izoh") {
+      const izoh = ctx.message.text.trim().slice(0, 500);
+      if (izoh.length < 2) return ctx.reply("Juda qisqa. Qaytadan yozing.");
+      return javobgarIzohiSaqlandi(ctx, holat.reportId, izoh);
     }
 
     if (holat?.tur === "ish") {

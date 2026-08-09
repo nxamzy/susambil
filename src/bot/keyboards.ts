@@ -9,6 +9,7 @@ import {
   type IshTuri,
   type ShikoyatJoyi,
 } from "../config.js";
+import type { ReportToliq } from "../core/reports.js";
 
 /** Ish tugmasining yozuvi — inline va doimiy menyuda bir xil bo'lsin. */
 export function ishTugmasi(t: IshTuri): string {
@@ -225,5 +226,28 @@ export function shikoyatQaytaKeyboard(
   for (const o of odamlar) kb.text(`👤 ${o.ism}`, `shikoyat_belgila:${reportId}:${o.id}`).row();
   kb.text("❓ Hech kim (noma'lum)", `shikoyat_notanilgan:${reportId}`).row();
   kb.text("⬅️ Bekor qilish", `shikoyat_qayta_bekor:${reportId}`);
+  return kb;
+}
+
+/**
+ * Guruh xabaridagi sababchining o'z tugmalari — faqat aynan shu odamga
+ * tegishli (handler'da `reported_id` bilan solishtirib tekshiriladi).
+ *
+ * Sababchi hali ma'lum bo'lmasa ("noma'lum") yoki shikoyat allaqachon
+ * yopilgan bo'lsa (tuzatildi/jarima/rad) — tugma yo'q, `null` qaytadi.
+ * "Tan oldi"/"Rad etdi" faqat javob berilmagunча ko'rinadi, lekin izoh
+ * qo'shish har doim ochiq qoladi — javobdan keyin ham fikr qo'shish mumkin.
+ */
+export function shikoyatGuruhKeyboard(r: ReportToliq): InlineKeyboard | null {
+  if (!r.reported_id) return null;
+  if (r.holat !== "kutilmoqda" && r.holat !== "tuzatilmoqda") return null;
+
+  const kb = new InlineKeyboard();
+  if (!r.javobgar_javobi) {
+    kb.text("🙋 Men qildim", `shikoyat_javobgar_ha:${r.id}`)
+      .text("❌ Men qilmadim", `shikoyat_javobgar_yoq:${r.id}`)
+      .row();
+  }
+  kb.text("💬 Izoh qo'shish", `shikoyat_javobgar_izoh:${r.id}`);
   return kb;
 }
