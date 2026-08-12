@@ -7,7 +7,11 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { hisoblaDaraja, muddatNatijasi, tolovEslatmasiKerakmi } from "./tolov.js";
+import {
+  hisoblaDaraja, jarimaHisobla, kechikkanmi, muddatiOtdimi, muddatNatijasi,
+  tolovEslatmasiKerakmi,
+} from "./tolov.js";
+import { kunOxirigachaSoat } from "./vaqt.js";
 import { guruhEslatmasiKerakmi } from "../jobs/reminders.js";
 import { config } from "../config.js";
 
@@ -212,4 +216,50 @@ test("hamma to'lagan bo'lsa guruhga eslatma yuborilmaydi", () => {
 test("guruhga ham kuniga bir marta", () => {
   assert.equal(guruh({ bugun: "2026-08-15", oxirgiEslatma: "2026-08-15" }), false);
   assert.equal(guruh({ bugun: "2026-08-15", oxirgiEslatma: "2026-08-10" }), true);
+});
+
+// ---------------------------------------------------------------------------
+// KECHIKISH VA JARIMA
+// ---------------------------------------------------------------------------
+
+test("muddat kunining o'zi hali o'tgan hisoblanmaydi", () => {
+  // Muddat kun OXIRIGACHA — 15-kuni to'lagan odam kechikkan emas.
+  assert.equal(muddatiOtdimi("2026-08-15", "2026-08-14"), false);
+  assert.equal(muddatiOtdimi("2026-08-15", "2026-08-15"), false);
+  assert.equal(muddatiOtdimi("2026-08-15", "2026-08-16"), true);
+});
+
+test("kechikish PUL va VAQT holatlarining kesishmasi", () => {
+  // Qarzi bor + muddat o'tgan → kechikkan
+  assert.equal(kechikkanmi(500_000, "2026-08-15", "2026-08-16"), true);
+  // Qarzi bor, lekin muddat hali o'tmagan → kechikkan emas
+  assert.equal(kechikkanmi(500_000, "2026-08-15", "2026-08-15"), false);
+  // Muddat o'tgan, lekin qarzi yo'q → kechikkan emas
+  assert.equal(kechikkanmi(0, "2026-08-15", "2026-08-20"), false);
+});
+
+test("jarima qoldiqdan hisoblanadi, standart foizda 0 chiqadi", () => {
+  assert.equal(jarimaHisobla(500_000, 0), 0, "foiz 0 — jarima o'chiq");
+  assert.equal(jarimaHisobla(500_000, 10), 50_000);
+  assert.equal(jarimaHisobla(0, 10), 0, "qarzi yo'qqa jarima yo'q");
+  // Yaxlitlash: 333 333 dan 7% = 23 333.31 → 23 333
+  assert.equal(jarimaHisobla(333_333, 7), 23_333);
+});
+
+test("jarima muddat suratida ham, joriy holatda ham bir xil hisoblanadi", () => {
+  // `muddatNatijasi` ichkarida ham shu funksiyani ishlatadi — ikkita
+  // hisob-kitob bo'lib qolmasligi kerak.
+  const n = muddatNatijasi({
+    talab: TALAB, tasdiqlangan: 400_000, kutilmoqda: 0, jarimaFoiz: 10,
+  });
+  assert.equal(n.jarima, jarimaHisobla(n.qoldiq, 10));
+});
+
+test("kunOxirigachaSoat 1..24 oralig'ida bo'ladi", () => {
+  // Toshkent UTC+5: UTC 19:00 → Toshkent 00:00, ya'ni kun endi boshlandi.
+  assert.equal(kunOxirigachaSoat(new Date("2026-08-15T19:00:00Z")), 24);
+  // UTC 18:00 → Toshkent 23:00, kun tugashiga 1 soat.
+  assert.equal(kunOxirigachaSoat(new Date("2026-08-15T18:00:00Z")), 1);
+  // UTC 07:00 → Toshkent 12:00, yarim kun qoldi.
+  assert.equal(kunOxirigachaSoat(new Date("2026-08-15T07:00:00Z")), 12);
 });

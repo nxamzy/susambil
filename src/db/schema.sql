@@ -435,6 +435,19 @@ UPDATE tolovlar t
  WHERE t.sikl_id IS NULL
    AND s.davr = date_trunc('month', t.created_at AT TIME ZONE 'Asia/Tashkent')::date;
 
+-- Bitta chek shu oyda bir marta. Foydalanuvchi xuddi shu rasmni ikki marta
+-- yuborsa (tasodifan yoki ataylab) ikkinchi yozuv YARATILMAYDI — aks holda
+-- bitta pul ikki marta hisobga tushib, qarzni ikki barobar kamaytirib
+-- yuborishi mumkin edi.
+--
+-- `holat <> 'rad'` sharti ataylab: rad etilgan chek xato bo'lgan, uni
+-- tuzatib qayta yuborishga yo'l ochiq qolishi kerak.
+--
+-- Foydalanuvchiga tushunarli xabar `core/tolov.ts` `avvalgiDalil()` orqali
+-- beriladi; bu indeks esa poyga holatiga qarshi qattiq kafolat.
+CREATE UNIQUE INDEX IF NOT EXISTS tolovlar_dalil_uniq
+  ON tolovlar (sikl_id, user_id, dalil_id) WHERE holat <> 'rad';
+
 -- ---------------------------------------------------------------------------
 -- MIGRATSIYA: navbat — interaktiv shaxsiy panel + ishonchli eslatma
 -- ---------------------------------------------------------------------------

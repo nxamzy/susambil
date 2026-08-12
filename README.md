@@ -152,11 +152,45 @@ summadan** hisoblanadi, butun talabdan emas.
 Hech qanday tarix o'chirilmaydi: eski sikl, uning to'lovlari va muddat
 surati bazada qoladi.
 
+### Kechikish
+
+Muddat o'tgan va qarzi qolgan odam **kechikkan** deb belgilanadi. Bu daraja
+(to'liq/qisman/to'lanmagan) bilan almashtirilmaydi — daraja PULNING, kechikish
+esa VAQTNING holati, ikkalasi mustaqil o'zgaradi. Muddatdan keyin to'lagan
+odam bir vaqtning o'zida "to'liq to'lagan" va "kechikmagan" bo'lib qoladi.
+
+Kechikish o'z ko'rinishida ham (⛔️ MUDDAT O'TIB KETGAN), admin panelida ham
+alohida ro'yxatda chiqadi. Jarima foizi o'rnatilgan bo'lsa summa ikkalasida
+ham ko'rsatiladi.
+
+### Takroriy chek
+
+Xuddi shu chek shu oyda ikkinchi marta yuborilsa yangi yozuv **yaratilmaydi** —
+aks holda bitta pul ikki marta hisobga tushib, qarzni ikki barobar kamaytirib
+yuborardi. Foydalanuvchi mavjud yozuvning holatini ko'radi. Rad etilgan chek
+bundan mustasno: xatoni tuzatib qayta yuborish mumkin.
+
+Qattiq kafolat bazadagi `tolovlar_dalil_uniq` qisman indeksida, ya'ni ikki
+so'rov bir vaqtda kelsa ham ikkita yozuv paydo bo'lmaydi.
+
 ### Admin
 
-`/tolovlar` (yoki 👑 Admin Panel → 💰 To'lovlar) — shu oylik ko'rinish:
-jami yig'im, kim to'liq/qisman/umuman to'lamagan, kimning to'lovi
-tekshiruvda. Har bir odamning tugmasi bosilsa: talab, tasdiqlangan, qoldiq,
+`/tolovlar` (yoki 👑 Admin Panel → 💰 To'lovlar) — umumiy raqamlar, so'ng
+alohida tugmalar:
+
+| Tugma | Nima ko'rsatadi |
+|---|---|
+| 🔴 Qarzdorlar | qarzi borlar, eng ko'p qarzdordan boshlab |
+| ⛔️ Kechikkanlar | muddat o'tgani holda qarzi qolganlar (faqat bor bo'lsa) |
+| 🟢 To'laganlar | shu oyni to'liq yopganlar |
+| ⏳ Tekshiruvdagilar | chek rasmi + tasdiqlash/rad tugmalari |
+| 📜 Tarix | oxirgi oylarning qisqa xulosasi |
+| 🔒 Oyni yakunlash | faqat muddat kelgan, hali yopilmagan oyda |
+
+Umumiy ko'rinish ataylab qisqa: 12 kishilik uyda uchta to'liq ro'yxat bitta
+xabarga sig'masdi va muhim raqamlar pastga tushib ketardi.
+
+Har bir odamning tugmasi bosilsa: talab, tasdiqlangan, qoldiq,
 tekshiruvdagilar, muddat natijasi, jarima holati va butun to'lov tarixi.
 
 ## Qoidalar (`src/config.ts`)

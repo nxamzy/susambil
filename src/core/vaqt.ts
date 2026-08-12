@@ -41,6 +41,20 @@ export function bugungiSana(d: Date = new Date()): string {
   return sanaMatni(yil, oy, kun);
 }
 
+/**
+ * Toshkent bo'yicha kun oxirigacha necha soat qolgan (1..24).
+ *
+ * Muddat kun OXIRIGACHA hisoblangani uchun muddat kunida "bugun" degani
+ * yetarli emas — ertalab ham, kechqurun ham bir xil eshitiladi. Soat esa
+ * haqiqiy shoshilinchlikni ko'rsatadi.
+ */
+export function kunOxirigachaSoat(d: Date = new Date()): number {
+  const soat = Number(
+    new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hour12: false, timeZone: TZ }).format(d),
+  );
+  return 24 - soat;
+}
+
 /** Shu oyda nechta kun bor — muddat kuni oy uzunligidan oshib ketmasligi uchun. */
 export function oyKunlari(yil: number, oy: number): number {
   return new Date(Date.UTC(yil, oy, 0)).getUTCDate();

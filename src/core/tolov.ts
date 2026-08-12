@@ -120,6 +120,27 @@ export function hisoblaDaraja(tasdiqlangan: number, talab: number): TolovDaraja 
   return "tola";
 }
 
+/**
+ * Muddat o'tib ketdimi. Muddat KUN OXIRIGACHA hisoblangani uchun muddat
+ * kunining o'zi hali "o'tgan" emas.
+ */
+export function muddatiOtdimi(muddat: string, bugun = bugungiSana()): boolean {
+  return kunFarqi(bugun, muddat) < 0;
+}
+
+/**
+ * "Kechikkan" — muddat o'tgan VA qarz qolgan.
+ *
+ * Ataylab `TolovDaraja`ga to'rtinchi qiymat qilib qo'shilmadi: daraja
+ * PULNING holati (qancha to'landi), kechikish esa VAQTNING holati. Ikkalasi
+ * mustaqil o'zgaradi — muddat o'tgandan keyin to'lagan odam ham "tola",
+ * ham "kechikkan emas" bo'lib qoladi. Ularni bitta maydonga siqish
+ * `hisoblaDaraja`ni ham, uning sinovlarini ham buzardi.
+ */
+export function kechikkanmi(qoldiq: number, muddat: string, bugun = bugungiSana()): boolean {
+  return qoldiq > 0 && muddatiOtdimi(muddat, bugun);
+}
+
 // ---------------------------------------------------------------------------
 // OYLIK SIKL
 // ---------------------------------------------------------------------------
@@ -277,7 +298,7 @@ export function muddatNatijasi(p: {
     qoldiq,
     daraja: hisoblaDaraja(p.tasdiqlangan, p.talab),
     tekshiruvKutilmoqda,
-    jarima: tekshiruvKutilmoqda ? 0 : Math.round((qoldiq * p.jarimaFoiz) / 100),
+    jarima: tekshiruvKutilmoqda ? 0 : jarimaHisobla(qoldiq, p.jarimaFoiz),
   };
 }
 
@@ -316,6 +337,10 @@ export type TolovHolatMalumoti = {
   kutilmoqdaSoni: number;
   /** O'sha kutayotgan to'lovlarda foydalanuvchi da'vo qilgan jami summa */
   kutilmoqdaSumma: number;
+  /** Muddat o'tgan va qarz qolgan */
+  kechikkan: boolean;
+  /** Kechikkan bo'lsa sozlangan foizdan hisoblangan jarima (foiz 0 bo'lsa 0) */
+  jarima: number;
   /** Qaysi oy hisoblanmoqda — muddat va talab shu yerdan olinadi */
   sikl: TolovSikl;
 };
@@ -337,15 +362,27 @@ export async function foydalanuvchiTolovHolati(
     FROM tolovlar WHERE user_id = ${userId} AND sikl_id = ${s.id}
   `;
   const tasdiqlangan = Number(r?.tasdiqlangan ?? 0);
+  const qoldiq = Math.max(0, s.talab - tasdiqlangan);
+  const kechikkan = kechikkanmi(qoldiq, s.muddat);
   return {
     talab: s.talab,
     tasdiqlangan,
-    qoldiq: Math.max(0, s.talab - tasdiqlangan),
+    qoldiq,
     daraja: hisoblaDaraja(tasdiqlangan, s.talab),
     kutilmoqdaSoni: r?.kutilmoqda ?? 0,
     kutilmoqdaSumma: Number(r?.kutilmoqda_summa ?? 0),
+    kechikkan,
+    jarima: kechikkan ? jarimaHisobla(qoldiq, await tolovJarimaFoizi()) : 0,
     sikl: s,
   };
+}
+
+/**
+ * Qarzdan jarima. Yagona joy — muddat surati ham (`muddatNatijasi`), joriy
+ * ko'rinish ham shuni ishlatadi, ikkita hisob-kitob bo'lmasin.
+ */
+export function jarimaHisobla(qoldiq: number, foiz: number): number {
+  return Math.round((qoldiq * foiz) / 100);
 }
 
 /**
@@ -361,15 +398,38 @@ export async function tolovYuborish(
   kiritganSumma: number,
   dalilId: string,
   dalilTuri: TolovDalilTuri,
-): Promise<Tolov> {
+): Promise<Tolov | null> {
   const sikl = await joriySikl();
+  // Bir xil chek ikkinchi marta yuborilsa yangi yozuv yaratilmaydi —
+  // `tolovlar_dalil_uniq` qisman indeksi buni bazada kafolatlaydi, ya'ni
+  // ikki so'rov bir vaqtda kelsa ham ikkita qarz yozuvi paydo bo'lmaydi.
+  // Rad etilgan chek bundan mustasno: xato tuzatilib qayta yuborilishi
+  // mumkin (indeks `holat <> 'rad'` shartida).
   const [t] = await sql<Tolov[]>`
     INSERT INTO tolovlar (user_id, sikl_id, kiritgan_summa, dalil_id, dalil_turi)
     VALUES (${userId}, ${sikl.id}, ${kiritganSumma}, ${dalilId}, ${dalilTuri})
+    ON CONFLICT DO NOTHING
     RETURNING *
   `;
-  if (!t) throw new Error("To'lov yozuvi yaratilmadi");
-  return t;
+  return t ?? null;
+}
+
+/**
+ * Shu chek shu oyda allaqachon yuborilganmi. Foydalanuvchiga tushunarli
+ * xabar berish uchun — qattiq kafolat baribir bazadagi indeksda.
+ */
+export async function avvalgiDalil(
+  userId: number,
+  dalilId: string,
+): Promise<Tolov | null> {
+  const sikl = await joriySikl();
+  const [t] = await sql<Tolov[]>`
+    SELECT * FROM tolovlar
+    WHERE user_id = ${userId} AND sikl_id = ${sikl.id}
+      AND dalil_id = ${dalilId} AND holat <> 'rad'
+    LIMIT 1
+  `;
+  return t ?? null;
 }
 
 /**
@@ -771,6 +831,10 @@ export type SiklOdam = {
   kutilmoqdaSumma: number;
   kutilmoqdaSoni: number;
   daraja: TolovDaraja;
+  /** Muddat o'tgan va qarzi qolgan */
+  kechikkan: boolean;
+  /** Kechikkan bo'lsa sozlangan foizdan hisoblangan jarima */
+  jarima: number;
   /** Muddat surati — muddat hali kelmagan bo'lsa `null` */
   muddat: MuddatNatija | null;
 };
@@ -787,6 +851,12 @@ export type TolovDashboard = {
   tola: SiklOdam[];
   qisman: SiklOdam[];
   tolanmagan: SiklOdam[];
+  /** Qarzi borlar (qisman + tolanmagan) — eng ko'p qarzdori birinchi */
+  qarzdorlar: SiklOdam[];
+  /** Muddat o'tgan va hamon qarzi bor — `qarzdorlar`ning quyi to'plami */
+  kechikkanlar: SiklOdam[];
+  /** Sozlangan foiz bo'yicha jami jarima (foiz 0 bo'lsa 0) */
+  jamiJarima: number;
 };
 
 /** Admin/Sorabek uchun umumiy ko'rinish: shu oyda kim qancha to'lagan. */
@@ -825,18 +895,24 @@ export async function tolovDashboard(sikl?: TolovSikl): Promise<TolovDashboard> 
     ORDER BY u.ism
   `;
 
+  const jarimaFoiz = await tolovJarimaFoizi();
+
   const odamlar: SiklOdam[] = qatorlar.map((q) => {
     const tasdiqlangan = Number(q.tasdiqlangan);
+    const qoldiq = Math.max(0, s.talab - tasdiqlangan);
+    const kechikkan = kechikkanmi(qoldiq, s.muddat);
     const muddatQoldiq = Number(q.muddat_qoldiq ?? 0);
     const muddatKutilmoqda = Number(q.muddat_kutilmoqda ?? 0);
     return {
       userId: q.user_id,
       ism: q.ism,
       tasdiqlangan,
-      qoldiq: Math.max(0, s.talab - tasdiqlangan),
+      qoldiq,
       kutilmoqdaSumma: Number(q.kutilmoqda_summa),
       kutilmoqdaSoni: q.kutilmoqda_soni,
       daraja: hisoblaDaraja(tasdiqlangan, s.talab),
+      kechikkan,
+      jarima: kechikkan ? jarimaHisobla(qoldiq, jarimaFoiz) : 0,
       muddat:
         q.muddat_daraja && q.muddat_talab !== null
           ? {
@@ -867,5 +943,53 @@ export async function tolovDashboard(sikl?: TolovSikl): Promise<TolovDashboard> 
     tola: odamlar.filter((o) => o.daraja === "tola"),
     qisman: odamlar.filter((o) => o.daraja === "qisman"),
     tolanmagan: odamlar.filter((o) => o.daraja === "tolanmagan"),
+    // Eng ko'p qarzdori birinchi — admin kimdan boshlashini bir qarashda ko'rsin.
+    qarzdorlar: odamlar.filter((o) => o.qoldiq > 0).sort((a, b) => b.qoldiq - a.qoldiq),
+    kechikkanlar: odamlar.filter((o) => o.kechikkan).sort((a, b) => b.qoldiq - a.qoldiq),
+    jamiJarima: odamlar.reduce((n, o) => n + o.jarima, 0),
   };
+}
+
+export type SiklXulosa = {
+  sikl: TolovSikl;
+  jamiTalab: number;
+  jamiTasdiqlangan: number;
+  jamiQoldiq: number;
+  odamSoni: number;
+};
+
+/**
+ * Oxirgi oylarning qisqa xulosasi — admin "📜 Tarix" tugmasida ko'radi.
+ * Har oy o'z siklidagi TALAB bilan hisoblanadi (joriy sozlama bilan emas),
+ * shuning uchun o'tgan oy ko'rsatkichlari keyin ham o'zgarmaydi.
+ */
+export async function siklTarixi(limit = 12): Promise<SiklXulosa[]> {
+  const sikllar = await sikllarRoyxati(limit);
+  if (sikllar.length === 0) return [];
+
+  const yigindilar = await sql<{ sikl_id: number; tasdiqlangan: string }[]>`
+    SELECT sikl_id, COALESCE(SUM(tasdiqlangan_summa), 0)::bigint AS tasdiqlangan
+    FROM tolovlar
+    WHERE holat = 'tasdiqlandi' AND sikl_id = ANY(${sikllar.map((s) => s.id)})
+    GROUP BY sikl_id
+  `;
+
+  const [odam] = await sql<{ soni: number }[]>`
+    SELECT count(*)::int AS soni FROM users WHERE faol
+  `;
+  const odamSoni = odam?.soni ?? 0;
+
+  return sikllar.map((sikl) => {
+    const jamiTasdiqlangan = Number(
+      yigindilar.find((y) => y.sikl_id === sikl.id)?.tasdiqlangan ?? 0,
+    );
+    const jamiTalab = sikl.talab * odamSoni;
+    return {
+      sikl,
+      jamiTalab,
+      jamiTasdiqlangan,
+      jamiQoldiq: Math.max(0, jamiTalab - jamiTasdiqlangan),
+      odamSoni,
+    };
+  });
 }

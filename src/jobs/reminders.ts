@@ -7,14 +7,16 @@ import {
   eslatmaBelgila,
   eslatmaNomzodlari,
   guruhEslatmasiniBelgila,
+  jarimaHisobla,
   joriySikl,
   muddatiOtganSikllar,
   siklMuddatiniHisobla,
   tolovDashboard,
   tolovEslatmasiKerakmi,
+  tolovJarimaFoizi,
   type MuddatSurati,
 } from "../core/tolov.js";
-import { bugungiSana, kunFarqi } from "../core/vaqt.js";
+import { bugungiSana, kunFarqi, kunOxirigachaSoat } from "../core/vaqt.js";
 import { guruhgaYubor, shaxsiy } from "../bot/group.js";
 import {
   esc,
@@ -263,6 +265,11 @@ async function shaxsiyTolovEslatmalari(
   const qolganKun = kunFarqi(bugun, sikl.muddat);
   if (qolganKun > config.tolovEslatmaKuni) return;
 
+  // Jarima faqat muddat o'tgandan keyingi xabarda kerak. Foiz standart
+  // holatda 0 — u holda xabarda jarima qatori umuman chiqmaydi.
+  const jarimaFoiz = qolganKun < 0 ? await tolovJarimaFoizi() : 0;
+  const qolganSoat = qolganKun === 0 ? kunOxirigachaSoat() : undefined;
+
   const nomzodlar = await eslatmaNomzodlari(sikl);
 
   for (const n of nomzodlar) {
@@ -275,9 +282,15 @@ async function shaxsiyTolovEslatmalari(
     });
     if (!kerak) continue;
 
-    const yetdi = await shaxsiy(api, n.user, tolovEslatmaXabari(sikl, n, qolganKun), {
-      reply_markup: tolovTugmasi(),
-    });
+    const yetdi = await shaxsiy(
+      api,
+      n.user,
+      tolovEslatmaXabari(sikl, n, qolganKun, {
+        jarima: jarimaHisobla(n.qoldiq, jarimaFoiz),
+        qolganSoat,
+      }),
+      { reply_markup: tolovTugmasi() },
+    );
     // Faqat yetkazilganda belgilaymiz — aks holda bloklangan/o'chirilgan
     // hisob tufayli kun "eslatilgan" bo'lib qolib, tuzatilgach ham qayta
     // urinilmasdi (navbat eslatmasidagi bilan bir xil ehtiyot chorasi).

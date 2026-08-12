@@ -20,12 +20,14 @@ import { sql, type TolovDalilTuri, type User } from "../../db/index.js";
 import { summaTekshir } from "../../core/topshiriq.js";
 import {
   adminXabarlarniSaqla,
+  avvalgiDalil,
   foydalanuvchiTolovHolati,
   foydalanuvchiTolovlari,
   guruhXabarniSaqla,
   kutayotganTolovlar,
   siklniOl,
   siklniYakunla,
+  siklTarixi,
   tolovDashboard,
   tolovniOl,
   tolovniRadEt,
@@ -41,6 +43,7 @@ import {
   tolovAdminKeyboard,
   tolovDashboardKeyboard,
   tolovFoydalanuvchiKeyboard,
+  tolovRoyxatKeyboard,
 } from "../keyboards.js";
 import {
   AJRATGICH,
@@ -52,6 +55,10 @@ import {
   tolovFoydalanuvchiMatni,
   tolovGuruhXabari,
   tolovRadXabari,
+  tolovRoyxatMatni,
+  tolovTakrorXabari,
+  tolovTarixXulosasi,
+  type TolovRoyxatTuri,
   tolovTarixi,
   tolovTasdiqXabari,
   tolovYuborildiXabari,
@@ -187,7 +194,20 @@ export async function tolovDalilKeldi(
   await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
   await holatTozala(ctx.from.id);
 
+  // Ayni chek shu oyda allaqachon yuborilgan bo'lsa ikkinchi qarz yozuvi
+  // yaratilmaydi — aks holda bitta pul ikki marta hisobga tushardi.
+  const avvalgi = await avvalgiDalil(u.id, dalilId);
+  if (avvalgi) {
+    await ctx.reply(tolovTakrorXabari(avvalgi), { parse_mode: "HTML" });
+    return;
+  }
+
   const t = await tolovYuborish(u.id, summa, dalilId, dalilTuri);
+  if (!t) {
+    // Poyga: ikkita dalil deyarli bir vaqtda kelgan, bazadagi indeks to'sdi.
+    await ctx.reply("⏳ Bu chek allaqachon qabul qilingan — tekshiruvni kuting.");
+    return;
+  }
 
   await ctx.reply(tolovYuborildiXabari(summa), { parse_mode: "HTML" });
 
@@ -314,11 +334,36 @@ export async function tolovDashboardKorsat(ctx: Context, sikl?: TolovSikl): Prom
     parse_mode: "HTML",
     reply_markup: tolovDashboardKeyboard(d),
   });
+}
 
+/** Bitta ro'yxat: qarzdorlar / kechikkanlar / to'liq to'laganlar. */
+async function tolovRoyxatKorsat(ctx: Context, tur: TolovRoyxatTuri): Promise<void> {
+  const d = await tolovDashboard();
+  const odamlar =
+    tur === "qarzdor" ? d.qarzdorlar : tur === "kechikkan" ? d.kechikkanlar : d.tola;
+
+  await ctx.reply(chekla(tolovRoyxatMatni(d, tur)), {
+    parse_mode: "HTML",
+    reply_markup: tolovRoyxatKeyboard(odamlar),
+  });
+}
+
+/**
+ * Tasdiq kutayotgan cheklar — har biri dalil rasmi va tugmalari bilan.
+ * Ilgari bu dashboardning oxiriga yopishtirilgan edi; endi alohida tugmada,
+ * chunki 12 kishilik uyda bir necha chek kelsa umumiy ko'rinish butunlay
+ * ko'rinmay ketardi.
+ */
+export async function kutayotganTolovlarniKorsat(ctx: Context): Promise<void> {
   const kutilmoqda = await kutayotganTolovlar();
-  if (kutilmoqda.length === 0 || !ctx.chat) return;
+  if (kutilmoqda.length === 0 || !ctx.chat) {
+    await ctx.reply("✅ Tasdiq kutayotgan to'lov yo'q.");
+    return;
+  }
 
-  await ctx.reply(`⏳ <b>${kutilmoqda.length} ta to'lov tasdiq kutmoqda:</b>`, { parse_mode: "HTML" });
+  await ctx.reply(`⏳ <b>${kutilmoqda.length} ta to'lov tasdiq kutmoqda:</b>`, {
+    parse_mode: "HTML",
+  });
   for (const t of kutilmoqda) {
     const oz = t.sikl_id ? await siklniOl(t.sikl_id) : null;
     const holat = await foydalanuvchiTolovHolati(t.user_id, oz ?? undefined);
@@ -364,6 +409,33 @@ export function register(bot: Bot) {
     }
     await ctx.answerCallbackQuery().catch(() => {});
     await tolovDashboardKorsat(ctx);
+  });
+
+  bot.callbackQuery(/^tolov_royxat:(qarzdor|kechikkan|tolagan)$/, async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+    await tolovRoyxatKorsat(ctx, ctx.match[1] as TolovRoyxatTuri);
+  });
+
+  bot.callbackQuery("tolov_kutilmoqda", async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+    await kutayotganTolovlarniKorsat(ctx);
+  });
+
+  bot.callbackQuery("tolov_tarix_admin", async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.reply(chekla(tolovTarixXulosasi(await siklTarixi())), {
+      parse_mode: "HTML",
+      reply_markup: new InlineKeyboard().text("⬅️ To'lovlar", "tolov_dashboard"),
+    });
   });
 
   bot.callbackQuery(/^tolov_user:(\d+)$/, async (ctx) => {

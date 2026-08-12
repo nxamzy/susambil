@@ -12,7 +12,8 @@ import type {
 import {
   eslatmaShoshilinchligi, pul, sanaQatori, siklOyi, tolovDashboardMatni,
   tolovEslatmaXabari, tolovFoydalanuvchiMatni, tolovGuruhEslatmasi,
-  tolovMuddatGuruhXabari, tolovMuddatXabari, tolovTarixi,
+  tolovKorinishi, tolovMuddatGuruhXabari, tolovMuddatXabari, tolovRoyxatMatni,
+  tolovTakrorXabari, tolovTarixi, tolovTarixXulosasi,
 } from "./text.js";
 
 const TALAB = 900_000;
@@ -37,6 +38,8 @@ function odam(over: Partial<SiklOdam> & { userId: number; ism: string }): SiklOd
     kutilmoqdaSumma: 0,
     kutilmoqdaSoni: 0,
     daraja: tasdiqlangan >= TALAB ? "tola" : tasdiqlangan > 0 ? "qisman" : "tolanmagan",
+    kechikkan: false,
+    jarima: 0,
     muddat: null,
     ...over,
   };
@@ -57,6 +60,9 @@ function dashboard(odamlar: SiklOdam[], sikl = AVGUST): TolovDashboard {
     tola: odamlar.filter((o) => o.daraja === "tola"),
     qisman: odamlar.filter((o) => o.daraja === "qisman"),
     tolanmagan: odamlar.filter((o) => o.daraja === "tolanmagan"),
+    qarzdorlar: odamlar.filter((o) => o.qoldiq > 0).sort((a, b) => b.qoldiq - a.qoldiq),
+    kechikkanlar: odamlar.filter((o) => o.kechikkan).sort((a, b) => b.qoldiq - a.qoldiq),
+    jamiJarima: odamlar.reduce((n, o) => n + o.jarima, 0),
   };
 }
 
@@ -64,32 +70,72 @@ const ALI = odam({ userId: 1, ism: "Ali", tasdiqlangan: 900_000 });
 const VALI = odam({ userId: 2, ism: "Vali", tasdiqlangan: 700_000 });
 const HASAN = odam({ userId: 3, ism: "Hasan", tasdiqlangan: 0 });
 
-test("admin oylik ko'rinishida uch holat ham ajratib ko'rsatiladi", () => {
+test("umumiy ko'rinish raqamlarni beradi — ro'yxatlar alohida tugmalarda", () => {
   const m = tolovDashboardMatni(dashboard([ALI, VALI, HASAN]));
 
-  assert.match(m, /TO'LIQ TO'LAGANLAR \(1\)/);
-  assert.match(m, /QISMAN TO'LAGANLAR \(1\)/);
-  assert.match(m, /TO'LAMAGANLAR \(1\)/);
-
-  for (const ism of ["Ali", "Vali", "Hasan"]) assert.ok(m.includes(ism), `${ism} ko'rinmadi`);
-
-  assert.ok(m.includes(pul(200_000)), "Valining qoldig'i ko'rsatilishi kerak");
-  assert.ok(m.includes(pul(900_000)), "Hasanning qoldig'i ko'rsatilishi kerak");
-  assert.ok(m.includes(siklOyi(AVGUST)), "qaysi oy ekani ko'rinishi kerak");
-});
-
-test("admin ko'rinishida jami yig'im va yetmagan summa chiqadi", () => {
-  const m = tolovDashboardMatni(dashboard([ALI, VALI, HASAN]));
+  assert.match(m, /To'liq to'laganlar: <b>1<\/b>/);
+  assert.match(m, /Qisman to'laganlar: <b>1<\/b>/);
+  assert.match(m, /To'lamaganlar: <b>1<\/b>/);
   assert.ok(m.includes(pul(2_700_000)), "jami talab 3 × 900k");
   assert.ok(m.includes(pul(1_600_000)), "jami tasdiqlangan 900k + 700k");
   assert.ok(m.includes(pul(1_100_000)), "jami qoldiq");
+  assert.ok(m.includes(siklOyi(AVGUST)), "qaysi oy ekani ko'rinishi kerak");
+
+  // Umumiy ko'rinish ataylab qisqa: 12 kishilik uyda uchta to'liq ro'yxat
+  // bitta xabarga sig'masdi va muhim raqamlar pastga tushib ketardi.
+  assert.ok(m.length < 900, `umumiy ko'rinish qisqa bo'lishi kerak, hozir ${m.length}`);
 });
 
-test("tekshiruvda turgan to'lov admin ko'rinishida alohida belgilanadi", () => {
+test("qarzdorlar ro'yxati eng ko'p qarzdordan boshlanadi", () => {
+  const d = dashboard([ALI, VALI, HASAN]);
+  const m = tolovRoyxatMatni(d, "qarzdor");
+
+  assert.match(m, /QARZDORLAR/);
+  assert.ok(m.includes("Hasan") && m.includes("Vali"), "ikkala qarzdor ham");
+  assert.ok(!m.includes("Ali —"), "to'liq to'lagan qarzdorlar ro'yxatiga tushmasin");
+  assert.ok(
+    m.indexOf("Hasan") < m.indexOf("Vali"),
+    "900k qarzdor 200k qarzdordan oldin turishi kerak",
+  );
+  assert.ok(m.includes(pul(1_100_000)), "ro'yxat bo'yicha jami qoldiq");
+});
+
+test("to'laganlar ro'yxatida faqat to'liq to'laganlar", () => {
+  const m = tolovRoyxatMatni(dashboard([ALI, VALI, HASAN]), "tolagan");
+  assert.match(m, /TO'LIQ TO'LAGANLAR/);
+  assert.ok(m.includes("Ali"));
+  assert.ok(!m.includes("Hasan"), "to'lamagan bu ro'yxatga tushmasin");
+});
+
+test("bo'sh ro'yxat tushunarli xabar beradi", () => {
+  const hammaTolagan = dashboard([ALI]);
+  assert.match(tolovRoyxatMatni(hammaTolagan, "qarzdor"), /Qarzdor yo'q/);
+  assert.match(tolovRoyxatMatni(hammaTolagan, "kechikkan"), /Kechikkan yo'q/);
+});
+
+test("kechikkanlar ro'yxati va jami jarima umumiy ko'rinishda chiqadi", () => {
+  const kechikkan = odam({
+    userId: 7, ism: "Bobur", tasdiqlangan: 400_000, kechikkan: true, jarima: 50_000,
+  });
+  const d = dashboard([ALI, kechikkan]);
+
+  const umumiy = tolovDashboardMatni(d);
+  assert.match(umumiy, /Kechikkanlar: <b>1<\/b>/);
+  assert.ok(umumiy.includes(pul(50_000)), "jami jarima");
+
+  const royxat = tolovRoyxatMatni(d, "kechikkan");
+  assert.match(royxat, /KECHIKKANLAR/);
+  assert.ok(royxat.includes("Bobur"));
+  assert.ok(royxat.includes(pul(500_000)), "qoldiq");
+  assert.ok(royxat.includes(pul(50_000)), "jarima qatori");
+  assert.ok(royxat.includes("⛔️"), "kechikkan belgisi darajanikidan ustun turadi");
+});
+
+test("tekshiruvda turgan to'lov ro'yxatda alohida belgilanadi", () => {
   const kutayotgan = odam({
     userId: 4, ism: "Sardor", tasdiqlangan: 0, kutilmoqdaSoni: 1, kutilmoqdaSumma: 900_000,
   });
-  const m = tolovDashboardMatni(dashboard([kutayotgan]));
+  const m = tolovRoyxatMatni(dashboard([kutayotgan]), "qarzdor");
   assert.match(m, /tekshiruvda/);
   assert.ok(m.includes(pul(900_000)));
 });
@@ -101,21 +147,22 @@ test("muddat surati bo'lsa 'muddatda yetmagan' alohida ko'rsatiladi", () => {
   };
   // Muddatdan keyin yana 100k to'lagan — joriy qoldiq 100k, lekin MUDDATDA
   // 200k yetmagan edi. Ikkalasi ham ko'rinishi kerak.
-  const kech = odam({
-    userId: 5, ism: "Bekzod", tasdiqlangan: 800_000, muddat: surat,
-  });
-  const m = tolovDashboardMatni(dashboard([kech]));
+  const kech = odam({ userId: 5, ism: "Bekzod", tasdiqlangan: 800_000, muddat: surat });
+  const m = tolovRoyxatMatni(dashboard([kech]), "qarzdor");
   assert.ok(m.includes(pul(100_000)), "joriy qoldiq");
   assert.ok(m.includes(pul(200_000)), "muddatda yetmagan summa");
   assert.ok(m.includes(pul(20_000)), "jarima");
 });
 
-test("tekshiruv kechikkanda admin ko'rinishida jarima yozilmagani aytiladi", () => {
+test("tekshiruv kechikkanda ro'yxatda jarima yozilmagani aytiladi", () => {
   const surat: MuddatNatija = {
     talab: TALAB, tasdiqlangan: 0, kutilmoqda: 900_000, qoldiq: 900_000,
     daraja: "tolanmagan", tekshiruvKutilmoqda: true, jarima: 0,
   };
-  const m = tolovDashboardMatni(dashboard([odam({ userId: 6, ism: "Jasur", muddat: surat })]));
+  const m = tolovRoyxatMatni(
+    dashboard([odam({ userId: 6, ism: "Jasur", muddat: surat })]),
+    "qarzdor",
+  );
   assert.match(m, /jarima yozilmadi/);
 });
 
@@ -314,4 +361,89 @@ test("guruh eslatmasi ham kuchayadi va shaxsiy ma'lumot chiqarmaydi", () => {
   assert.ok(m.includes(pul(1_100_000)), "yetmayotgan jami");
   assert.match(m, /2<\/b> kishi/, "qarzdorlar soni");
   assert.ok(!m.includes("9860"), "karta raqami guruhga chiqmasin");
+});
+
+test("kechikkan foydalanuvchi o'z ko'rinishida buni darhol ko'radi", () => {
+  const qabul = { ism: "Sorabek", karta: "9860350143875127" };
+  const holat = {
+    talab: TALAB, tasdiqlangan: 400_000, qoldiq: 500_000, daraja: "qisman" as const,
+    kutilmoqdaSoni: 0, kutilmoqdaSumma: 0, kechikkan: true, jarima: 50_000, sikl: AVGUST,
+  };
+  const m = tolovKorinishi(qabul, holat);
+  assert.match(m, /MUDDAT O'TIB KETGAN/);
+  assert.ok(m.includes(pul(50_000)), "jarima ko'rsatilsin");
+  assert.ok(m.includes(pul(500_000)), "qoldiq");
+});
+
+test("kechikmagan foydalanuvchida ogohlantirish qatori chiqmaydi", () => {
+  const m = tolovKorinishi(
+    { ism: "Sorabek", karta: "9860350143875127" },
+    {
+      talab: TALAB, tasdiqlangan: 400_000, qoldiq: 500_000, daraja: "qisman" as const,
+      kutilmoqdaSoni: 0, kutilmoqdaSumma: 0, kechikkan: false, jarima: 0, sikl: AVGUST,
+    },
+  );
+  assert.ok(!/MUDDAT O'TIB KETGAN/.test(m));
+});
+
+test("kechikish xabarida jarima faqat foiz o'rnatilganda chiqadi", () => {
+  const n = nomzod();
+  assert.match(tolovEslatmaXabari(AVGUST, n, -2, { jarima: 50_000 }), /Jarima/);
+  assert.ok(
+    !/Jarima/.test(tolovEslatmaXabari(AVGUST, n, -2, { jarima: 0 })),
+    "foiz 0 bo'lsa jarima qatori umuman bo'lmasin",
+  );
+  assert.ok(
+    !/Jarima/.test(tolovEslatmaXabari(AVGUST, n, 2, { jarima: 50_000 })),
+    "muddat o'tmagan bo'lsa jarima ko'rsatilmasin",
+  );
+});
+
+test("muddat kunida qolgan soat ko'rsatiladi", () => {
+  const n = nomzod();
+  assert.match(tolovEslatmaXabari(AVGUST, n, 0, { qolganSoat: 5 }), /<b>5 soat<\/b> qoldi/);
+  assert.ok(
+    !/soat qoldi/.test(tolovEslatmaXabari(AVGUST, n, 1, { qolganSoat: 5 })),
+    "muddat kunidan boshqa kunda soat ko'rsatilmasin",
+  );
+});
+
+test("takroriy chek xabari mavjud yozuvning holatini aytadi", () => {
+  const asos = {
+    id: 1, user_id: 2, sikl_id: 1, kiritgan_summa: "300000", dalil_id: "x",
+    dalil_turi: "rasm" as const, hal_qildi: null, rad_sababi: null, admin_msgs: [],
+    guruh_msg_id: null, created_at: new Date("2026-08-12T10:00:00Z"), hal_qilindi: null,
+  };
+
+  const kutilmoqda = tolovTakrorXabari({
+    ...asos, tasdiqlangan_summa: null, holat: "kutilmoqda",
+  });
+  assert.match(kutilmoqda, /allaqachon yuborilgan/);
+  assert.match(kutilmoqda, /tekshiruvda/);
+  assert.ok(kutilmoqda.includes(pul(300_000)));
+
+  const tasdiqlangan = tolovTakrorXabari({
+    ...asos, tasdiqlangan_summa: "300000", holat: "tasdiqlandi",
+  });
+  assert.match(tasdiqlangan, /allaqachon tasdiqlangan/);
+  assert.match(tasdiqlangan, /YANGI chek/, "yangi to'lov qanday qilinishi aytilsin");
+});
+
+test("tarix xulosasi oylarni holati bilan ko'rsatadi", () => {
+  const sentabr: TolovSikl = { ...AVGUST, id: 2, davr: "2026-09-01", muddat: "2026-09-15" };
+  const m = tolovTarixXulosasi([
+    { sikl: sentabr, jamiTalab: 2_700_000, jamiTasdiqlangan: 900_000, jamiQoldiq: 1_800_000, odamSoni: 3 },
+    {
+      sikl: { ...AVGUST, holat: "yakunlandi" },
+      jamiTalab: 2_700_000, jamiTasdiqlangan: 2_700_000, jamiQoldiq: 0, odamSoni: 3,
+    },
+  ]);
+  assert.match(m, /Sentabr/);
+  assert.match(m, /Avgust/);
+  assert.ok(m.includes(pul(1_800_000)), "yetmagan summa");
+  assert.ok(m.indexOf("Sentabr") < m.indexOf("Avgust"), "eng yangi oy birinchi");
+});
+
+test("bo'sh tarix tushunarli xabar beradi", () => {
+  assert.match(tolovTarixXulosasi([]), /Hali oy yopilmagan/);
 });

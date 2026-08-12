@@ -13,7 +13,7 @@ import {
 } from "../config.js";
 import type { TurnIshlar, User } from "../db/index.js";
 import type { ReportToliq } from "../core/reports.js";
-import type { TolovDashboard } from "../core/tolov.js";
+import type { SiklOdam, TolovDashboard } from "../core/tolov.js";
 import { ishRasmlari } from "../core/rotation.js";
 import type { FoydalanuvchiToliq } from "../core/users.js";
 
@@ -315,15 +315,39 @@ export function tolovAdminKeyboard(tolovId: number): InlineKeyboard {
  * ko'rinadi — ochiq oyni yakunlash mumkin emas.
  */
 export function tolovDashboardKeyboard(d: TolovDashboard): InlineKeyboard {
-  const kb = new InlineKeyboard();
-  for (const o of d.odamlar) {
-    const belgi = o.qoldiq === 0 ? "🟢" : o.tasdiqlangan > 0 ? "🟡" : "🔴";
-    kb.text(`${belgi} ${o.ism} — ${qisqaPul(o.qoldiq)}`, `tolov_user:${o.userId}`).row();
+  const kb = new InlineKeyboard()
+    .text(`🔴 Qarzdorlar (${d.qarzdorlar.length})`, "tolov_royxat:qarzdor")
+    .row();
+
+  // Kechikkanlar tugmasi faqat kerak bo'lganda — muddat kelmagan oyda u
+  // har doim bo'sh bo'lardi va panelni behuda uzaytirardi.
+  if (d.kechikkanlar.length > 0) {
+    kb.text(`⛔️ Kechikkanlar (${d.kechikkanlar.length})`, "tolov_royxat:kechikkan").row();
   }
+
+  kb.text(`🟢 To'laganlar (${d.tola.length})`, "tolov_royxat:tolagan").row();
+
+  if (d.kutilmoqdaSoni > 0) {
+    kb.text(`⏳ Tekshiruvdagilar (${d.kutilmoqdaSoni})`, "tolov_kutilmoqda").row();
+  }
+
+  kb.text("📜 Tarix", "tolov_tarix_admin").row();
+
   if (d.sikl.holat === "muddat_yetdi") {
     kb.text("🔒 Oyni yakunlash", `tolov_yakunla:${d.sikl.id}`).row();
   }
   kb.text("⬅️ Admin panel", "admin_panel");
+  return kb;
+}
+
+/** Bitta ro'yxat ko'rinishi: har bir odam alohida tugmada + orqaga. */
+export function tolovRoyxatKeyboard(odamlar: SiklOdam[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const o of odamlar) {
+    const belgi = o.kechikkan ? "⛔️" : o.qoldiq === 0 ? "🟢" : o.tasdiqlangan > 0 ? "🟡" : "🔴";
+    kb.text(`${belgi} ${o.ism} — ${qisqaPul(o.qoldiq)}`, `tolov_user:${o.userId}`).row();
+  }
+  kb.text("⬅️ To'lovlar", "tolov_dashboard");
   return kb;
 }
 
