@@ -39,6 +39,26 @@ export const config = {
    * lekin majburiy navbat vazifalarini boshlay olmaydi.
    */
   majburiyOchilishKuni: 1,
+
+  /**
+   * Kvartira puli oyning shu kunigacha to'liq yig'ilgan bo'lishi kerak —
+   * uy egasiga aynan shu kuni to'lanadi.
+   *
+   * Muddat KUN OXIRIGACHA hisoblanadi: 15-kuni kelgan pul ham vaqtida
+   * qabul qilinadi, holat esa 16-kuniga o'tganda yakuniy suratga olinadi.
+   * Ataylab shunday — "15-gacha to'lang" deyilgan bo'lsa, 15-kuni ertalab
+   * to'lagan odamni kechikkan deb belgilash noto'g'ri bo'lardi.
+   */
+  tolovMuddatKuni: 15,
+
+  /**
+   * To'lov eslatmasi muddatga shuncha kun qolganda boshlanadi va kuniga
+   * BIR MARTA yuboriladi (navbat eslatmasidagi 5 soatlik chastota bu yerga
+   * to'g'ri kelmaydi — pul masalasi kunlik ritmda bo'ladi). Muddat o'tib
+   * ketsa ham qarzi borlarga davom etadi, to'liq to'laganlarga esa darhol
+   * to'xtaydi.
+   */
+  tolovEslatmaKuni: 5,
 } as const;
 
 /**
@@ -177,4 +197,19 @@ export const TOLOV_STD = {
   talab: 900_000,
   qabulQiluvchi: "Sorabek",
   karta: "9860350143875127",
+
+  /**
+   * Muddatda yig'ilmay qolgan summadan olinadigan jarima foizi.
+   *
+   * STANDART 0 — ya'ni jarima O'CHIQ. Bu ataylab: uyning mavjud jarima
+   * qoidalari faqat TOZALASH NAVBATI kechikishini belgilaydi
+   * (`jarimaKunlik`), kvartira to'lovi uchun esa hech qanday kelishilgan
+   * qoida yo'q. Bot o'zicha moliyaviy qoida o'ylab chiqarmaydi — buning
+   * o'rniga muddatda qancha yetmagani adminga ochiq ko'rsatiladi, foizni
+   * esa admin `/tolovjarima` bilan o'zi belgilaydi.
+   *
+   * `jarimaKunlik` bilan bir xil falsafa: bot kassa yuritmaydi, summa
+   * faqat ma'lumot uchun ko'rsatiladi.
+   */
+  jarimaFoiz: 0,
 } as const;

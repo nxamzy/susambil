@@ -4,14 +4,7 @@ import { config } from "../src/config.js";
 import { eslatmalarniTekshir } from "../src/jobs/reminders.js";
 import { oylikHisobot } from "../src/jobs/monthly.js";
 import { sql } from "../src/db/index.js";
-
-/** Toshkent vaqti bo'yicha oyning nechanchi kuni. */
-function oyKuni(): number {
-  return Number(
-    new Intl.DateTimeFormat("en-US", { day: "numeric", timeZone: "Asia/Tashkent" })
-      .format(new Date()),
-  );
-}
+import { kunQismlari } from "../src/core/vaqt.js";
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Vercel Cron so'rovni CRON_SECRET bilan imzolaydi
@@ -28,7 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await eslatmalarniTekshir(bot.api);
     bajarildi.push("eslatmalar");
 
-    if (oyKuni() === 1) {
+    if (kunQismlari().kun === 1) {
       await oylikHisobot(bot.api);
       bajarildi.push("oylik hisobot");
     }

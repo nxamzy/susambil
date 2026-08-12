@@ -24,6 +24,8 @@ import {
   foydalanuvchiTolovlari,
   guruhXabarniSaqla,
   kutayotganTolovlar,
+  siklniOl,
+  siklniYakunla,
   tolovDashboard,
   tolovniOl,
   tolovniRadEt,
@@ -32,13 +34,22 @@ import {
   tolovYuborish,
   type TolovToliq,
 } from "../../core/tolov.js";
+import type { TolovSikl } from "../../db/index.js";
 import { adminlarRoyxati, guruhgaYubor, kim, shaxsiy } from "../group.js";
-import { bekorKeyboard, tolovAdminKeyboard } from "../keyboards.js";
+import {
+  bekorKeyboard,
+  tolovAdminKeyboard,
+  tolovDashboardKeyboard,
+  tolovFoydalanuvchiKeyboard,
+} from "../keyboards.js";
 import {
   AJRATGICH,
+  chekla,
   pul,
+  siklOyi,
   tolovAdminXabari,
   tolovDashboardMatni,
+  tolovFoydalanuvchiMatni,
   tolovGuruhXabari,
   tolovRadXabari,
   tolovTarixi,
@@ -59,9 +70,15 @@ export async function tolovBoshla(ctx: Context): Promise<void> {
   // Overpayment protection: allaqachon to'liq to'lagan bo'lsa yangi oddiy
   // to'lov boshlashga ruxsat bermaymiz — talab: "do not allow another
   // normal payment to increase the balance" once FULLY PAID.
+  //
+  // Bu tekshiruv endi FAQAT SHU OY bo'yicha: ilgari butun tarix
+  // sanalgani uchun avgustda to'lagan odam sentabrda ham "to'liq
+  // to'lagansiz" degan javobni olib, umuman to'lay olmasdi.
   const holat = await foydalanuvchiTolovHolati(u.id);
   if (holat.daraja === "tola") {
-    await ctx.reply("✅ Siz allaqachon to'liq to'lagansiz. Qo'shimcha to'lov shart emas.");
+    await ctx.reply(
+      `✅ ${siklOyi(holat.sikl)} oyi uchun to'liq to'lagansiz. Qo'shimcha to'lov shart emas.`,
+    );
     return;
   }
 
@@ -193,7 +210,10 @@ export async function tolovTarixKorsat(ctx: Context): Promise<void> {
     return;
   }
   const tarix = await foydalanuvchiTolovlari(u.id);
-  await ctx.reply(tolovTarixi(tarix), { parse_mode: "HTML" });
+  // Tarix oylar o'tgan sari uzayadi — Telegram chegarasidan oshib
+  // ketmasligi uchun kesamiz. Eng yangi oy birinchi turgani uchun
+  // kesilsa faqat eng eski yozuvlar tushib qoladi.
+  await ctx.reply(chekla(tolovTarixi(tarix)), { parse_mode: "HTML" });
 }
 
 async function faqatAdmin(ctx: Context): Promise<User | null> {
@@ -228,7 +248,11 @@ export async function tolovTasdiqlash(ctx: Context, tolovId: number, xom: string
   if (!toliq) return;
   await panelniYangila(ctx.api, toliq);
 
-  const holatYangi = await foydalanuvchiTolovHolati(toliq.user_id);
+  // Holat TO'LOVNING O'Z OYI bo'yicha hisoblanadi, joriy oy bo'yicha emas:
+  // 31-avgustda yuborilgan to'lov 1-sentabrda tasdiqlansa ham avgust
+  // hisobiga tushishi kerak (`tolovlar.sikl_id` yuborilganda belgilanadi).
+  const siklniIshlat = toliq.sikl_id ? await siklniOl(toliq.sikl_id) : null;
+  const holatYangi = await foydalanuvchiTolovHolati(toliq.user_id, siklniIshlat ?? undefined);
   const qabul = await tolovQabulQiluvchi();
 
   const [foydalanuvchi] = await sql<User[]>`SELECT * FROM users WHERE id = ${toliq.user_id}`;
@@ -280,20 +304,47 @@ export async function tolovRadEtish(ctx: Context, tolovId: number, sababXom: str
   if (foydalanuvchi) await shaxsiy(ctx.api, foydalanuvchi, tolovRadXabari(sabab));
 }
 
-/** /tolovlar admin buyrug'i uchun — umumiy ko'rinish + kutayotganlar ro'yxati. */
-export async function tolovDashboardKorsat(ctx: Context): Promise<void> {
-  const d = await tolovDashboard();
-  await ctx.reply(tolovDashboardMatni(d), { parse_mode: "HTML" });
+/**
+ * /tolovlar admin buyrug'i uchun — shu oylik umumiy ko'rinish, har bir
+ * odam alohida tugmada, so'ng tasdiq kutayotgan to'lovlar.
+ */
+export async function tolovDashboardKorsat(ctx: Context, sikl?: TolovSikl): Promise<void> {
+  const d = await tolovDashboard(sikl);
+  await ctx.reply(chekla(tolovDashboardMatni(d)), {
+    parse_mode: "HTML",
+    reply_markup: tolovDashboardKeyboard(d),
+  });
 
   const kutilmoqda = await kutayotganTolovlar();
   if (kutilmoqda.length === 0 || !ctx.chat) return;
 
   await ctx.reply(`⏳ <b>${kutilmoqda.length} ta to'lov tasdiq kutmoqda:</b>`, { parse_mode: "HTML" });
   for (const t of kutilmoqda) {
-    const holat = await foydalanuvchiTolovHolati(t.user_id);
+    const oz = t.sikl_id ? await siklniOl(t.sikl_id) : null;
+    const holat = await foydalanuvchiTolovHolati(t.user_id, oz ?? undefined);
     const matn = tolovAdminXabari(t, holat.tasdiqlangan);
     await dalilXabarYubor(ctx.api, ctx.chat.id, matn, t, { reply_markup: tolovAdminKeyboard(t.id) });
   }
+}
+
+/**
+ * Admin bitta odamni ochganda — talab, tasdiqlangan, qoldiq, tekshiruvdagi
+ * to'lovlar, muddat natijasi, jarima holati va butun to'lov tarixi
+ * (talab: "Admin should be able to open each user and see ...").
+ */
+export async function tolovFoydalanuvchiKorsat(ctx: Context, userId: number): Promise<void> {
+  const d = await tolovDashboard();
+  const odam = d.odamlar.find((o) => o.userId === userId);
+  if (!odam) {
+    await ctx.reply("Bu foydalanuvchi topilmadi yoki faol emas.");
+    return;
+  }
+
+  const tarix = await foydalanuvchiTolovlari(userId);
+  await ctx.reply(chekla(tolovFoydalanuvchiMatni(d.sikl, odam, tarix)), {
+    parse_mode: "HTML",
+    reply_markup: tolovFoydalanuvchiKeyboard(),
+  });
 }
 
 export function register(bot: Bot) {
@@ -305,6 +356,43 @@ export function register(bot: Bot) {
   bot.callbackQuery("tolov_tarix", async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});
     await tolovTarixKorsat(ctx);
+  });
+
+  bot.callbackQuery("tolov_dashboard", async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+    await tolovDashboardKorsat(ctx);
+  });
+
+  bot.callbackQuery(/^tolov_user:(\d+)$/, async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+    await tolovFoydalanuvchiKorsat(ctx, Number(ctx.match[1]));
+  });
+
+  // Oyni qo'lda yopish. Faqat muddat kelgan siklda ishlaydi va tarixdan
+  // hech narsa o'chirmaydi — yozuvlar joyida qoladi, faqat holat yopiladi.
+  bot.callbackQuery(/^tolov_yakunla:(\d+)$/, async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+
+    const yopildi = await siklniYakunla(Number(ctx.match[1]));
+    if (!yopildi) {
+      return ctx
+        .answerCallbackQuery({
+          text: "Bu oyni hozir yopib bo'lmaydi — muddati hali kelmagan yoki allaqachon yopilgan.",
+          show_alert: true,
+        })
+        .catch(() => {});
+    }
+
+    await ctx.answerCallbackQuery({ text: `${siklOyi(yopildi)} oyi yakunlandi.` }).catch(() => {});
+    await tolovDashboardKorsat(ctx, yopildi);
   });
 
   bot.callbackQuery(/^tolov_tasdiq:(\d+)$/, async (ctx) => {

@@ -2,7 +2,12 @@ import type { Bot } from "grammy";
 import { sql, type Room, type User } from "../../db/index.js";
 import { navbatniBoshlash, navbatniOzgartirish } from "../../core/rotation.js";
 import { summaTekshir } from "../../core/topshiriq.js";
-import { tolovQabulQiluvchiniOrnat, tolovTalabiniOrnat } from "../../core/tolov.js";
+import {
+  tolovJarimaFoizi,
+  tolovJarimaFoiziniOrnat,
+  tolovQabulQiluvchiniOrnat,
+  tolovTalabiniOrnat,
+} from "../../core/tolov.js";
 import { kim } from "../group.js";
 import { esc, navbatXabari, pul } from "../text.js";
 import { azolarMatni } from "./commands.js";
@@ -73,9 +78,11 @@ export function register(bot: Bot) {
         "/navbatber 2 — navbatni 2-xonaga o'tkazish",
         "/navbatboshla — navbat yo'q bo'lsa boshlash",
         "/joriynavbat — joriy navbat holati va boshqaruvi",
-        "/tolovlar — kvartira to'lovlari dashboard",
+        "/tolovlar — shu oylik kvartira to'lovlari dashboardi",
         "/tolovtalab 900000 — har kishidan talab summasini o'zgartirish",
+        "  (faqat kelgusi oylarga ta'sir qiladi, o'tgan oy tarixi o'zgarmaydi)",
         "/tolovsozla Sorabek 9860350143875127 — qabul qiluvchi/karta",
+        "/tolovjarima 0 — muddatda yetmagan summadan jarima foizi (0 = o'chiq)",
         "/adminpanel — 👑 Admin Panel'ni ochadi (bottom tugma bilan bir xil)",
       );
     }
@@ -254,6 +261,48 @@ export function register(bot: Bot) {
     await tolovQabulQiluvchiniOrnat(ism, karta);
     await ctx.reply(
       [`✅ Qabul qiluvchi: <b>${esc(ism)}</b>`, `💳 Karta: <code>${esc(karta)}</code>`].join("\n"),
+      { parse_mode: "HTML" },
+    );
+  });
+
+  /**
+   * Muddatda yig'ilmay qolgan summadan olinadigan jarima foizi.
+   *
+   * Standart 0 — bot o'zicha moliyaviy qoida O'YLAB CHIQARMAYDI. Uyning
+   * mavjud jarima qoidalari faqat tozalash navbatiga tegishli, kvartira
+   * to'lovi uchun esa kelishuv yo'q edi. Shuning uchun muddatda kimdan
+   * qancha yetmagani adminga ochiq ko'rsatiladi, foizni esa uy a'zolari
+   * o'zaro kelishib, admin shu buyruq bilan kiritadi.
+   *
+   * `jarimaKunlik` bilan bir xil falsafa: bot kassa yuritmaydi, summa
+   * faqat ma'lumot uchun.
+   */
+  bot.command("tolovjarima", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+
+    const xom = ctx.match.trim();
+    const foiz = Number(xom.replace(",", "."));
+    if (xom === "" || !Number.isFinite(foiz) || foiz < 0 || foiz > 100) {
+      const joriy = await tolovJarimaFoizi();
+      return ctx.reply(
+        [
+          `Format: <code>/tolovjarima 5</code> (0–100 oralig'ida foiz)`,
+          ``,
+          `Hozirgi qiymat: <b>${joriy}%</b>${joriy === 0 ? " — jarima o'chiq" : ""}`,
+          ``,
+          `<i>Jarima muddatda YETMAGAN summadan hisoblanadi. Muddatgacha`,
+          `yuborilgan, lekin hali tekshirilmagan to'lovi bor odamga jarima`,
+          `yozilmaydi — tekshiruv kechikkani uning aybi emas.</i>`,
+        ].join("\n"),
+        { parse_mode: "HTML" },
+      );
+    }
+
+    await tolovJarimaFoiziniOrnat(foiz);
+    await ctx.reply(
+      foiz === 0
+        ? "✅ Jarima o'chirildi — muddatda yetmagan summa faqat ma'lumot uchun ko'rsatiladi."
+        : `✅ Jarima: muddatda yetmagan summaning <b>${foiz}%</b>i.`,
       { parse_mode: "HTML" },
     );
   });

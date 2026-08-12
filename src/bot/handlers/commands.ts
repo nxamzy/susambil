@@ -7,6 +7,7 @@ import { faolNavbat, joriyNavbatchimi, kelgusiTartib, xonaAzolari } from "../../
 import { reyting, orinlarniHisobla, xonaHolati, tarix } from "../../core/rating.js";
 import { jamiXarajat, oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
 import { foydalanuvchiTolovHolati, tolovQabulQiluvchi } from "../../core/tolov.js";
+import { kunQismlari, oyNomi as vaqtOyNomi } from "../../core/vaqt.js";
 import { guruhgaYubor, guruhId, guruhIdOrnat, kim, korishXabar } from "../group.js";
 import {
   boshqaIshKeyboard,
@@ -34,12 +35,7 @@ function oyBoshi(): Date {
 }
 
 function oyNomi(): string {
-  const oylar = ["yanvar", "fevral", "mart", "aprel", "may", "iyun",
-    "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr"];
-  const oy = Number(new Intl.DateTimeFormat("en-US", {
-    month: "numeric", timeZone: "Asia/Tashkent",
-  }).format(new Date()));
-  return oylar[oy - 1] ?? "";
+  return vaqtOyNomi(kunQismlari().oy);
 }
 
 export async function panelMatni(): Promise<string> {

@@ -332,6 +332,110 @@ CREATE INDEX IF NOT EXISTS tolovlar_user_idx ON tolovlar (user_id);
 CREATE INDEX IF NOT EXISTS tolovlar_tasdiqlandi_idx ON tolovlar (user_id) WHERE holat = 'tasdiqlandi';
 
 -- ---------------------------------------------------------------------------
+-- OYLIK TO'LOV SIKLI VA 15-KUN MUDDATI
+-- ---------------------------------------------------------------------------
+-- ILDIZ MUAMMO: yuqoridagi `tolovlar` jadvali oyni umuman bilmasdi —
+-- foydalanuvchining holati BUTUN TARIX bo'yicha SUM(...) bilan
+-- hisoblanardi. Bu birinchi oy ishlaydi, ikkinchi oyda esa buziladi:
+-- avgustda to'langan 900 000 sentabrda ham "to'liq to'langan" bo'lib
+-- ko'rinaverardi va hech kimdan hech qachon qayta pul so'ralmasdi.
+--
+-- Yechim: har oy uchun BITTA sikl yozuvi. To'lovlar shu siklga
+-- biriktiriladi, hisob esa har doim sikl ichida yuritiladi. Eski oylar
+-- o'chirilmaydi va qayta yozilmaydi — ular shunchaki o'z siklida qoladi.
+--
+-- Sikl = KALENDAR OYI. Muddat = o'sha oyning 15-kuni (config.tolovMuddatKuni)
+-- — kvartira puli aynan o'sha kuni to'lanadi, demak shu kungacha hamma o'z
+-- ulushini tashlab bo'lishi kerak.
+--
+-- `talab` ATAYLAB shu yerda nusxalanadi (settings'dan har safar o'qilmaydi):
+-- admin kelasi oy summani oshirsa, o'tgan oylarning tarixi o'zgarmasligi
+-- kerak — aks holda yopilgan oy birdan "kam to'langan" bo'lib qolardi.
+--
+-- Hayot sikli: ochiq -> muddat_yetdi -> yakunlandi  (ortga qaytmaydi)
+CREATE TABLE IF NOT EXISTS tolov_sikllari (
+  id                SERIAL PRIMARY KEY,
+  -- Oyning birinchi kuni (Toshkent) — siklning yagona kaliti.
+  davr              DATE NOT NULL UNIQUE,
+  -- Shu oy uchun MUZLATILGAN talab (har kishidan), so'm.
+  talab             BIGINT NOT NULL CHECK (talab > 0),
+  -- Shu oyning to'lov muddati (odatda 15-kun). Muddat KUN OXIRIGACHA
+  -- hisoblanadi: 15-kuni to'langan pul ham vaqtida deb qabul qilinadi.
+  muddat            DATE NOT NULL,
+  holat             TEXT NOT NULL DEFAULT 'ochiq'
+                     CHECK (holat IN ('ochiq', 'muddat_yetdi', 'yakunlandi')),
+  -- Guruhga kuniga bir marta eslatma (turns.oxirgi_ping bilan bir xil naqsh).
+  guruh_eslatma     DATE,
+  -- Muddat kelib, har bir a'zoning holati suratga olingan payt.
+  muddat_hisoblandi TIMESTAMPTZ,
+  yakunlandi        TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS tolov_sikllari_ochiq_idx ON tolov_sikllari (muddat) WHERE holat = 'ochiq';
+
+-- To'lov qaysi oyga tegishli. YUBORILGAN sanasi bo'yicha biriktiriladi,
+-- tasdiqlangan sanasi bo'yicha EMAS: 14-avgustda yuborilgan, 16-avgustda
+-- tasdiqlangan to'lov baribir AVGUST hisobiga tushishi kerak (admin
+-- kechikkani uchun odam jazolanmaydi).
+ALTER TABLE tolovlar ADD COLUMN IF NOT EXISTS sikl_id INT REFERENCES tolov_sikllari(id);
+CREATE INDEX IF NOT EXISTS tolovlar_sikl_idx ON tolovlar (sikl_id, user_id);
+
+-- Har bir (sikl, odam) juftligi uchun ikki xil holat:
+--
+--   1) ESLATMA holati — `oxirgi_eslatma`. Bazada turadi, ya'ni bot yoki
+--      server qayta ishga tushsa ham "bugun eslatilgan" fakti yo'qolmaydi
+--      va odam bir kunda ikki marta bezovta qilinmaydi.
+--
+--   2) MUDDAT SURATI — muddat kelgan paytdagi holat. Nima uchun saqlanadi:
+--      jarima/hisob "muddatda qancha yetmagan edi" degan savolga javob
+--      berishi kerak, keyinroq to'langan pul esa bu javobni o'zgartirmasligi
+--      kerak. Ustunlar muddat kelgunga qadar NULL turadi.
+--
+-- `muddat_kutilmoqda` — muddatgacha yuborilgan, lekin hali admin
+-- tekshirmagan to'lovlarning da'vo summasi. Nolga teng bo'lmasa, odam
+-- "to'lamagan" deb hisoblanmaydi va jarima YOZILMAYDI: u o'z ishini
+-- bajargan, faqat tekshiruv kechikkan (talab: "Do not punish the user for
+-- Sorabek's verification delay").
+CREATE TABLE IF NOT EXISTS tolov_holat (
+  sikl_id             INT NOT NULL REFERENCES tolov_sikllari(id) ON DELETE CASCADE,
+  user_id             INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  oxirgi_eslatma      DATE,
+  muddat_talab        BIGINT,
+  muddat_tasdiqlangan BIGINT,
+  muddat_kutilmoqda   BIGINT,
+  muddat_qoldiq       BIGINT,
+  muddat_daraja       TEXT CHECK (muddat_daraja IS NULL
+                        OR muddat_daraja IN ('tolanmagan', 'qisman', 'tola')),
+  -- Jarima summasi. Standart qoida YO'Q (foiz = 0) — uy qoidasi buni
+  -- belgilamagan, shuning uchun bot o'zidan moliyaviy qoida O'YLAB
+  -- CHIQARMAYDI. Admin `/tolovjarima` bilan foizni o'rnatsa hisoblanadi.
+  muddat_jarima       BIGINT,
+  muddat_vaqti        TIMESTAMPTZ,
+  PRIMARY KEY (sikl_id, user_id)
+);
+
+-- MIGRATSIYA: mavjud to'lovlarni o'z oyining sikliga biriktiramiz. Hech
+-- qanday yozuv o'chirilmaydi yoki ko'chirilmaydi — faqat qaysi oyga
+-- tegishli ekani yoziladi. Sikl hali bo'lmasa yaratiladi, talab esa
+-- settings'dagi joriy qiymatdan (bo'lmasa 900 000 — config.TOLOV_STD.talab
+-- bilan bir xil standart) olinadi.
+INSERT INTO tolov_sikllari (davr, talab, muddat)
+SELECT DISTINCT
+       date_trunc('month', t.created_at AT TIME ZONE 'Asia/Tashkent')::date,
+       COALESCE((SELECT qiymat::bigint FROM settings WHERE kalit = 'tolov_talab'), 900000),
+       (date_trunc('month', t.created_at AT TIME ZONE 'Asia/Tashkent')::date + 14)
+  FROM tolovlar t
+ WHERE t.sikl_id IS NULL
+ON CONFLICT (davr) DO NOTHING;
+
+UPDATE tolovlar t
+   SET sikl_id = s.id
+  FROM tolov_sikllari s
+ WHERE t.sikl_id IS NULL
+   AND s.davr = date_trunc('month', t.created_at AT TIME ZONE 'Asia/Tashkent')::date;
+
+-- ---------------------------------------------------------------------------
 -- MIGRATSIYA: navbat — interaktiv shaxsiy panel + ishonchli eslatma
 -- ---------------------------------------------------------------------------
 -- Ilgari navbat "kamida N ta rasm tashla" degan yagona to'plam edi — qaysi

@@ -163,6 +163,13 @@ export type TolovDalilTuri = "rasm" | "hujjat";
 export type Tolov = {
   id: number;
   user_id: number;
+  /**
+   * Qaysi oylik siklga tegishli. YUBORILGAN sanasi bo'yicha biriktiriladi —
+   * tasdiqlangan sanasi bo'yicha emas, aks holda oyning oxirida yuborilgan
+   * to'lov admin kechikkani uchun keyingi oyga tushib ketardi.
+   * Migratsiyadan oldingi eski yozuvlarda `null` bo'lishi mumkin.
+   */
+  sikl_id: number | null;
   /** BIGINT — postgres.js uni matn qilib qaytaradi. Foydalanuvchining da'vosi. */
   kiritgan_summa: string;
   /** BIGINT — faqat 'tasdiqlandi' holatida to'ladi, admin tekshirgan haqiqiy summa. */
@@ -178,6 +185,34 @@ export type Tolov = {
   guruh_msg_id: string | null;
   created_at: Date;
   hal_qilindi: Date | null;
+};
+
+/** ochiq -> muddat_yetdi -> yakunlandi — ortga qaytmaydi. */
+export type SiklHolat = "ochiq" | "muddat_yetdi" | "yakunlandi";
+
+/**
+ * Bitta oylik kvartira to'lovi sikli.
+ *
+ * `davr` va `muddat` DATE ustunlari, lekin bu yerda MATN (`YYYY-MM-DD`) —
+ * so'rovlarda `to_char(...)` bilan o'qiladi. Sabab: DATE ustuni JS'da UTC
+ * yarim tunidagi `Date` bo'lib qaytadi va uni Toshkent mintaqasida
+ * formatlaganda bir kunlik siljish xatosiga yo'l ochiladi. Kalendar sanasi
+ * matn bo'lib qolsa bunday xato bo'lishi mumkin emas (`core/vaqt.ts`).
+ */
+export type TolovSikl = {
+  id: number;
+  /** Oy boshi — siklning kaliti (`YYYY-MM-01`) */
+  davr: string;
+  /** Shu oy uchun muzlatilgan talab (so'm) */
+  talab: number;
+  /** To'lov muddati (`YYYY-MM-15`), kun oxirigacha hisoblanadi */
+  muddat: string;
+  holat: SiklHolat;
+  /** Guruhga oxirgi eslatma yuborilgan kun (`YYYY-MM-DD`) */
+  guruh_eslatma: string | null;
+  muddat_hisoblandi: Date | null;
+  yakunlandi: Date | null;
+  created_at: Date;
 };
 
 /** Admin harakatlar jurnali — kim, nima, eski/yangi qiymat, qachon. */

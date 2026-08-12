@@ -7,8 +7,11 @@ import { orinlarniHisobla, type OdamBall } from "../core/rating.js";
 import { ishRasmlari } from "../core/rotation.js";
 import type { ReportToliq } from "../core/reports.js";
 import type {
+  EslatmaNomzodi, MuddatNatija, MuddatSurati, SiklOdam,
   TolovDashboard, TolovDaraja, TolovHolatMalumoti, TolovTarix, TolovToliq,
 } from "../core/tolov.js";
+import type { TolovSikl } from "../db/index.js";
+import { OYLAR, bugungiSana, kunFarqi, sanadanOyNomi } from "../core/vaqt.js";
 import type { FoydalanuvchiToliq } from "../core/users.js";
 import type { AdminLogToliq } from "../core/adminlog.js";
 import type { AzolikHolati } from "./group.js";
@@ -32,11 +35,6 @@ export function chekla(matn: string, chegara = 3900): string {
   const oxirgiQator = kesilgan.lastIndexOf("\n");
   return (oxirgiQator > 0 ? kesilgan.slice(0, oxirgiQator) : kesilgan) + "\n\n<i>…davomi bor</i>";
 }
-
-const OYLAR = [
-  "yanvar", "fevral", "mart", "aprel", "may", "iyun",
-  "iyul", "avgust", "sentabr", "oktabr", "noyabr", "dekabr",
-];
 
 const KUNLAR: Record<string, string> = {
   Sunday: "yakshanba", Monday: "dushanba", Tuesday: "seshanba", Wednesday: "chorshanba",
@@ -65,6 +63,19 @@ export function sana(d: Date | string): string {
 export function qisqaSana(d: Date | string): string {
   const { kun, oy, yil } = qismlar(new Date(d));
   return `${String(kun).padStart(2, "0")}.${String(oy).padStart(2, "0")}.${yil}`;
+}
+
+/**
+ * `YYYY-MM-DD` kalendar sanasini "15-avgust" ko'rinishida yozadi.
+ *
+ * `sana()`dan farqi: u `Date` lahzasini Toshkent mintaqasiga o'giradi, bu
+ * esa allaqachon toza kalendar sanasi bo'lgan matnni shundayligicha
+ * o'qiydi — mintaqa hisobini ikki marta qo'llash bir kunlik siljish
+ * berardi (`core/vaqt.ts`).
+ */
+export function sanaQatori(iso: string): string {
+  const kun = Number(iso.split("-")[2]);
+  return `${kun}-${sanadanOyNomi(iso)}`;
 }
 
 export function ismlar(azolar: User[]): string {
@@ -740,6 +751,11 @@ export function tanishtirish(): string {
     ``,
     `<b>💳 KVARTIRA TO'LOVI</b>`,
     AJRATGICH,
+    `Kvartira puli har oyning <b>${config.tolovMuddatKuni}-kuni</b> to'lanadi,`,
+    `demak o'z ulushingizni shu kungacha tashlab bo'lishingiz`,
+    `kerak. Har oy alohida hisoblanadi — o'tgan oy to'lovi`,
+    `yangi oyga o'tmaydi.`,
+    ``,
     `"💳 Kvartira to'lovi" tugmasidan qancha to'laganingizni`,
     `yozib, dalil (chek rasmi yoki PDF) tashlaysiz.`,
     ``,
@@ -747,6 +763,14 @@ export function tanishtirish(): string {
     `haqiqatda qancha kelganini tekshirib tasdiqlagach`,
     `hisobingizga qo'shiladi. Bir necha marta qisman`,
     `to'lasangiz ham bo'ladi, hammasi qo'shib boriladi.`,
+    ``,
+    `Muddatga <b>${config.tolovEslatmaKuni} kun</b> qolganda bot kuniga bir marta`,
+    `eslatib turadi. To'lig'i tushgach eslatma o'z-o'zidan`,
+    `to'xtaydi.`,
+    ``,
+    `<i>Muddatgacha yuborgan to'lovingiz keyinroq tasdiqlansa</i>`,
+    `<i>ham vaqtida hisoblanadi — tekshiruv kechikkani uchun</i>`,
+    `<i>siz javobgar emassiz.</i>`,
     ``,
     `<i>Kim qancha to'lagani guruhga ko'rinadi (faqat</i>`,
     `<i>tasdiqlangandan keyin) — lekin karta va chek</i>`,
@@ -767,9 +791,40 @@ export function tolovDarajaBelgisi(daraja: TolovDaraja): { emoji: string; nom: s
   }[daraja];
 }
 
+/** Sikl oyining nomi — "Avgust". */
+export function siklOyi(sikl: TolovSikl): string {
+  const nom = sanadanOyNomi(sikl.davr);
+  return nom.charAt(0).toUpperCase() + nom.slice(1);
+}
+
+/**
+ * "📅 Muddat: 15-avgust (3 kun qoldi)" qatori. Muddat KUN OXIRIGACHA
+ * hisoblangani uchun 0 — "bugun oxirgi kun", manfiy — o'tib ketgan.
+ */
+export function muddatQatori(sikl: TolovSikl): string {
+  const qolgan = kunFarqi(bugungiSana(), sikl.muddat);
+  const izoh =
+    qolgan > 0
+      ? `${qolgan} kun qoldi`
+      : qolgan === 0
+        ? "bugun oxirgi kun"
+        : `${-qolgan} kun o'tib ketdi`;
+  return `📅 Muddat: <b>${sanaQatori(sikl.muddat)}</b> — ${izoh}`;
+}
+
+/** "⏳ 1 ta to'lovingiz tekshirilmoqda (300 000 so'm)" — hisobga qo'shilmagani ta'kidlanadi. */
+function kutilmoqdaQatorlari(soni: number, summa: number): string[] {
+  if (soni <= 0) return [];
+  return [
+    ``,
+    `⏳ <b>${soni} ta to'lovingiz tekshirilmoqda</b>`,
+    `   ${pul(summa)} — hali hisobga qo'shilmagan.`,
+  ];
+}
+
 /**
  * "💳 Kvartira to'lovi" ko'rinishi — talab, qabul qiluvchi va foydalanuvchining
- * joriy holati. Faqat TASDIQLANGAN summalar hisobga kiradi — buni
+ * SHU OYDAGI holati. Faqat TASDIQLANGAN summalar hisobga kiradi — buni
  * `foydalanuvchiTolovHolati` (core/tolov.ts) hisoblab beradi, bu yerda faqat
  * ko'rinish.
  */
@@ -778,6 +833,9 @@ export function tolovKorinishi(qabul: { ism: string; karta: string }, h: TolovHo
   const s = [
     `🏠 <b>KVARTIRA TO'LOVI</b>`,
     AJRATGICH,
+    `<i>${siklOyi(h.sikl)} oyi</i>`,
+    ``,
+    muddatQatori(h.sikl),
     ``,
     `💰 Talab: <b>${pul(h.talab)}</b>`,
     ``,
@@ -795,15 +853,146 @@ export function tolovKorinishi(qabul: { ism: string; karta: string }, h: TolovHo
   if (h.daraja === "qisman") {
     s.push(``, `⚠️ Siz ${pul(h.tasdiqlangan)} to'ladingiz.`, `${pul(h.qoldiq)} qoldi.`);
   } else if (h.daraja === "tola") {
-    s.push(``, `✅ Kvartira to'lovingiz to'liq amalga oshirilgan.`);
+    s.push(``, `✅ ${siklOyi(h.sikl)} oyi to'lovingiz to'liq amalga oshirilgan.`);
   }
 
-  if (h.kutilmoqdaSoni > 0) {
+  s.push(...kutilmoqdaQatorlari(h.kutilmoqdaSoni, h.kutilmoqdaSumma));
+
+  if (h.daraja !== "tola") {
     s.push(
       ``,
-      `⏳ <b>${h.kutilmoqdaSoni} ta to'lovingiz tekshirilmoqda</b>`,
-      `— hali hisobga qo'shilmagan.`,
+      `<i>Bir yo'la to'lash shart emas — qulay bo'lganicha</i>`,
+      `<i>bo'lib-bo'lib tashlasangiz ham bo'ladi, hammasi</i>`,
+      `<i>qo'shib boriladi.</i>`,
     );
+  }
+
+  return s.join("\n");
+}
+
+/**
+ * Muddatga yaqinlashganda qarzi borlarga yuboriladigan shaxsiy eslatma.
+ * To'liq to'laganlarga umuman yuborilmaydi (`jobs/reminders.ts`).
+ */
+export function tolovEslatmaXabari(sikl: TolovSikl, n: EslatmaNomzodi): string {
+  const s = [
+    `🔔 <b>KVARTIRA TO'LOVI ESLATMASI</b>`,
+    AJRATGICH,
+    `<i>${siklOyi(sikl)} oyi</i>`,
+    ``,
+    muddatQatori(sikl),
+    ``,
+    `💰 Talab: <b>${pul(sikl.talab)}</b>`,
+    `✅ To'landi: <b>${pul(n.tasdiqlangan)}</b>`,
+    `⚠️ Qoldi: <b>${pul(n.qoldiq)}</b>`,
+  ];
+
+  if (n.kutilmoqdaSumma > 0) {
+    s.push(
+      ``,
+      `⏳ ${pul(n.kutilmoqdaSumma)} tekshiruvda — tasdiqlangach`,
+      `   qoldiq shunga kamayadi.`,
+    );
+  }
+
+  s.push(
+    ``,
+    kunFarqi(bugungiSana(), sikl.muddat) < 0
+      ? `Muddat o'tib ketdi. Iltimos, qolgan summani tashlang.`
+      : `Iltimos, qolgan summani muddatgacha tashlang.`,
+  );
+  return s.join("\n");
+}
+
+/**
+ * Guruhga umumiy eslatma. Hech qanday chek, karta yoki shaxsiy dalil
+ * chiqmaydi — faqat umumiy yig'im holati va muddat.
+ */
+export function tolovGuruhEslatmasi(d: TolovDashboard): string {
+  const qarzdor = d.odamlar.filter((o) => o.qoldiq > 0).length;
+  return [
+    `💰 <b>KVARTIRA TO'LOVI</b>`,
+    AJRATGICH,
+    `<i>${siklOyi(d.sikl)} oyi</i>`,
+    ``,
+    muddatQatori(d.sikl),
+    ``,
+    `💵 Yig'ildi: <b>${pul(d.jamiTasdiqlangan)}</b> / ${pul(d.jamiTalab)}`,
+    `📉 Yetmayapti: <b>${pul(d.jamiQoldiq)}</b>`,
+    `👥 To'lamaganlar: <b>${qarzdor}</b> kishi`,
+    ``,
+    `Har kim <b>${pul(d.talab)}</b> tashlashi kerak.`,
+    `Bir yo'la emas, bo'lib-bo'lib tashlasa ham bo'ladi —`,
+    `muhimi, muddatgacha to'lig'i yig'ilsin.`,
+    ``,
+    `<i>O'z holatingizni "💳 Kvartira to'lovi" bo'limidan ko'rasiz.</i>`,
+  ].join("\n");
+}
+
+/** Muddat kelganda har kimga o'z yakuniy natijasi. */
+export function tolovMuddatXabari(sikl: TolovSikl, n: MuddatNatija): string {
+  const daraja = tolovDarajaBelgisi(n.daraja);
+  const s = [
+    `📅 <b>${siklOyi(sikl).toUpperCase()} OYI — MUDDAT TUGADI</b>`,
+    AJRATGICH,
+    ``,
+    `📅 Muddat edi: <b>${sanaQatori(sikl.muddat)}</b>`,
+    ``,
+    `💰 Talab: <b>${pul(n.talab)}</b>`,
+    `✅ To'langan: <b>${pul(n.tasdiqlangan)}</b>`,
+    `📉 Yetmagan: <b>${pul(n.qoldiq)}</b>`,
+    ``,
+    `Holat: ${daraja.emoji} <b>${daraja.nom}</b>`,
+  ];
+
+  if (n.tekshiruvKutilmoqda) {
+    // Talab: "Do not punish the user for Sorabek's verification delay."
+    s.push(
+      ``,
+      `⏳ <b>Muddatgacha yuborgan ${pul(n.kutilmoqda)} to'lovingiz</b>`,
+      `<b>hali tekshirilmagan</b> — shuning uchun bu holat`,
+      `yakuniy emas va sizga hech qanday jarima yozilmadi.`,
+      `Tasdiqlangach natija o'z-o'zidan yangilanadi.`,
+    );
+  } else if (n.qoldiq > 0) {
+    s.push(``, `Qolgan ${pul(n.qoldiq)}ni imkon qadar tezroq tashlang.`);
+    if (n.jarima > 0) s.push(`💸 Jarima: <b>${pul(n.jarima)}</b>`);
+  } else {
+    s.push(``, `✅ Rahmat — o'z ulushingizni muddatida to'liq tashladingiz.`);
+  }
+
+  return s.join("\n");
+}
+
+/**
+ * Muddat kelganda guruhga umumiy yakun. Ismlar ko'rsatiladi (uyda kim
+ * qolganini hamma biladi), lekin chek/karta hech qachon chiqmaydi.
+ */
+export function tolovMuddatGuruhXabari(sikl: TolovSikl, natijalar: MuddatSurati[]): string {
+  const yigildi = natijalar.reduce((n, o) => n + o.tasdiqlangan, 0);
+  const talab = natijalar.reduce((n, o) => n + o.talab, 0);
+
+  const qarzdorlar = natijalar.filter((n) => n.qoldiq > 0);
+  const s = [
+    `📅 <b>${siklOyi(sikl).toUpperCase()} OYI — TO'LOV MUDDATI TUGADI</b>`,
+    AJRATGICH,
+    ``,
+    `📅 Muddat: <b>${sanaQatori(sikl.muddat)}</b>`,
+    `💵 Yig'ildi: <b>${pul(yigildi)}</b> / ${pul(talab)}`,
+    `📉 Yetmadi: <b>${pul(Math.max(0, talab - yigildi))}</b>`,
+    ``,
+  ];
+
+  if (qarzdorlar.length === 0) {
+    s.push(`🟢 <b>Hamma o'z ulushini muddatida to'liq tashladi.</b>`);
+    return s.join("\n");
+  }
+
+  s.push(`⚠️ <b>To'liq to'lamaganlar (${qarzdorlar.length})</b>`);
+  for (const n of qarzdorlar) {
+    const belgi = n.tekshiruvKutilmoqda ? "⏳" : tolovDarajaBelgisi(n.daraja).emoji;
+    s.push(`   ${belgi} ${esc(n.ism)} — qoldi <b>${pul(n.qoldiq)}</b>`);
+    if (n.tekshiruvKutilmoqda) s.push(`      <i>tekshiruv kutilmoqda, jarima yozilmadi</i>`);
   }
 
   return s.join("\n");
@@ -873,9 +1062,10 @@ export function tolovGuruhXabari(ism: string, h: TolovHolatMalumoti): string {
   const s = [
     `💰 <b>KVARTIRA TO'LOVI</b>`,
     AJRATGICH,
+    `<i>${siklOyi(h.sikl)} oyi</i>`,
     ``,
     `👤 ${esc(ism)}`,
-    `💵 To'landi: <b>${pul(h.tasdiqlangan)}</b>`,
+    `💵 To'landi: <b>${pul(h.tasdiqlangan)}</b> / ${pul(h.talab)}`,
   ];
   if (h.daraja !== "tola") s.push(`📉 Qoldi: <b>${pul(h.qoldiq)}</b>`);
   s.push(``, `Holat: ${daraja.emoji} <b>${daraja.nom}</b>`);
@@ -896,11 +1086,15 @@ export function tolovTasdiqXabari(
     `${esc(qabulIsm)} to'lovingizni tasdiqladi.`,
     ``,
     `✅ Tasdiqlangan summa: <b>${pul(tasdiqlanganSumma)}</b>`,
-    `💵 Jami to'langan: <b>${pul(h.tasdiqlangan)}</b>`,
+    ``,
+    `<i>${siklOyi(h.sikl)} oyi bo'yicha:</i>`,
+    `💵 Jami to'langan: <b>${pul(h.tasdiqlangan)}</b> / ${pul(h.talab)}`,
   ];
-  if (h.daraja !== "tola") s.push(`📉 Qoldi: <b>${pul(h.qoldiq)}</b>`);
+  if (h.daraja !== "tola") s.push(`📉 Qoldi: <b>${pul(h.qoldiq)}</b>`, muddatQatori(h.sikl));
   s.push(``, `Holat: ${daraja.emoji} <b>${daraja.nom}</b>`);
-  if (h.daraja === "tola") s.push(``, `✅ Kvartira to'lovingiz to'liq amalga oshirilgan.`);
+  if (h.daraja === "tola") {
+    s.push(``, `✅ ${siklOyi(h.sikl)} oyi to'lovingiz to'liq amalga oshirilgan.`);
+  }
   return s.join("\n");
 }
 
@@ -918,7 +1112,15 @@ export function tolovRadXabari(sabab: string): string {
   ].join("\n");
 }
 
-/** "📊 Mening to'lovlarim" — har bir yozuv mustaqil ko'rsatiladi, ustma-ust yozilmagan. */
+/**
+ * "📊 Mening to'lovlarim" — har bir yozuv mustaqil ko'rsatiladi, ustma-ust
+ * yozilmagan, va OY BO'YICHA guruhlanadi: o'tgan oylar tarixi joyida
+ * turadi, yangi oyning to'lovi ularning ustiga yozilmaydi.
+ *
+ * Har yozuvda ikki sana ham ko'rsatiladi — "yuborilgan" va "hal qilingan".
+ * Ular ataylab alohida: to'lov yuborilgan kun bo'yicha hisobga olinadi,
+ * admin tekshirishni kechiktirsa odam bundan zarar ko'rmaydi.
+ */
 export function tolovTarixi(payments: TolovTarix[]): string {
   if (payments.length === 0) {
     return [
@@ -929,9 +1131,17 @@ export function tolovTarixi(payments: TolovTarix[]): string {
     ].join("\n");
   }
 
-  const s = [`📊 <b>MENING TO'LOVLARIM</b>`, AJRATGICH, ``];
+  const s = [`📊 <b>MENING TO'LOVLARIM</b>`, AJRATGICH];
+  let oxirgiDavr: string | null | undefined;
+
   payments.forEach((p, i) => {
-    s.push(`<b>${i + 1}.</b> ${pul(Number(p.kiritgan_summa))}`);
+    if (p.sikl_davr !== oxirgiDavr) {
+      oxirgiDavr = p.sikl_davr;
+      const nom = p.sikl_davr ? sanadanOyNomi(p.sikl_davr) : null;
+      s.push(``, `📅 <b>${nom ? nom.toUpperCase() + " OYI" : "OYI BELGILANMAGAN"}</b>`);
+    }
+
+    s.push(``, `<b>${i + 1}.</b> ${pul(Number(p.kiritgan_summa))}`);
     if (p.holat === "tasdiqlandi") {
       s.push(`   ✅ Tasdiqlandi — <b>${pul(Number(p.tasdiqlangan_summa))}</b>`);
       if (p.hal_qildi_ism) s.push(`   👮 Tekshirdi: ${esc(p.hal_qildi_ism)}`);
@@ -942,16 +1152,50 @@ export function tolovTarixi(payments: TolovTarix[]): string {
     }
     s.push(`   📅 Yuborilgan: ${qisqaSana(p.created_at)}`);
     if (p.hal_qilindi) s.push(`   📅 Hal qilingan: ${qisqaSana(p.hal_qilindi)}`);
-    s.push(``);
   });
+
   return s.join("\n");
 }
 
-/** Admin/Sorabek uchun umumiy ko'rinish — kim to'lagan, kim qolgan. */
+/** Sikl holatining odam o'qiydigan nomi. */
+export function siklHolatBelgisi(sikl: TolovSikl): string {
+  return {
+    ochiq: "🟢 OCHIQ — to'lov qabul qilinmoqda",
+    muddat_yetdi: "🟠 MUDDAT YETDI — yakuniy holat olindi",
+    yakunlandi: "⚫️ YAKUNLANDI",
+  }[sikl.holat];
+}
+
+/** Bitta odamning dashboarddagi qatori — muddat surati bo'lsa u ham ko'rinadi. */
+function siklOdamQatori(o: SiklOdam, talab: number): string[] {
+  const belgi = tolovDarajaBelgisi(o.daraja);
+  const s = [`   ${belgi.emoji} ${esc(o.ism)} — ${pul(o.tasdiqlangan)} / ${pul(talab)}`];
+  if (o.qoldiq > 0) s.push(`      📉 qoldi <b>${pul(o.qoldiq)}</b>`);
+  if (o.kutilmoqdaSoni > 0) {
+    s.push(`      ⏳ ${o.kutilmoqdaSoni} ta tekshiruvda (${pul(o.kutilmoqdaSumma)})`);
+  }
+  if (o.muddat?.tekshiruvKutilmoqda) {
+    s.push(`      ⚖️ muddatda tekshiruvda edi — jarima yozilmadi`);
+  } else if (o.muddat && o.muddat.qoldiq > 0) {
+    s.push(
+      `      ⚖️ muddatda yetmagan: <b>${pul(o.muddat.qoldiq)}</b>` +
+        (o.muddat.jarima > 0 ? ` · jarima ${pul(o.muddat.jarima)}` : ``),
+    );
+  }
+  return s;
+}
+
+/**
+ * Admin/Sorabek uchun oylik ko'rinish — shu oyda kim qancha to'lagan,
+ * kimdan qancha qolgan, muddatda nima bo'lgan.
+ */
 export function tolovDashboardMatni(d: TolovDashboard): string {
   const s = [
     `📊 <b>KVARTIRA TO'LOVLARI</b>`,
     AJRATGICH,
+    `<i>${siklOyi(d.sikl)} oyi · ${siklHolatBelgisi(d.sikl)}</i>`,
+    ``,
+    muddatQatori(d.sikl),
     ``,
     `💰 Har kishidan talab: <b>${pul(d.talab)}</b>`,
     `📊 Jami talab: <b>${pul(d.jamiTalab)}</b>`,
@@ -962,18 +1206,91 @@ export function tolovDashboardMatni(d: TolovDashboard): string {
     `❌ Rad etilgan: <b>${d.radSoni}</b>`,
   ];
 
+  const qator = (o: SiklOdam) => siklOdamQatori(o, d.talab);
+
   s.push(``, AJRATGICH, `🟢 <b>TO'LIQ TO'LAGANLAR (${d.tola.length})</b>`);
-  s.push(...(d.tola.length ? d.tola.map((o) => `   ✅ ${esc(o.ism)}`) : [`   🤷 <i>hali yo'q</i>`]));
+  s.push(...(d.tola.length ? d.tola.flatMap(qator) : [`   🤷 <i>hali yo'q</i>`]));
 
   s.push(``, `🟡 <b>QISMAN TO'LAGANLAR (${d.qisman.length})</b>`);
-  s.push(
-    ...(d.qisman.length
-      ? d.qisman.map((o) => `   ${esc(o.ism)} — ${pul(o.tasdiqlangan)} · qoldi ${pul(o.qoldiq)}`)
-      : [`   🤷 <i>hali yo'q</i>`]),
-  );
+  s.push(...(d.qisman.length ? d.qisman.flatMap(qator) : [`   🤷 <i>hali yo'q</i>`]));
 
   s.push(``, `🔴 <b>TO'LAMAGANLAR (${d.tolanmagan.length})</b>`);
-  s.push(...(d.tolanmagan.length ? d.tolanmagan.map((o) => `   ${esc(o.ism)}`) : [`   🤷 <i>yo'q</i>`]));
+  s.push(...(d.tolanmagan.length ? d.tolanmagan.flatMap(qator) : [`   🤷 <i>yo'q</i>`]));
+
+  s.push(``, `<i>Batafsili uchun odamning tugmasini bosing.</i>`);
+  return s.join("\n");
+}
+
+/**
+ * Admin bitta odamni ochganda ko'radigan to'liq to'lov kartochkasi:
+ * talab, tasdiqlangan, qoldiq, tekshiruvdagilar, muddat natijasi, jarima
+ * holati va butun to'lov tarixi.
+ */
+export function tolovFoydalanuvchiMatni(
+  sikl: TolovSikl,
+  o: SiklOdam,
+  tarix: TolovTarix[],
+): string {
+  const daraja = tolovDarajaBelgisi(o.daraja);
+  const s = [
+    `👤 <b>${esc(o.ism).toUpperCase()}</b>`,
+    AJRATGICH,
+    `<i>${siklOyi(sikl)} oyi · ${siklHolatBelgisi(sikl)}</i>`,
+    ``,
+    muddatQatori(sikl),
+    ``,
+    `💰 Talab: <b>${pul(sikl.talab)}</b>`,
+    `✅ Tasdiqlangan: <b>${pul(o.tasdiqlangan)}</b>`,
+    `📉 Qoldiq: <b>${pul(o.qoldiq)}</b>`,
+    `Holat: ${daraja.emoji} <b>${daraja.nom}</b>`,
+  ];
+
+  s.push(
+    ``,
+    o.kutilmoqdaSoni > 0
+      ? `⏳ Tekshiruvda: <b>${o.kutilmoqdaSoni} ta</b> · ${pul(o.kutilmoqdaSumma)}`
+      : `⏳ Tekshiruvda: <i>yo'q</i>`,
+  );
+
+  s.push(``, AJRATGICH, `⚖️ <b>MUDDAT NATIJASI</b>`);
+  if (!o.muddat) {
+    s.push(`   <i>Muddat hali kelmagan — natija o'shanda yoziladi.</i>`);
+  } else if (o.muddat.tekshiruvKutilmoqda) {
+    s.push(
+      `   Muddatda tasdiqlangan: <b>${pul(o.muddat.tasdiqlangan)}</b>`,
+      `   Muddatda tekshiruvda: <b>${pul(o.muddat.kutilmoqda)}</b>`,
+      `   ⏳ <i>Odam muddatgacha yuborgan, tekshiruv kechikkan —</i>`,
+      `   <i>shuning uchun jarima yozilmadi.</i>`,
+    );
+  } else {
+    s.push(
+      `   Muddatda tasdiqlangan: <b>${pul(o.muddat.tasdiqlangan)}</b>`,
+      `   Muddatda yetmagan: <b>${pul(o.muddat.qoldiq)}</b>`,
+      o.muddat.jarima > 0
+        ? `   💸 Jarima: <b>${pul(o.muddat.jarima)}</b>`
+        : `   💸 Jarima: <i>yo'q (foiz 0 — /tolovjarima bilan o'rnatiladi)</i>`,
+    );
+  }
+
+  s.push(``, AJRATGICH, `📜 <b>TO'LOV TARIXI</b>`);
+  if (tarix.length === 0) {
+    s.push(`   🤷 <i>Hali to'lov yubormagan.</i>`);
+    return s.join("\n");
+  }
+
+  for (const p of tarix) {
+    const holat =
+      p.holat === "tasdiqlandi"
+        ? `✅ ${pul(Number(p.tasdiqlangan_summa))}`
+        : p.holat === "rad"
+          ? `❌ rad`
+          : `⏳ kutilmoqda`;
+    s.push(
+      `   ${holat} · da'vo ${pul(Number(p.kiritgan_summa))}`,
+      `      📅 yuborilgan ${qisqaSana(p.created_at)}` +
+        (p.hal_qilindi ? ` · hal ${qisqaSana(p.hal_qilindi)}` : ``),
+    );
+  }
 
   return s.join("\n");
 }
@@ -1047,8 +1364,13 @@ export function foydalanuvchiDetalMatni(
     ``,
     AJRATGICH,
     `🏅 Jami ball (butun tarix): <b>${u.jami_ball}</b>`,
-    `💳 Kvartira to'lovi: <b>${pul(tolov.tasdiqlangan)}</b> / ${pul(tolov.talab)}`,
+    `💳 Kvartira to'lovi (${siklOyi(tolov.sikl)}): ` +
+      `<b>${pul(tolov.tasdiqlangan)}</b> / ${pul(tolov.talab)}`,
   );
+  if (tolov.qoldiq > 0) s.push(`   📉 Qoldi: <b>${pul(tolov.qoldiq)}</b> · ${muddatQatori(tolov.sikl)}`);
+  if (tolov.kutilmoqdaSoni > 0) {
+    s.push(`   ⏳ Tekshiruvda: ${tolov.kutilmoqdaSoni} ta · ${pul(tolov.kutilmoqdaSumma)}`);
+  }
 
   if (tuzatishlar.length > 0) {
     s.push(``, `<b>Oxirgi ball tuzatishlari:</b>`);

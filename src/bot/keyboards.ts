@@ -13,6 +13,7 @@ import {
 } from "../config.js";
 import type { TurnIshlar, User } from "../db/index.js";
 import type { ReportToliq } from "../core/reports.js";
+import type { TolovDashboard } from "../core/tolov.js";
 import { ishRasmlari } from "../core/rotation.js";
 import type { FoydalanuvchiToliq } from "../core/users.js";
 
@@ -304,6 +305,39 @@ export function tolovAdminKeyboard(tolovId: number): InlineKeyboard {
   return new InlineKeyboard()
     .text("✅ Tasdiqlash", `tolov_tasdiq:${tolovId}`)
     .text("❌ Rad etish", `tolov_rad:${tolovId}`);
+}
+
+/**
+ * Oylik to'lov dashboardi — har bir odam alohida tugmada (foydalanuvchilar
+ * ro'yxatidagi bilan bir xil naqsh: matnda umumiy holat, tugmada tafsilot).
+ *
+ * "Siklni yakunlash" faqat muddat kelgan, lekin hali yopilmagan oyda
+ * ko'rinadi — ochiq oyni yakunlash mumkin emas.
+ */
+export function tolovDashboardKeyboard(d: TolovDashboard): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const o of d.odamlar) {
+    const belgi = o.qoldiq === 0 ? "🟢" : o.tasdiqlangan > 0 ? "🟡" : "🔴";
+    kb.text(`${belgi} ${o.ism} — ${qisqaPul(o.qoldiq)}`, `tolov_user:${o.userId}`).row();
+  }
+  if (d.sikl.holat === "muddat_yetdi") {
+    kb.text("🔒 Oyni yakunlash", `tolov_yakunla:${d.sikl.id}`).row();
+  }
+  kb.text("⬅️ Admin panel", "admin_panel");
+  return kb;
+}
+
+/** Tugmada to'liq "900 000 so'm" sig'maydi — "900k" ko'rinishida qisqartiramiz. */
+function qisqaPul(n: number): string {
+  if (n === 0) return "to'liq";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}mln qoldi`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k qoldi`;
+  return `${n} qoldi`;
+}
+
+/** Bitta odamning to'lov kartochkasidan orqaga qaytish. */
+export function tolovFoydalanuvchiKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text("⬅️ To'lovlar ro'yxati", "tolov_dashboard");
 }
 
 /**
