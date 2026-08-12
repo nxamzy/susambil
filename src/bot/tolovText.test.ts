@@ -5,12 +5,13 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { TolovSikl } from "../db/index.js";
+import type { TolovSikl, User } from "../db/index.js";
 import type {
-  MuddatNatija, MuddatSurati, SiklOdam, TolovDashboard, TolovTarix,
+  EslatmaNomzodi, MuddatNatija, MuddatSurati, SiklOdam, TolovDashboard, TolovTarix,
 } from "../core/tolov.js";
 import {
-  pul, sanaQatori, siklOyi, tolovDashboardMatni, tolovFoydalanuvchiMatni,
+  eslatmaShoshilinchligi, pul, sanaQatori, siklOyi, tolovDashboardMatni,
+  tolovEslatmaXabari, tolovFoydalanuvchiMatni, tolovGuruhEslatmasi,
   tolovMuddatGuruhXabari, tolovMuddatXabari, tolovTarixi,
 } from "./text.js";
 
@@ -229,4 +230,88 @@ test("sanaQatori kalendar sanasini mintaqa hisobisiz o'qiydi", () => {
   assert.equal(sanaQatori("2026-08-15"), "15-avgust");
   assert.equal(sanaQatori("2026-01-01"), "1-yanvar");
   assert.equal(sanaQatori("2026-12-31"), "31-dekabr");
+});
+
+// ---------------------------------------------------------------------------
+// KUCHAYIB BORUVCHI OGOHLANTIRISH
+// ---------------------------------------------------------------------------
+
+test("ogohlantirish har kuni kuchayadi: 3 → 2 → 1 → bugun → kechikdi", () => {
+  assert.equal(eslatmaShoshilinchligi(3).emoji, "⚠️");
+  assert.equal(eslatmaShoshilinchligi(2).emoji, "🚨");
+  assert.equal(eslatmaShoshilinchligi(1).emoji, "🔴");
+  assert.equal(eslatmaShoshilinchligi(0).emoji, "🚨");
+  assert.equal(eslatmaShoshilinchligi(-1).emoji, "⛔️");
+
+  assert.match(eslatmaShoshilinchligi(3).ogohlantirish, /atigi 3 KUN QOLDI/);
+  assert.match(eslatmaShoshilinchligi(2).ogohlantirish, /atigi 2 KUN QOLDI/);
+  assert.match(eslatmaShoshilinchligi(1).ogohlantirish, /ERTAGA OXIRGI KUN/);
+  assert.match(eslatmaShoshilinchligi(0).ogohlantirish, /MUDDAT BUGUN TUGAYDI/);
+  assert.match(eslatmaShoshilinchligi(-3).ogohlantirish, /MUDDAT 3 KUN OLDIN TUGAGAN/);
+});
+
+test("har bir bosqichning sarlavhasi va chaqirig'i alohida", () => {
+  const bosqichlar = [3, 2, 1, 0, -1].map(eslatmaShoshilinchligi);
+  const sarlavhalar = new Set(bosqichlar.map((b) => b.sarlavha));
+  assert.ok(sarlavhalar.size >= 4, "sarlavha bosqichlar bo'ylab o'zgarishi kerak");
+  for (const b of bosqichlar) assert.ok(b.chaqiriq.length > 10);
+});
+
+function nomzod(over: Partial<EslatmaNomzodi> = {}): EslatmaNomzodi {
+  const tasdiqlangan = over.tasdiqlangan ?? 400_000;
+  return {
+    userId: 2,
+    ism: "Vali",
+    user: { id: 2, ism: "Vali", telegram_id: "102" } as User,
+    tasdiqlangan,
+    qoldiq: TALAB - tasdiqlangan,
+    kutilmoqdaSumma: 0,
+    oxirgiEslatma: null,
+    ...over,
+  };
+}
+
+test("ogohlantirish joriy tasdiqlangan balans va qoldiqni ko'rsatadi", () => {
+  const m = tolovEslatmaXabari(AVGUST, nomzod(), 3);
+  assert.match(m, /atigi 3 KUN QOLDI/);
+  assert.ok(m.includes("15-avgust"), "muddat sanasi");
+  assert.ok(m.includes(pul(900_000)), "talab");
+  assert.ok(m.includes(pul(400_000)), "to'langan");
+  assert.ok(m.includes(pul(500_000)), "qoldiq");
+});
+
+test("tekshiruvdagi to'lov ALOHIDA ko'rsatiladi va hisobga qo'shilmaydi", () => {
+  const m = tolovEslatmaXabari(AVGUST, nomzod({ kutilmoqdaSumma: 300_000 }), 2);
+  assert.match(m, /Tekshiruvda: /);
+  assert.ok(m.includes(pul(300_000)), "tekshiruvdagi summa ko'rinsin");
+  assert.match(m, /hisobga qo'shilmagan/);
+  assert.ok(
+    m.includes(pul(500_000)),
+    "qoldiq faqat tasdiqlangandan hisoblanadi — 200 000 emas",
+  );
+  assert.ok(!m.includes(pul(200_000)), "tekshiruvdagi pul qoldiqni kamaytirmasin");
+});
+
+test("tekshiruvi yo'q odamda ortiqcha qator chiqmaydi", () => {
+  assert.ok(!/Tekshiruvda/.test(tolovEslatmaXabari(AVGUST, nomzod(), 3)));
+});
+
+test("muddat kuni va undan keyin ohang o'zgaradi", () => {
+  const bugungi = tolovEslatmaXabari(AVGUST, nomzod(), 0);
+  assert.match(bugungi, /MUDDAT BUGUN TUGAYDI/);
+  assert.match(bugungi, /BUGUN tashlashingiz shart/);
+
+  const kechikkan = tolovEslatmaXabari(AVGUST, nomzod(), -2);
+  assert.match(kechikkan, /MUDDAT 2 KUN OLDIN TUGAGAN/);
+  assert.match(kechikkan, /muddati allaqachon o'tgan/);
+});
+
+test("guruh eslatmasi ham kuchayadi va shaxsiy ma'lumot chiqarmaydi", () => {
+  const d = dashboard([ALI, VALI, HASAN]);
+  const m = tolovGuruhEslatmasi(d, 1);
+  assert.match(m, /ERTAGA OXIRGI KUN/);
+  assert.ok(m.includes(pul(1_600_000)), "yig'ilgan jami");
+  assert.ok(m.includes(pul(1_100_000)), "yetmayotgan jami");
+  assert.match(m, /2<\/b> kishi/, "qarzdorlar soni");
+  assert.ok(!m.includes("9860"), "karta raqami guruhga chiqmasin");
 });

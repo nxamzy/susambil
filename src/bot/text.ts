@@ -870,36 +870,107 @@ export function tolovKorinishi(qabul: { ism: string; karta: string }, h: TolovHo
   return s.join("\n");
 }
 
+export type Shoshilinchlik = {
+  /** Sarlavhadagi belgi — har kuni kuchayadi */
+  emoji: string;
+  sarlavha: string;
+  /** "Muddatgacha atigi 3 KUN QOLDI!" kabi asosiy ogohlantirish qatori */
+  ogohlantirish: string;
+  /** Xabar oxiridagi chaqiriq */
+  chaqiriq: string;
+};
+
 /**
- * Muddatga yaqinlashganda qarzi borlarga yuboriladigan shaxsiy eslatma.
- * To'liq to'laganlarga umuman yuborilmaydi (`jobs/reminders.ts`).
+ * Muddatgacha qolgan kunga qarab ogohlantirishning kuchi.
+ *
+ * Talab ikki tomonlama edi: "do not spam" va ayni paytda "impossible to
+ * easily miss". Ikkalasi bir-biriga zid emas — CHASTOTA past (kuniga bir
+ * marta), OHANG esa har kuni kuchayadi. Shuning uchun bu yerda faqat
+ * so'z tanlanadi, yuborish qarori `core/tolov.ts`da qoladi.
+ *
+ * Sof funksiya: `qolganKun` tashqaridan beriladi, ichkarida `Date.now()`
+ * chaqirilmaydi — shu sababli har bir bosqichni aniq sinash mumkin.
  */
-export function tolovEslatmaXabari(sikl: TolovSikl, n: EslatmaNomzodi): string {
+export function eslatmaShoshilinchligi(qolganKun: number): Shoshilinchlik {
+  if (qolganKun < 0) {
+    const kech = -qolganKun;
+    return {
+      emoji: "⛔️",
+      sarlavha: "MUDDAT O'TIB KETDI",
+      ogohlantirish: `⛔️ <b>MUDDAT ${kech} KUN OLDIN TUGAGAN!</b>`,
+      chaqiriq: "Qarzingiz hamon yopilmagan. Iltimos, bugunoq tashlang.",
+    };
+  }
+  if (qolganKun === 0) {
+    return {
+      emoji: "🚨",
+      sarlavha: "OXIRGI KUN — KVARTIRA TO'LOVI",
+      ogohlantirish: "🚨 <b>MUDDAT BUGUN TUGAYDI!</b>",
+      chaqiriq: "Qolgan summani BUGUN tashlashingiz shart.",
+    };
+  }
+  if (qolganKun === 1) {
+    return {
+      emoji: "🔴",
+      sarlavha: "SHOSHILINCH — KVARTIRA TO'LOVI",
+      ogohlantirish: "🔴 <b>ERTAGA OXIRGI KUN — ATIGI 1 KUN QOLDI!</b>",
+      chaqiriq: "Kechiktirmang — qolgan summani bugun-ertaga tashlang.",
+    };
+  }
+  return {
+    emoji: qolganKun <= 2 ? "🚨" : "⚠️",
+    sarlavha: "KVARTIRA TO'LOVI OGOHLANTIRISHI",
+    ogohlantirish: `${qolganKun <= 2 ? "🚨" : "⚠️"} <b>Muddatgacha atigi ${qolganKun} KUN QOLDI!</b>`,
+    chaqiriq: "Qolgan summani imkon qadar tezroq tashlang.",
+  };
+}
+
+/**
+ * Muddatga yaqinlashganda qarzi borlarga yuboriladigan shaxsiy
+ * ogohlantirish. To'liq to'laganlarga umuman yuborilmaydi
+ * (`jobs/reminders.ts`).
+ *
+ * Ko'rsatiladigan qoldiq har doim TASDIQLANGAN summadan hisoblanadi.
+ * Tekshiruvda turgan to'lov alohida qator bo'lib chiqadi va hisobga
+ * qo'shilmagani ochiq aytiladi — aks holda odam "to'ladim-ku" deb
+ * o'ylab, qolgan pulni tashlamay qo'yardi.
+ */
+export function tolovEslatmaXabari(
+  sikl: TolovSikl,
+  n: EslatmaNomzodi,
+  qolganKun: number,
+): string {
+  const sh = eslatmaShoshilinchligi(qolganKun);
   const s = [
-    `🔔 <b>KVARTIRA TO'LOVI ESLATMASI</b>`,
+    `${sh.emoji} <b>${sh.sarlavha}</b>`,
     AJRATGICH,
-    `<i>${siklOyi(sikl)} oyi</i>`,
     ``,
-    muddatQatori(sikl),
+    sh.ogohlantirish,
     ``,
+    `📅 Muddat: <b>${sanaQatori(sikl.muddat)}</b>`,
     `💰 Talab: <b>${pul(sikl.talab)}</b>`,
-    `✅ To'landi: <b>${pul(n.tasdiqlangan)}</b>`,
-    `⚠️ Qoldi: <b>${pul(n.qoldiq)}</b>`,
+    `✅ To'langan: <b>${pul(n.tasdiqlangan)}</b>`,
+    `❗️ Qoldi: <b>${pul(n.qoldiq)}</b>`,
   ];
 
   if (n.kutilmoqdaSumma > 0) {
     s.push(
       ``,
-      `⏳ ${pul(n.kutilmoqdaSumma)} tekshiruvda — tasdiqlangach`,
-      `   qoldiq shunga kamayadi.`,
+      `⏳ <b>Tekshiruvda: ${pul(n.kutilmoqdaSumma)}</b>`,
+      `<i>Hali tasdiqlanmagan, shuning uchun yuqoridagi</i>`,
+      `<i>hisobga qo'shilmagan. Tasdiqlangach qoldiq kamayadi.</i>`,
     );
   }
 
   s.push(
     ``,
-    kunFarqi(bugungiSana(), sikl.muddat) < 0
-      ? `Muddat o'tib ketdi. Iltimos, qolgan summani tashlang.`
-      : `Iltimos, qolgan summani muddatgacha tashlang.`,
+    qolganKun > 0
+      ? `<b>${sanaQatori(sikl.muddat)}gacha to'lovni yakunlashingiz shart.</b>`
+      : qolganKun === 0
+        ? `<b>Bugun — ${sanaQatori(sikl.muddat)} — oxirgi kun.</b>`
+        : `<b>To'lov muddati allaqachon o'tgan.</b>`,
+    ``,
+    sh.chaqiriq,
   );
   return s.join("\n");
 }
@@ -908,18 +979,19 @@ export function tolovEslatmaXabari(sikl: TolovSikl, n: EslatmaNomzodi): string {
  * Guruhga umumiy eslatma. Hech qanday chek, karta yoki shaxsiy dalil
  * chiqmaydi — faqat umumiy yig'im holati va muddat.
  */
-export function tolovGuruhEslatmasi(d: TolovDashboard): string {
+export function tolovGuruhEslatmasi(d: TolovDashboard, qolganKun: number): string {
   const qarzdor = d.odamlar.filter((o) => o.qoldiq > 0).length;
+  const sh = eslatmaShoshilinchligi(qolganKun);
   return [
-    `💰 <b>KVARTIRA TO'LOVI</b>`,
+    `${sh.emoji} <b>KVARTIRA TO'LOVI — ${siklOyi(d.sikl).toUpperCase()}</b>`,
     AJRATGICH,
-    `<i>${siklOyi(d.sikl)} oyi</i>`,
     ``,
-    muddatQatori(d.sikl),
+    sh.ogohlantirish,
     ``,
+    `📅 Muddat: <b>${sanaQatori(d.sikl.muddat)}</b>`,
     `💵 Yig'ildi: <b>${pul(d.jamiTasdiqlangan)}</b> / ${pul(d.jamiTalab)}`,
     `📉 Yetmayapti: <b>${pul(d.jamiQoldiq)}</b>`,
-    `👥 To'lamaganlar: <b>${qarzdor}</b> kishi`,
+    `👥 Hali to'lamaganlar: <b>${qarzdor}</b> kishi`,
     ``,
     `Har kim <b>${pul(d.talab)}</b> tashlashi kerak.`,
     `Bir yo'la emas, bo'lib-bo'lib tashlasa ham bo'ladi —`,

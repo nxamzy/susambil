@@ -9,6 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { hisoblaDaraja, muddatNatijasi, tolovEslatmasiKerakmi } from "./tolov.js";
 import { guruhEslatmasiKerakmi } from "../jobs/reminders.js";
+import { config } from "../config.js";
 
 const TALAB = 900_000;
 
@@ -144,6 +145,23 @@ test("oyna ochilmaguncha eslatma yuborilmaydi", () => {
   // 15-avgust muddati, oyna 5 kun oldin (10-avgust) ochiladi.
   assert.equal(eslatma({ bugun: "2026-08-09" }), false);
   assert.equal(eslatma({ bugun: "2026-08-10" }), true, "aynan oyna ochilgan kun kiradi");
+});
+
+test("SOZLAMA bo'yicha ogohlantirish 12-kundan boshlanadi (15-kun muddati)", () => {
+  // Talab aynan shunday: "reminders must start exactly 3 days before the
+  // deadline, meaning from the 12th". Shu sababli sinovda `eslatmaKuni`
+  // qo'lda emas, config'dan olinadi — sozlama o'zgarsa test yiqiladi.
+  const p = {
+    qoldiq: 500_000,
+    muddat: "2026-08-15",
+    oxirgiEslatma: null,
+    eslatmaKuni: config.tolovEslatmaKuni,
+  };
+  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-11" }), false, "11-kuni hali erta");
+  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-12" }), true, "12-kuni boshlanadi");
+  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-13" }), true);
+  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-14" }), true);
+  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-15" }), true, "muddat kuni ham");
 });
 
 test("muddat o'tib ketsa ham qarzdorga eslatma davom etadi", () => {

@@ -52,13 +52,20 @@ export const config = {
   tolovMuddatKuni: 15,
 
   /**
-   * To'lov eslatmasi muddatga shuncha kun qolganda boshlanadi va kuniga
-   * BIR MARTA yuboriladi (navbat eslatmasidagi 5 soatlik chastota bu yerga
-   * to'g'ri kelmaydi — pul masalasi kunlik ritmda bo'ladi). Muddat o'tib
-   * ketsa ham qarzi borlarga davom etadi, to'liq to'laganlarga esa darhol
-   * to'xtaydi.
+   * To'lov ogohlantirishi muddatga shuncha kun qolganda boshlanadi — ya'ni
+   * 15-kun muddati uchun oyning 12-kunidan.
+   *
+   * Kuniga BIR MARTA yuboriladi (navbat eslatmasidagi 5 soatlik chastota bu
+   * yerga to'g'ri kelmaydi — pul masalasi kunlik ritmda bo'ladi), lekin
+   * xabarning KUCHI har kuni oshib boradi: 3 kun → 2 kun → 1 kun → bugun →
+   * kechikdi (`bot/text.ts` `eslatmaShoshilinchligi`). Ya'ni "bezovta
+   * qilmaslik" chastotani kamaytirish bilan, "e'tibordan qochmaslik" esa
+   * ohangni kuchaytirish bilan hal qilingan.
+   *
+   * Muddat o'tib ketsa qarzi borlarga davom etadi, to'liq to'laganlarga esa
+   * darhol to'xtaydi.
    */
-  tolovEslatmaKuni: 5,
+  tolovEslatmaKuni: 3,
 } as const;
 
 /**

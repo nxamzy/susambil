@@ -73,7 +73,7 @@ Har to'lov: da'vo + chek → Sorabek haqiqiy summani tekshiradi
         ↓
 Faqat TASDIQLANGAN summa hisobga qo'shiladi
         ↓
-Muddatga 5 kun qolganda → kuniga bir marta shaxsiy eslatma
+12-kundan → kuniga bir marta shaxsiy ogohlantirish (ohangi kuchayib boradi)
         ↓
 15-kun oxiri → yakuniy holat suratga olinadi
         ↓
@@ -83,6 +83,29 @@ Yangi oy → yangi sikl (eski oy tarixi o'z joyida qoladi)
 **Bir yo'la to'lash shart emas.** 900 000 so'mni 100k + 200k + 300k + 300k
 qilib tashlasa ham bo'ladi — hammasi qo'shib boriladi. To'lig'i tushgach
 eslatma o'z-o'zidan to'xtaydi.
+
+### Ogohlantirish 12-kundan boshlanadi
+
+Kuniga **bir marta** yuboriladi — lekin xabarning ohangi har kuni kuchayadi.
+Chastota past, e'tibor talab kuchli:
+
+| Kun | Belgi | Xabar |
+|---|---|---|
+| 12-kun | ⚠️ | Muddatgacha atigi 3 KUN QOLDI! |
+| 13-kun | 🚨 | Muddatgacha atigi 2 KUN QOLDI! |
+| 14-kun | 🔴 | ERTAGA OXIRGI KUN — ATIGI 1 KUN QOLDI! |
+| 15-kun | 🚨 | MUDDAT BUGUN TUGAYDI! |
+| keyin | ⛔️ | MUDDAT N KUN OLDIN TUGAGAN! |
+
+Har bir xabarda odamning **joriy tasdiqlangan** balansi va qoldig'i turadi.
+Tekshiruvda turgan to'lov alohida `⏳ Tekshiruvda` qatori bo'lib chiqadi va
+hisobga qo'shilmagani ochiq aytiladi — aks holda odam "to'ladim-ku" deb
+o'ylab, qolgan pulni tashlamay qo'yardi.
+
+To'lig'i tasdiqlangan odam ro'yxatdan butunlay chiqadi va boshqa
+ogohlantirish olmaydi. "Bugun eslatilgan" fakti bazada
+(`tolov_holat.oxirgi_eslatma`), shuning uchun bot qayta ishga tushsa ham
+bir kunda ikki marta yuborilmaydi.
 
 ### Nima uchun sikl kerak edi
 
@@ -146,7 +169,7 @@ tekshiruvdagilar, muddat natijasi, jarima holati va butun to'lov tarixi.
 | Minimal rasm | 3 ta |
 | Kechikish jarimasi | kuniga 10 000 so'm — faqat reytingda ko'rsatiladi |
 | Kvartira to'lovi muddati | oyning 15-kuni (kun oxirigacha) |
-| To'lov eslatmasi | muddatga 5 kun qolganda, kuniga 1 marta |
+| To'lov ogohlantirishi | muddatga 3 kun qolganda (12-kundan), kuniga 1 marta |
 | To'lov jarimasi | 0% — o'chiq, `/tolovjarima` bilan yoqiladi |
 
 To'lov summasi, qabul qiluvchi va jarima foizi kodda emas, `settings`

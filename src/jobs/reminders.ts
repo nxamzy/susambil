@@ -260,7 +260,8 @@ async function shaxsiyTolovEslatmalari(
   // Oyna hali ochilmagan bo'lsa hech kimga kerak emas — bu tekshiruv
   // ataylab so'rovdan OLDIN: bu funksiya har bir Telegram yangilanishida
   // chaqiriladi, oyning ko'p kunida esa hech narsa qilmasligi kerak.
-  if (kunFarqi(bugun, sikl.muddat) > config.tolovEslatmaKuni) return;
+  const qolganKun = kunFarqi(bugun, sikl.muddat);
+  if (qolganKun > config.tolovEslatmaKuni) return;
 
   const nomzodlar = await eslatmaNomzodlari(sikl);
 
@@ -274,7 +275,7 @@ async function shaxsiyTolovEslatmalari(
     });
     if (!kerak) continue;
 
-    const yetdi = await shaxsiy(api, n.user, tolovEslatmaXabari(sikl, n), {
+    const yetdi = await shaxsiy(api, n.user, tolovEslatmaXabari(sikl, n, qolganKun), {
       reply_markup: tolovTugmasi(),
     });
     // Faqat yetkazilganda belgilaymiz — aks holda bloklangan/o'chirilgan
@@ -314,7 +315,7 @@ async function guruhTolovEslatmasi(
   const d = await tolovDashboard(sikl);
   if (d.odamlar.every((o) => o.qoldiq === 0)) return;
 
-  const yetdi = await guruhgaYubor(api, tolovGuruhEslatmasi(d));
+  const yetdi = await guruhgaYubor(api, tolovGuruhEslatmasi(d, kunFarqi(bugun, sikl.muddat)));
   if (yetdi) await guruhEslatmasiniBelgila(sikl.id, bugun);
 }
 
