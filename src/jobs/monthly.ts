@@ -18,11 +18,19 @@ export async function oylikHisobot(api: Api): Promise<void> {
   `;
   if (bor?.qiymat === belgi) return; // bu oy allaqachon e'lon qilingan
 
-  await sql`
-    INSERT INTO settings (kalit, qiymat) VALUES ('oxirgi_hisobot', ${belgi})
-    ON CONFLICT (kalit) DO UPDATE SET qiymat = EXCLUDED.qiymat
-  `;
+  const banner = await guruhgaYubor(api, "📅 <b>Yangi oy boshlandi — o'tgan oy natijalari:</b>");
+  const hisobot = await guruhgaYubor(api, await reytingMatni());
 
-  await guruhgaYubor(api, "📅 <b>Yangi oy boshlandi — o'tgan oy natijalari:</b>");
-  await guruhgaYubor(api, await reytingMatni());
+  // Faqat ikkalasi ham yetkazilgandan keyin belgilaymiz — aks holda
+  // (masalan bot guruhdan chiqarilgan yoki guruh hali sozlanmagan bo'lsa)
+  // shu oy hisoboti butunlay yo'qolib qolardi: cron faqat 1-sanada bir
+  // marta ishga tushadi (api/cron.ts), demak qayta urinish bo'lmaydi.
+  // jobs/reminders.ts'dagi hamma eslatma shu bir qoidaga amal qiladi:
+  // "mark sent only after delivery actually succeeded".
+  if (banner && hisobot) {
+    await sql`
+      INSERT INTO settings (kalit, qiymat) VALUES ('oxirgi_hisobot', ${belgi})
+      ON CONFLICT (kalit) DO UPDATE SET qiymat = EXCLUDED.qiymat
+    `;
+  }
 }
