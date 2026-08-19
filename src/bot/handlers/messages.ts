@@ -18,7 +18,13 @@ import { korinish, panelMatni } from "./commands.js";
 import { ishniBoshla, ishRasminiSora } from "./chores.js";
 import { vazifaPaneliniKorsat } from "./navbat.js";
 import { javobgarIzohiSaqlandi, shikoyatBoshla, shikoyatIzohSaqlandi, shikoyatJoySora } from "./reports.js";
-import { tolovDalilSora, tolovRadEtish, tolovTasdiqlash, tolovTuzatishKeldi } from "./tolov.js";
+import {
+  tolovDalilSora,
+  tolovRadEtish,
+  tolovTasdiqlash,
+  tolovTuzatishSababKeldi,
+  tolovTuzatishSummaKeldi,
+} from "./tolov.js";
 import {
   adminBallTuzatishKeldi,
   adminIsmTahrirKeldi,
@@ -197,8 +203,18 @@ export function register(bot: Bot) {
       return tolovRadEtish(ctx, holat.tolovId, ctx.message.text.trim());
     }
 
-    if (holat?.tur === "tolov_tuzat") {
-      return tolovTuzatishKeldi(ctx, holat.userId, holat.siklId, ctx.message.text.trim());
+    if (holat?.tur === "tolov_tuzat" && holat.qadam === "summa") {
+      return tolovTuzatishSummaKeldi(ctx, holat.userId, holat.siklId, ctx.message.text.trim());
+    }
+
+    if (holat?.tur === "tolov_tuzat" && holat.qadam === "sabab") {
+      return tolovTuzatishSababKeldi(
+        ctx,
+        holat.userId,
+        holat.siklId,
+        holat.summa,
+        ctx.message.text.trim(),
+      );
     }
 
     if (holat?.tur === "navbat_ish") {

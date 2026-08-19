@@ -396,8 +396,16 @@ export async function tolovFoydalanuvchiKorsat(ctx: Context, userId: number): Pr
   });
 }
 
-/** Admin "✏️ To'lovni tuzatish" yozib bo'lgach — messages.ts'dan chaqiriladi. */
-export async function tolovTuzatishKeldi(
+/**
+ * Admin summani yozib bo'lgach — messages.ts'dan chaqiriladi.
+ *
+ * `summaTekshir` orqali o'qiladi — u raqamdan boshqa hamma narsani
+ * (bo'shliq, nuqta, vergul) tashlab yuboradi, shuning uchun "400000",
+ * "400 000" va "400.000" bir xil natija beradi (`pul()` xuddi shu
+ * "bo'shliqli" formatda ko'rsatgani uchun bu muhim — admin ko'pincha
+ * ko'rgan raqamini nusxalab yozadi).
+ */
+export async function tolovTuzatishSummaKeldi(
   ctx: Context,
   userId: number,
   siklId: number,
@@ -407,17 +415,46 @@ export async function tolovTuzatishKeldi(
   const admin = await kim(ctx.from.id);
   if (!admin?.admin) return;
 
-  const mos = xom.trim().match(/^([+-]?\d+)\s*(.*)$/);
-  if (!mos) {
-    await ctx.reply("Format: +400000 sabab yoki -400000 sabab");
+  const toza = xom.trim();
+  const manfiymi = toza.startsWith("-");
+  const raqam = summaTekshir(toza);
+  if (raqam === null) {
+    await ctx.reply("Faqat raqam yozing, ishora bilan: +400000 yoki -400000");
     return;
   }
-  const summa = Number(mos[1]);
-  const sabab = (mos[2] ?? "").trim();
-  if (summa === 0) {
-    await ctx.reply("Summa 0 bo'lishi mumkin emas.");
-    return;
-  }
+
+  await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+
+  const summa = manfiymi ? -raqam : raqam;
+  const yangi = { tur: "tolov_tuzat", qadam: "sabab", userId, siklId, summa } as const;
+  await holatOrnat(ctx.from.id, yangi);
+
+  const xabar = await ctx.reply(
+    [
+      `${summa > 0 ? "+" : ""}${pul(summa)}`,
+      ``,
+      `✍️ Endi sababini yozing (masalan: <i>naqd qo'lma-qo'l oldim</i>).`,
+      `Sababsiz bo'lsa <code>-</code> deb yozing.`,
+    ].join("\n"),
+    { parse_mode: "HTML", reply_markup: bekorKeyboard() },
+  );
+  await sorovniEslat(ctx.from.id, yangi, xabar.chat.id, xabar.message_id);
+}
+
+/** Admin sababni yozib bo'lgach (yoki "-" bilan o'tkazib yuborgach) — yozuv shu yerda yaratiladi. */
+export async function tolovTuzatishSababKeldi(
+  ctx: Context,
+  userId: number,
+  siklId: number,
+  summa: number,
+  xom: string,
+): Promise<void> {
+  if (!ctx.from) return;
+  const admin = await kim(ctx.from.id);
+  if (!admin?.admin) return;
+
+  const toza = xom.trim();
+  const sabab = toza === "-" ? "" : toza;
 
   await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
   await holatTozala(ctx.from.id);
@@ -542,7 +579,7 @@ export function register(bot: Bot) {
 
     const userId = Number(ctx.match[1]);
     const sikl = await joriySikl();
-    const holat = { tur: "tolov_tuzat", userId, siklId: sikl.id } as const;
+    const holat = { tur: "tolov_tuzat", qadam: "summa", userId, siklId: sikl.id } as const;
     await holatOrnat(ctx.from.id, holat);
 
     const xabar = await ctx.reply(
@@ -550,12 +587,10 @@ export function register(bot: Bot) {
         `✏️ <b>To'lovni tuzatish</b> (${siklOyi(sikl)})`,
         AJRATGICH,
         ``,
-        `Miqdorni va sababini yozing, masalan:`,
-        `<code>+400000 naqd qo'lma-qo'l oldim</code>`,
-        `<code>-400000 xato tasdiqlangan edi</code>`,
-        ``,
-        `<i>Musbat — to'lov qildi deb belgilaydi (dalilsiz).`,
-        `Manfiy — hisobdan ayiradi.</i>`,
+        `Summani ISHORA bilan yozing — dalilsiz "to'ladi" deb`,
+        `belgilash uchun musbat, hisobdan ayirish uchun manfiy:`,
+        `<code>+400000</code>`,
+        `<code>-400000</code>`,
       ].join("\n"),
       { parse_mode: "HTML", reply_markup: bekorKeyboard() },
     );

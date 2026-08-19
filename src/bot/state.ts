@@ -67,9 +67,14 @@ export type Flow = (
   | { tur: "tolov_rad"; tolovId: number }
   /**
    * Admin: to'lovni qo'lda tuzatish — dalilsiz "to'ladi/to'lamadi" deb
-   * belgilash. "+400000 sabab" yoki "-400000 sabab" shaklida yoziladi.
+   * belgilash. Ikki qadam (summa, keyin sabab) ataylab ALOHIDA: summa
+   * matnida bo'shliq/nuqta bo'lsa ("400 000" ko'rinishida — `pul()` xuddi
+   * shu formatda ko'rsatadi), bitta qatordagi "ishora+summa+sabab" birga
+   * o'qilsa summa xato bo'lib qolar edi (masalan "+400 000 izoh" ->
+   * "+400" deb noto'g'ri o'qilardi).
    */
-  | { tur: "tolov_tuzat"; userId: number; siklId: number }
+  | { tur: "tolov_tuzat"; qadam: "summa"; userId: number; siklId: number }
+  | { tur: "tolov_tuzat"; qadam: "sabab"; userId: number; siklId: number; summa: number }
   /**
    * Navbat: "Mening Navbatim" panelida bitta vazifa (xona/hammom/oshxona/
    * musor) tugmasi bosildi — o'sha vazifaning rasmi kutilyapti.
