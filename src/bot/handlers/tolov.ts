@@ -24,6 +24,7 @@ import {
   foydalanuvchiTolovHolati,
   foydalanuvchiTolovlari,
   guruhXabarniSaqla,
+  joriySikl,
   kutayotganTolovlar,
   siklniOl,
   siklniYakunla,
@@ -33,6 +34,8 @@ import {
   tolovniRadEt,
   tolovniTasdiqla,
   tolovQabulQiluvchi,
+  tolovTuzat,
+  tolovTuzatishTarixi,
   tolovYuborish,
   type TolovToliq,
 } from "../../core/tolov.js";
@@ -386,10 +389,42 @@ export async function tolovFoydalanuvchiKorsat(ctx: Context, userId: number): Pr
   }
 
   const tarix = await foydalanuvchiTolovlari(userId);
-  await ctx.reply(chekla(tolovFoydalanuvchiMatni(d.sikl, odam, tarix)), {
+  const tuzatishlar = await tolovTuzatishTarixi(userId, d.sikl.id);
+  await ctx.reply(chekla(tolovFoydalanuvchiMatni(d.sikl, odam, tarix, tuzatishlar)), {
     parse_mode: "HTML",
-    reply_markup: tolovFoydalanuvchiKeyboard(),
+    reply_markup: tolovFoydalanuvchiKeyboard(userId),
   });
+}
+
+/** Admin "✏️ To'lovni tuzatish" yozib bo'lgach — messages.ts'dan chaqiriladi. */
+export async function tolovTuzatishKeldi(
+  ctx: Context,
+  userId: number,
+  siklId: number,
+  xom: string,
+): Promise<void> {
+  if (!ctx.from) return;
+  const admin = await kim(ctx.from.id);
+  if (!admin?.admin) return;
+
+  const mos = xom.trim().match(/^([+-]?\d+)\s*(.*)$/);
+  if (!mos) {
+    await ctx.reply("Format: +400000 sabab yoki -400000 sabab");
+    return;
+  }
+  const summa = Number(mos[1]);
+  const sabab = (mos[2] ?? "").trim();
+  if (summa === 0) {
+    await ctx.reply("Summa 0 bo'lishi mumkin emas.");
+    return;
+  }
+
+  await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+  await holatTozala(ctx.from.id);
+
+  await tolovTuzat(userId, siklId, summa, sabab, admin.id);
+  await ctx.reply(`✅ ${summa > 0 ? "+" : ""}${pul(summa)} tuzatildi.`, { parse_mode: "HTML" });
+  await tolovFoydalanuvchiKorsat(ctx, userId);
 }
 
 export function register(bot: Bot) {
@@ -490,6 +525,37 @@ export function register(bot: Bot) {
         `<i>Foydalanuvchi yozgani:</i> ${pul(Number(toliq.kiritgan_summa))}`,
         ``,
         `Bank/karta tarixini tekshirib, aniq summani yozing:`,
+      ].join("\n"),
+      { parse_mode: "HTML", reply_markup: bekorKeyboard() },
+    );
+    await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
+  });
+
+  // Admin qo'lda tuzatish: dalilsiz "to'ladi/to'lamadi" deb belgilash —
+  // joriy sikl bo'yicha (dashboard ham shu sikl bo'yicha ko'rsatiladi).
+  bot.callbackQuery(/^tolov_tuzat:(\d+)$/, async (ctx) => {
+    const admin = await faqatAdmin(ctx);
+    if (!admin) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const userId = Number(ctx.match[1]);
+    const sikl = await joriySikl();
+    const holat = { tur: "tolov_tuzat", userId, siklId: sikl.id } as const;
+    await holatOrnat(ctx.from.id, holat);
+
+    const xabar = await ctx.reply(
+      [
+        `✏️ <b>To'lovni tuzatish</b> (${siklOyi(sikl)})`,
+        AJRATGICH,
+        ``,
+        `Miqdorni va sababini yozing, masalan:`,
+        `<code>+400000 naqd qo'lma-qo'l oldim</code>`,
+        `<code>-400000 xato tasdiqlangan edi</code>`,
+        ``,
+        `<i>Musbat — to'lov qildi deb belgilaydi (dalilsiz).`,
+        `Manfiy — hisobdan ayiradi.</i>`,
       ].join("\n"),
       { parse_mode: "HTML", reply_markup: bekorKeyboard() },
     );

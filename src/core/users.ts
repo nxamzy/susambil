@@ -220,6 +220,8 @@ export async function foydalanuvchiTarixiBormi(userId: number): Promise<boolean>
       SELECT 1 FROM admin_log WHERE admin_id = ${userId}
       UNION ALL
       SELECT 1 FROM ball_tuzatish WHERE user_id = ${userId} OR admin_id = ${userId}
+      UNION ALL
+      SELECT 1 FROM tolov_tuzatish WHERE user_id = ${userId} OR admin_id = ${userId}
     ) AS bor
   `;
   return r?.bor ?? false;

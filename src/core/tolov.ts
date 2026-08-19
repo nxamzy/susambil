@@ -25,6 +25,7 @@ import type postgres from "postgres";
 import { sql, type Tolov, type TolovDalilTuri, type TolovSikl, type User } from "../db/index.js";
 import { config, TOLOV_STD } from "../config.js";
 import { bugungiSana, kunFarqi, siklDavri } from "./vaqt.js";
+import { logla } from "./adminlog.js";
 
 let keshlanganTalab: number | undefined;
 let keshlanganQabul: { ism: string; karta: string } | undefined;
@@ -356,7 +357,10 @@ export async function foydalanuvchiTolovHolati(
   const s = sikl ?? (await joriySikl());
   const [r] = await sql<{ tasdiqlangan: string; kutilmoqda_summa: string; kutilmoqda: number }[]>`
     SELECT
-      COALESCE(SUM(tasdiqlangan_summa) FILTER (WHERE holat = 'tasdiqlandi'), 0)::bigint AS tasdiqlangan,
+      (COALESCE(SUM(tasdiqlangan_summa) FILTER (WHERE holat = 'tasdiqlandi'), 0) +
+       COALESCE((SELECT SUM(summa) FROM tolov_tuzatish
+                 WHERE user_id = ${userId} AND sikl_id = ${s.id}), 0)
+      )::bigint AS tasdiqlangan,
       COALESCE(SUM(kiritgan_summa)     FILTER (WHERE holat = 'kutilmoqda'),   0)::bigint AS kutilmoqda_summa,
       count(*) FILTER (WHERE holat = 'kutilmoqda')::int AS kutilmoqda
     FROM tolovlar WHERE user_id = ${userId} AND sikl_id = ${s.id}
@@ -583,7 +587,11 @@ async function muddatYigindisi(
 ): Promise<SuratQator[]> {
   return db<SuratQator[]>`
     SELECT u.id AS user_id, u.ism,
-           COALESCE(SUM(t.tasdiqlangan_summa) FILTER (WHERE t.holat = 'tasdiqlandi'), 0)::bigint AS tasdiqlangan,
+           (COALESCE(SUM(t.tasdiqlangan_summa) FILTER (WHERE t.holat = 'tasdiqlandi'), 0) +
+            COALESCE((SELECT SUM(tz.summa) FROM tolov_tuzatish tz
+                      WHERE tz.user_id = u.id AND tz.sikl_id = ${sikl.id}
+                        AND (tz.created_at AT TIME ZONE 'Asia/Tashkent')::date <= ${sikl.muddat}::date), 0)
+           )::bigint AS tasdiqlangan,
            COALESCE(SUM(t.kiritgan_summa)     FILTER (WHERE t.holat = 'kutilmoqda'),   0)::bigint AS kutilmoqda
     FROM users u
     LEFT JOIN tolovlar t
@@ -743,6 +751,65 @@ export async function siklniYakunla(siklId: number): Promise<TolovSikl | null> {
 }
 
 // ---------------------------------------------------------------------------
+// QO'LDA TUZATISH
+// ---------------------------------------------------------------------------
+
+/**
+ * Admin to'lovni qo'lda tuzatadi — dalil (chek) TALAB QILINMAYDI.
+ * `core/users.ts`dagi `ballTuzat` bilan bir xil falsafa: mavjud hisoblash
+ * (`tolovlar`dan SUM) buzilmaydi, bu shunga qo'shiladigan qo'shimcha manba.
+ *
+ * Musbat summa — masalan naqd qo'lma-qo'l olingan pulni "to'ladi" deb
+ * belgilash. Manfiy summa — xato tasdiqlangan/kiritilgan to'lovni ortga
+ * qaytarish, ya'ni odamni qayta qarzdor qilib belgilash (talab: admin
+ * har qanday odamni "to'ladi/to'lamadi" deb bemalol o'zgartira olishi
+ * kerak, dalilga qaramasdan).
+ *
+ * Muddat surati qayta hisoblanadi — `tolovniTasdiqla`/`tolovniRadEt` bilan
+ * bir xil naqsh, aks holda tuzatish dashboardda ko'rinsa ham muddat
+ * natijasida (kechikkanmi, jarima) eskirgan raqam qolib ketardi.
+ */
+export async function tolovTuzat(
+  userId: number,
+  siklId: number,
+  summa: number,
+  sabab: string,
+  adminId: number,
+): Promise<void> {
+  const toza = sabab.trim().slice(0, 300);
+  await sql`
+    INSERT INTO tolov_tuzatish (user_id, sikl_id, summa, sabab, admin_id)
+    VALUES (${userId}, ${siklId}, ${summa}, ${toza || null}, ${adminId})
+  `;
+  await muddatSuratiniYangila(siklId, userId);
+  await logla(
+    adminId,
+    "tolov_tuzatildi",
+    "user",
+    userId,
+    null,
+    `${summa > 0 ? "+" : ""}${summa}: ${toza}`,
+  );
+}
+
+/** Bitta odamning shu sikldagi qo'lda tuzatishlari — admin ko'rinishida (ball_tuzatishTarixi bilan bir xil naqsh). */
+export async function tolovTuzatishTarixi(
+  userId: number,
+  siklId: number,
+  limit = 10,
+): Promise<{ summa: number; sabab: string | null; admin_ism: string; created_at: Date }[]> {
+  const rows = await sql<
+    { summa: string; sabab: string | null; admin_ism: string; created_at: Date }[]
+  >`
+    SELECT tz.summa, tz.sabab, a.ism AS admin_ism, tz.created_at
+    FROM tolov_tuzatish tz JOIN users a ON a.id = tz.admin_id
+    WHERE tz.user_id = ${userId} AND tz.sikl_id = ${siklId}
+    ORDER BY tz.id DESC LIMIT ${limit}
+  `;
+  return rows.map((r) => ({ ...r, summa: Number(r.summa) }));
+}
+
+// ---------------------------------------------------------------------------
 // ESLATMA
 // ---------------------------------------------------------------------------
 
@@ -776,7 +843,10 @@ export async function eslatmaNomzodlari(sikl: TolovSikl): Promise<EslatmaNomzodi
     })[]
   >`
     SELECT u.*,
-           COALESCE(SUM(t.tasdiqlangan_summa) FILTER (WHERE t.holat = 'tasdiqlandi'), 0)::bigint AS tasdiqlangan,
+           (COALESCE(SUM(t.tasdiqlangan_summa) FILTER (WHERE t.holat = 'tasdiqlandi'), 0) +
+            COALESCE((SELECT SUM(tz.summa) FROM tolov_tuzatish tz
+                      WHERE tz.user_id = u.id AND tz.sikl_id = ${sikl.id}), 0)
+           )::bigint AS tasdiqlangan,
            COALESCE(SUM(t.kiritgan_summa)     FILTER (WHERE t.holat = 'kutilmoqda'),   0)::bigint AS kutilmoqda_summa,
            to_char(h.oxirgi_eslatma, 'YYYY-MM-DD') AS oxirgi_eslatma
     FROM users u
@@ -880,7 +950,10 @@ export async function tolovDashboard(sikl?: TolovSikl): Promise<TolovDashboard> 
     }[]
   >`
     SELECT u.id AS user_id, u.ism,
-           COALESCE(SUM(t.tasdiqlangan_summa) FILTER (WHERE t.holat = 'tasdiqlandi'), 0)::bigint AS tasdiqlangan,
+           (COALESCE(SUM(t.tasdiqlangan_summa) FILTER (WHERE t.holat = 'tasdiqlandi'), 0) +
+            COALESCE((SELECT SUM(tz.summa) FROM tolov_tuzatish tz
+                      WHERE tz.user_id = u.id AND tz.sikl_id = ${s.id}), 0)
+           )::bigint AS tasdiqlangan,
            COALESCE(SUM(t.kiritgan_summa)     FILTER (WHERE t.holat = 'kutilmoqda'),   0)::bigint AS kutilmoqda_summa,
            count(t.id) FILTER (WHERE t.holat = 'kutilmoqda')::int AS kutilmoqda_soni,
            count(t.id) FILTER (WHERE t.holat = 'rad')::int        AS rad_soni,
@@ -974,15 +1047,24 @@ export async function siklTarixi(limit = 12): Promise<SiklXulosa[]> {
     GROUP BY sikl_id
   `;
 
+  // Qo'lda tuzatishlar ham shu oyning yig'indisiga qo'shiladi — dashboard
+  // bilan bir xil hisoblash (yagona joy printsipi buzilmasin).
+  const tuzatishlar = await sql<{ sikl_id: number; summa: string }[]>`
+    SELECT sikl_id, COALESCE(SUM(summa), 0)::bigint AS summa
+    FROM tolov_tuzatish
+    WHERE sikl_id = ANY(${sikllar.map((s) => s.id)})
+    GROUP BY sikl_id
+  `;
+
   const [odam] = await sql<{ soni: number }[]>`
     SELECT count(*)::int AS soni FROM users WHERE faol
   `;
   const odamSoni = odam?.soni ?? 0;
 
   return sikllar.map((sikl) => {
-    const jamiTasdiqlangan = Number(
-      yigindilar.find((y) => y.sikl_id === sikl.id)?.tasdiqlangan ?? 0,
-    );
+    const jamiTasdiqlangan =
+      Number(yigindilar.find((y) => y.sikl_id === sikl.id)?.tasdiqlangan ?? 0) +
+      Number(tuzatishlar.find((t) => t.sikl_id === sikl.id)?.summa ?? 0);
     const jamiTalab = sikl.talab * odamSoni;
     return {
       sikl,

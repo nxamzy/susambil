@@ -66,6 +66,11 @@ export type Flow = (
   /** Admin "❌ Rad etish" bosgach — sababini so'raymiz. */
   | { tur: "tolov_rad"; tolovId: number }
   /**
+   * Admin: to'lovni qo'lda tuzatish — dalilsiz "to'ladi/to'lamadi" deb
+   * belgilash. "+400000 sabab" yoki "-400000 sabab" shaklida yoziladi.
+   */
+  | { tur: "tolov_tuzat"; userId: number; siklId: number }
+  /**
    * Navbat: "Mening Navbatim" panelida bitta vazifa (xona/hammom/oshxona/
    * musor) tugmasi bosildi — o'sha vazifaning rasmi kutilyapti.
    */

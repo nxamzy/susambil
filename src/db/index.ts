@@ -215,6 +215,22 @@ export type TolovSikl = {
   created_at: Date;
 };
 
+/**
+ * Admin qo'lda kiritgan to'lov tuzatishi — `tolovlar`dagi SUM'ga qo'shimcha
+ * manba sifatida qo'shiladi (core/tolov.ts). `summa` musbat yoki manfiy
+ * bo'lishi mumkin — dalilsiz "to'ladi" deb belgilash yoki xato hisobni
+ * ortga qaytarish uchun.
+ */
+export type TolovTuzatish = {
+  id: number;
+  user_id: number;
+  sikl_id: number;
+  summa: string;
+  sabab: string | null;
+  admin_id: number;
+  created_at: Date;
+};
+
 /** Admin harakatlar jurnali — kim, nima, eski/yangi qiymat, qachon. */
 export type AdminLog = {
   id: number;

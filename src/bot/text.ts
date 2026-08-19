@@ -1428,6 +1428,7 @@ export function tolovFoydalanuvchiMatni(
   sikl: TolovSikl,
   o: SiklOdam,
   tarix: TolovTarix[],
+  tuzatishlar: { summa: number; sabab: string | null; admin_ism: string; created_at: Date }[] = [],
 ): string {
   const daraja = tolovDarajaBelgisi(o.daraja);
   const s = [
@@ -1468,6 +1469,16 @@ export function tolovFoydalanuvchiMatni(
         ? `   💸 Jarima: <b>${pul(o.muddat.jarima)}</b>`
         : `   💸 Jarima: <i>yo'q (foiz 0 — /tolovjarima bilan o'rnatiladi)</i>`,
     );
+  }
+
+  if (tuzatishlar.length > 0) {
+    s.push(``, AJRATGICH, `✏️ <b>QO'LDA TUZATISHLAR</b> (${siklOyi(sikl)})`);
+    for (const t of tuzatishlar.slice(0, 5)) {
+      s.push(
+        `   ${t.summa > 0 ? "+" : ""}${pul(t.summa)} — ${esc(t.sabab ?? "sababsiz")}`,
+        `      👮 ${esc(t.admin_ism)}, ${qisqaSana(t.created_at)}`,
+      );
+    }
   }
 
   s.push(``, AJRATGICH, `📜 <b>TO'LOV TARIXI</b>`);

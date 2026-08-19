@@ -359,9 +359,12 @@ function qisqaPul(n: number): string {
   return `${n} qoldi`;
 }
 
-/** Bitta odamning to'lov kartochkasidan orqaga qaytish. */
-export function tolovFoydalanuvchiKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text("⬅️ To'lovlar ro'yxati", "tolov_dashboard");
+/** Bitta odamning to'lov kartochkasi: qo'lda tuzatish + orqaga qaytish. */
+export function tolovFoydalanuvchiKeyboard(userId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✏️ To'lovni tuzatish", `tolov_tuzat:${userId}`)
+    .row()
+    .text("⬅️ To'lovlar ro'yxati", "tolov_dashboard");
 }
 
 /**

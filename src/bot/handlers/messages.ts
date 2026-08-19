@@ -18,7 +18,7 @@ import { korinish, panelMatni } from "./commands.js";
 import { ishniBoshla, ishRasminiSora } from "./chores.js";
 import { vazifaPaneliniKorsat } from "./navbat.js";
 import { javobgarIzohiSaqlandi, shikoyatBoshla, shikoyatIzohSaqlandi, shikoyatJoySora } from "./reports.js";
-import { tolovDalilSora, tolovRadEtish, tolovTasdiqlash } from "./tolov.js";
+import { tolovDalilSora, tolovRadEtish, tolovTasdiqlash, tolovTuzatishKeldi } from "./tolov.js";
 import {
   adminBallTuzatishKeldi,
   adminIsmTahrirKeldi,
@@ -195,6 +195,10 @@ export function register(bot: Bot) {
 
     if (holat?.tur === "tolov_rad") {
       return tolovRadEtish(ctx, holat.tolovId, ctx.message.text.trim());
+    }
+
+    if (holat?.tur === "tolov_tuzat") {
+      return tolovTuzatishKeldi(ctx, holat.userId, holat.siklId, ctx.message.text.trim());
     }
 
     if (holat?.tur === "navbat_ish") {

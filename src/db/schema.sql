@@ -508,3 +508,34 @@ CREATE TABLE IF NOT EXISTS ball_tuzatish (
 );
 
 CREATE INDEX IF NOT EXISTS ball_tuzatish_user_idx ON ball_tuzatish (user_id);
+
+-- ---------------------------------------------------------------------------
+-- TO'LOV QO'LDA TUZATISH
+-- ---------------------------------------------------------------------------
+-- ball_tuzatish bilan bir xil falsafa (yuqorida): to'lov holati doim
+-- `tolovlar`dan SUM(...) bilan hisoblanadi (core/tolov.ts), bu jadval esa
+-- shunga qo'shiladigan QO'SHIMCHA manba — mavjud hisoblash buzilmaydi.
+--
+-- Nega kerak: `tolovlar`ga yozuv FAQAT foydalanuvchi dalil (chek) yuborsa
+-- tug'iladi. Lekin pul ba'zan naqd/qo'lma-qo'l beriladi (dalil yo'q) yoki
+-- xato tasdiqlangan/hisoblangan summani orqaga qaytarish kerak bo'ladi —
+-- soxta dalil o'ylab topish o'rniga admin buni to'g'ridan-to'g'ri shu yerga
+-- yozadi (talab: admin har qanday odamni "to'ladi/to'lamadi" deb bemalol
+-- o'zgartira olishi kerak, dalilga qaramasdan).
+--
+-- `summa` MUSBAT (to'lov qildi deb belgilash, hisobga qo'shiladi) yoki
+-- MANFIY (aslida to'lamagan/xato hisoblangan edi deb ayirish) bo'ladi, hech
+-- qachon 0 emas. `sikl_id` MAJBURIY: qaysi OYGA tegishli ekani aniq
+-- bo'lmasa oylik sikl mantig'i (yuqoridagi "OYLIK TO'LOV SIKLI" bo'limi)
+-- buziladi.
+CREATE TABLE IF NOT EXISTS tolov_tuzatish (
+  id         SERIAL PRIMARY KEY,
+  user_id    INT NOT NULL REFERENCES users(id),
+  sikl_id    INT NOT NULL REFERENCES tolov_sikllari(id),
+  summa      BIGINT NOT NULL CHECK (summa <> 0),
+  sabab      TEXT,
+  admin_id   INT NOT NULL REFERENCES users(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS tolov_tuzatish_sikl_idx ON tolov_tuzatish (sikl_id, user_id);
