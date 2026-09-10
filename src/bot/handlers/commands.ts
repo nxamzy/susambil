@@ -1,7 +1,7 @@
 import type { Bot, Api, Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { sql, type Room } from "../../db/index.js";
-import { config, ISH_TURLARI, SEKIN_ISHLAR, BALLAR, type IshTuri } from "../../config.js";
+import { config, ISH_TURLARI, BALLAR, type IshTuri } from "../../config.js";
 import { ochiqTopshiriqlar } from "../../core/topshiriq.js";
 import {
   faolNavbat,
@@ -10,6 +10,7 @@ import {
   navbatSozlamalari,
   xonaAzolari,
 } from "../../core/rotation.js";
+import { sozlamalarOl } from "../../core/sozlamalar.js";
 import { faolVazifalar } from "../../core/vazifalar.js";
 import { reyting, orinlarniHisobla, xonaHolati, tarix } from "../../core/rating.js";
 import { jamiXarajat, oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
@@ -17,7 +18,6 @@ import { foydalanuvchiTolovHolati, tolovQabulQiluvchi } from "../../core/tolov.j
 import { kunQismlari, oyNomi as vaqtOyNomi } from "../../core/vaqt.js";
 import { guruhgaYubor, guruhId, guruhIdOrnat, kim, korishXabar } from "../group.js";
 import {
-  boshqaIshKeyboard,
   ismTanlashKeyboard,
   menyuKeyboard,
   panelKeyboard,
@@ -64,8 +64,7 @@ export async function panelMatni(): Promise<string> {
     ...navbat,
     ``,
     AJRATGICH,
-    `👇 <b>Ish qildingizmi?</b> Tugmani bosing —`,
-    `   rasm so'rayman, ball qo'shaman.`,
+    `👇 Pastdagi tugmalardan foydalaning.`,
   ].join("\n");
 }
 
@@ -87,7 +86,7 @@ async function navbatMatni(): Promise<string> {
     ``,
     `👤 Navbatdagi xona a'zolari botda "Mening Navbatim"`,
     `   orqali har birini alohida belgilaydi.`,
-    `✅ <b>${config.kerakliTasdiq} kishi</b> tasdiqlaydi.`,
+    `✅ <b>${(await sozlamalarOl()).kerakliTasdiq} kishi</b> tasdiqlaydi.`,
   );
 
   const kelgusi = await kelgusiTartib(3);
@@ -175,12 +174,11 @@ async function reytingMatni(telegramId?: number): Promise<string> {
     }
   }
 
-  // 3) Qo'shimcha ishlar
+  // 3) Qo'shimcha ishlar — bu funksiya olib tashlangan; bo'lim faqat ESKI
+  //    tasdiqlangan yozuvlar bo'lsa ko'rinadi (tarix hech qachon o'chmaydi).
   const ishBoyicha = odamlar.filter((o) => o.ishSoni > 0).sort((a, b) => b.ishBall - a.ishBall);
-  s.push(``, `♻️ <b>QO'SHIMCHA ISHLAR</b>`, AJRATGICH);
-  if (ishBoyicha.length === 0) {
-    s.push(`🤷 <i>hali hech kim belgilamagan</i>`);
-  } else {
+  if (ishBoyicha.length > 0) {
+    s.push(``, `♻️ <b>QO'SHIMCHA ISHLAR (eski)</b>`, AJRATGICH);
     for (const [i, o] of ishBoyicha.entries()) {
       const medal = ["🥇", "🥈", "🥉"][i] ?? "▫️";
       const tafsil = (Object.keys(ISH_TURLARI) as IshTuri[])
@@ -271,7 +269,6 @@ export type Korinish =
   | "profil"
   | "azolar"
   | "tanishtirish"
-  | "boshqaish"
   | "panel";
 
 /**
@@ -305,12 +302,10 @@ export async function korinish(ctx: Context, nom: Korinish): Promise<void> {
       return javob(ctx, await profilMatni(ctx.from?.id));
     case "azolar":
       return javob(ctx, await azolarMatni());
-    case "boshqaish":
-      return javob(ctx, boshqaIshMatni(), { reply_markup: boshqaIshKeyboard() });
     case "tanishtirish":
       return javob(
         ctx,
-        tanishtirish(await faolVazifalar(), (await navbatSozlamalari()).siklKuni),
+        tanishtirish(await faolVazifalar(), (await navbatSozlamalari()).siklKuni, await sozlamalarOl()),
         { reply_markup: panelgaKeyboard() },
       );
     case "panel":
@@ -344,18 +339,6 @@ export async function azolarMatni(): Promise<string> {
   return s.join("\n");
 }
 
-function boshqaIshMatni(): string {
-  return [
-    `➕ <b>BOSHQA ISH</b>`,
-    AJRATGICH,
-    ``,
-    `Nima qildingiz? Tanlang — keyin rasmini so'rayman.`,
-    ``,
-    ...SEKIN_ISHLAR.map((t) => `   ${ISH_TURLARI[t].emoji} ${ISH_TURLARI[t].tugma} — <b>+${ISH_TURLARI[t].ball} ball</b>`),
-    ``,
-    `<i>Har qanday ish guruh tasdig'idan keyin ball beradi.</i>`,
-  ].join("\n");
-}
 
 /** Odamning shaxsiy holati: shu oylik balli, o'rni va kutib turgan ishlari. */
 async function profilMatni(telegramId: number | undefined): Promise<string> {
@@ -384,7 +367,9 @@ async function profilMatni(telegramId: number | undefined): Promise<string> {
     ``,
     AJRATGICH,
     `🧹 Navbat — ${men.navbatSoni} marta · <b>${men.navbatBall}</b> ball`,
-    `♻️ Qo'shimcha ish — ${men.ishSoni} marta · <b>${men.ishBall}</b> ball`,
+    ...(men.ishBall !== 0
+      ? [`♻️ Qo'shimcha ish (eski) — ${men.ishSoni} marta · <b>${men.ishBall}</b> ball`]
+      : []),
     `🛒 Olib kelgan — ${men.xarajat} marta · <b>${men.xarajatBall}</b> ball`,
     `✅ Tasdiqlagan — ${men.tasdiq} marta · <b>${men.tasdiqBall}</b> ball`,
   ];
@@ -457,7 +442,7 @@ export function register(bot: Bot) {
       .editMessageText(`✅ <b>Xush kelibsiz, ${esc(ism)}!</b>`, { parse_mode: "HTML" })
       .catch(() => {});
     await ctx.reply(
-      tanishtirish(await faolVazifalar(), (await navbatSozlamalari()).siklKuni),
+      tanishtirish(await faolVazifalar(), (await navbatSozlamalari()).siklKuni, await sozlamalarOl()),
       { parse_mode: "HTML" },
     );
 
@@ -655,7 +640,7 @@ export function register(bot: Bot) {
   // menyudan to'g'ridan-to'g'ri korinish() chaqiradi (guruh paneliga
   // qo'shilmagan, chunki "To'lov qilish" oqimi shaxsiy suhbatda o'tishi
   // shart — SHIKOYAT_TUGMA bilan bir xil sabab).
-  const korishlar = "navbat|reyting|tarix|xarajat|profil|azolar|tanishtirish|boshqaish|panel";
+  const korishlar = "navbat|reyting|tarix|xarajat|profil|azolar|tanishtirish|panel";
   bot.callbackQuery(new RegExp(`^korish:(${korishlar})$`), async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});
     await korinish(ctx, ctx.match[1] as Korinish);

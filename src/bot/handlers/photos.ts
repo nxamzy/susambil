@@ -1,33 +1,19 @@
-import type { Bot, Context } from "grammy";
-import { sql, type User } from "../../db/index.js";
-import { config, ISH_TURLARI, RASM_MAX, type IshTuri } from "../../config.js";
-import { albomYubor, guruhId, kim } from "../group.js";
-import { tasdiqKeyboard, bekorKeyboard, ishTugatishKeyboard } from "../keyboards.js";
-import { topshiriqXabari } from "../text.js";
-import { topshiriqYarat } from "../../core/topshiriq.js";
-import {
-  holatOl,
-  holatOrnat,
-  holatTozala,
-  ishRasminiQosh,
-  sorovniEslat,
-  sorovniOchir,
-  sorovniTahrirla,
-  sorovniYoz,
-} from "../state.js";
+import type { Bot } from "grammy";
+import { bekorKeyboard } from "../keyboards.js";
+import { kim } from "../group.js";
+import { holatOl, holatOrnat, sorovniEslat, sorovniOchir } from "../state.js";
 import { shikoyatDalilKeldi } from "./reports.js";
 import { tolovDalilKeldi } from "./tolov.js";
 import { vazifaRasmiKeldi } from "./navbat.js";
 
 /**
- * Rasm besh xil maqsadda kelishi mumkin — tartib muhim, har biri holat
+ * Rasm to'rt xil maqsadda kelishi mumkin — tartib muhim, har biri holat
  * tekshiruvi bilan aniq ushlanadi, aks holda masalan shikoyat dalili
  * boshqa oqimga tushib qolib, butunlay boshqa joyga yozilib ketardi:
- *   1) qo'shimcha ish tasdig'i (tugma bosilgan, rasm kutilyapti)
- *   2) yangi xarajat rasmi — faqat shaxsiy chatda
- *   3) shikoyat dalili — faqat shaxsiy chatda
- *   4) kvartira to'lovi dalili — faqat shaxsiy chatda
- *   5) navbat vazifasi dalili — faqat shaxsiy chatda, "Mening Navbatim"
+ *   1) yangi xarajat rasmi — faqat shaxsiy chatda
+ *   2) shikoyat dalili — faqat shaxsiy chatda
+ *   3) kvartira to'lovi dalili — faqat shaxsiy chatda
+ *   4) navbat vazifasi dalili — faqat shaxsiy chatda, "Mening Navbatim"
  *      panelida tugma bosilgandan keyin (`navbat_ish` holati)
  *
  * Video faqat shikoyat dalili sifatida, PDF esa faqat to'lov dalili
@@ -51,51 +37,6 @@ export function register(bot: Bot) {
     }
 
     const holat = await holatOl(fromId);
-
-    if (holat?.tur === "ish") {
-      if ("qadam" in holat && holat.qadam === "izoh") {
-        await ctx.reply("✍️ Avval nima qilganingizni yozing.");
-        return;
-      }
-
-      // Rasm(lar) YIG'ILADI, darrov yuborilmaydi — "✅ Tugatdim" bosilganda
-      // hammasi birga guruhga tasdiqqa chiqadi.
-      //
-      // Qo'shish ATOMIK (`ishRasminiQosh`): ilgari bu yerda holatdagi
-      // ro'yxat o'qilib, ustiga qo'shilib, qaytadan yozilardi — albom
-      // ichidagi rasmlar bir vaqtda kelgani uchun ikkita chaqiruv bir xil
-      // eski ro'yxatni o'qib, bir-birining ustidan yozib yuborardi va rasm
-      // yo'qolardi (`core/rotation.ts` `ishBelgila` bilan bir xil muammo).
-      const photoIds = await ishRasminiQosh(fromId, eng.file_id);
-      if (!photoIds) {
-        await ctx.reply("Jarayon eskirgan. Qaytadan boshlang.");
-        return;
-      }
-
-      const toldi = photoIds.length >= RASM_MAX;
-      const matn = [
-        toldi
-          ? `📷 <b>${photoIds.length} ta rasm</b> — bu eng ko'p miqdor.`
-          : `📷 <b>${photoIds.length} ta rasm qabul qilindi.</b>`,
-        ``,
-        toldi
-          ? `Tayyor bo'lsangiz pastdagi tugmani bosing.`
-          : `Yana rasm tashlashingiz yoki tayyor bo'lsangiz pastdagi\ntugmani bosishingiz mumkin.`,
-      ].join("\n");
-
-      // Har rasmga yangi xabar emas — bittasi tahrirlanib boradi, aks holda
-      // 9 ta rasm 9 ta xabar bo'lib Telegram flood chegarasiga urilardi.
-      if (!(await sorovniTahrirla(ctx.api, holat, matn, { reply_markup: ishTugatishKeyboard() }))) {
-        const xabar = await ctx.reply(matn, {
-          parse_mode: "HTML",
-          reply_markup: ishTugatishKeyboard(),
-        });
-        // Faqat `sorov` yoziladi — butun holatni qayta yozsak, shu orada
-        // qo'shilgan rasm yo'qolib ketishi mumkin.
-        await sorovniYoz(fromId, xabar.chat.id, xabar.message_id);
-      }
-      return;
-    }
 
     // Xarajat oqimi faqat shaxsiy chatda. Aks holda odam botda xarajat
     // boshlab, guruhga tozalash rasmini tashlasa — birinchi rasm xarajatga
@@ -167,56 +108,3 @@ export function register(bot: Bot) {
   });
 }
 
-/**
- * Qo'shimcha ish rasm(lar)i keldi/yakunlandi. Ilgari shu yerda darrov ball
- * berilardi; endi topshiriq guruhga tasdiqqa chiqadi va ball faqat
- * tasdiqdan keyin beriladi.
- */
-export async function ishniYakunla(
-  ctx: Context,
-  u: User,
-  ish: IshTuri,
-  izoh: string | null,
-  photoIds: string[],
-) {
-  const t = ISH_TURLARI[ish];
-  const sub = await topshiriqYarat(u.id, { tur: "ish", ish, izoh }, photoIds);
-  if (ctx.from) await holatTozala(ctx.from.id);
-
-  await ctx.reply(
-    [
-      `${t.emoji} <b>Qabul qildim.</b>`,
-      ``,
-      `Guruhga tasdiqqa qo'ydim — <b>${config.kerakliTasdiq} kishi</b> bosgach`,
-      `<b>+${t.ball} ball</b> qo'shiladi.`,
-      ``,
-      `<i>Holatini "Profil" bo'limidan kuzatasiz.</i>`,
-    ].join("\n"),
-    { parse_mode: "HTML" },
-  );
-
-  const guruh = await guruhId();
-  if (!guruh) return;
-
-  const matn = topshiriqXabari(sub, u.ism, [], config.kerakliTasdiq);
-  const tugma = tasdiqKeyboard(sub.id, 0, config.kerakliTasdiq);
-
-  let xabar;
-  if (photoIds.length === 0) {
-    xabar = await ctx.api.sendMessage(guruh, matn, { parse_mode: "HTML", reply_markup: tugma });
-  } else if (photoIds.length === 1) {
-    xabar = await ctx.api.sendPhoto(guruh, photoIds[0]!, {
-      caption: matn,
-      parse_mode: "HTML",
-      reply_markup: tugma,
-    });
-  } else {
-    // Telegram media-guruhda tugma/caption bo'lmaydi — rasmlar avval alohida
-    // albom sifatida, keyin tugmali xabar alohida yuboriladi (navbat.ts'dagi
-    // yakuniy topshirish bilan bir xil naqsh, ikkinchi nusxa yaratilmagan).
-    await albomYubor(ctx.api, guruh, photoIds);
-    xabar = await ctx.api.sendMessage(guruh, matn, { parse_mode: "HTML", reply_markup: tugma });
-  }
-
-  await sql`UPDATE submissions SET guruh_msg_id = ${xabar.message_id} WHERE id = ${sub.id}`;
-}

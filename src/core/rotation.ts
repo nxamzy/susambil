@@ -8,6 +8,7 @@ import {
   type User,
 } from "../db/index.js";
 import { config, RASM_MAX } from "../config.js";
+import { sozlamalarOl } from "./sozlamalar.js";
 import type { NavbatVazifasi } from "./vazifalar.js";
 import { logla } from "./adminlog.js";
 import { navbatBalli } from "./rating.js";
@@ -298,9 +299,10 @@ export async function navbatniYopish(
   if (!yopildi) return null;
 
   const azolar = await xonaAzolari(room.id);
+  const { jarimaKunlik } = await sozlamalarOl();
   return {
     kechikkanKun: kechikdi,
-    jarima: kechikdi * config.jarimaKunlik,
+    jarima: kechikdi * jarimaKunlik,
     ballHar: navbatBalli(azolar.length, kechikdi),
     keyingi: {
       room: keyingiRoom,

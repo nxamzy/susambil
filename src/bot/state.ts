@@ -4,20 +4,12 @@
  */
 import { GrammyError, type Api } from "grammy";
 import { sql } from "../db/index.js";
-import { RASM_MAX, type IshTuri, type Ishonch, type ShikoyatJoyi } from "../config.js";
+import { type Ishonch, type ShikoyatJoyi } from "../config.js";
 
 /** Bot yuborgan "rasm tashlang" kabi so'rov — jarayon tugagach o'chiriladi. */
 type Sorov = { sorov?: { chatId: number; msgId: number } };
 
 export type Flow = (
-  /** Izoh talab qiladigan ish turi tanlandi — avval nima qilganini yozadi */
-  | { tur: "ish"; ish: IshTuri; qadam: "izoh"; chatId: number }
-  /**
-   * Qo'shimcha ish belgilandi, endi rasm(lar) kutilyapti. `photoIds` —
-   * shu paytgacha yig'ilgan rasmlar (ixtiyoriy, xohlagan sonda tashlash
-   * mumkin) — birinchi rasm kelgunga qadar `undefined`.
-   */
-  | { tur: "ish"; ish: IshTuri; chatId: number; izoh?: string; photoIds?: string[] }
   /** Yangi xarajat: rasm → nomi → summasi */
   | { tur: "xarajat"; qadam: "rasm" }
   | { tur: "xarajat"; qadam: "izoh"; photoId: string }
@@ -202,60 +194,4 @@ export async function sorovniTahrirla(
   }
 }
 
-/**
- * Qo'shimcha ish oqimida rasmni ATOMIK qo'shadi va yangi ro'yxatni
- * qaytaradi.
- *
- * Ilgari bu `holat.photoIds` ni o'qib, massivga qo'shib, qaytadan yozardi —
- * albomdagi rasmlar bir vaqtda kelgani uchun ikkita chaqiruv bir xil eski
- * ro'yxatni o'qib, bir-birining ustidan yozib yuborardi va rasm yo'qolardi
- * (`core/rotation.ts` `ishBelgila` bilan aynan bir xil muammo, aynan bir
- * xil yechim).
- *
- * `null` — jarayon eskirgan/boshqa turga o'zgargan; bo'sh bo'lmagan
- * massiv — qo'shildi (yoki chegara tufayli o'zgarmadi).
- */
-export async function ishRasminiQosh(
-  telegramId: number,
-  fileId: string,
-): Promise<string[] | null> {
-  const [r] = await sql<{ holat: Flow }[]>`
-    UPDATE flow_state
-    SET holat = jsonb_set(
-          holat, '{photoIds}',
-          COALESCE(holat -> 'photoIds', '[]'::jsonb) || to_jsonb(${fileId}::text), true),
-        updated_at = now()
-    WHERE telegram_id = ${telegramId}
-      AND holat ->> 'tur' = 'ish'
-      AND NOT jsonb_exists(holat, 'qadam')
-      AND jsonb_array_length(COALESCE(holat -> 'photoIds', '[]'::jsonb)) < ${RASM_MAX}
-      AND updated_at > now() - (${MUDDAT_DAQIQA} || ' minutes')::interval
-    RETURNING holat
-  `;
-  if (r) return (r.holat as { photoIds?: string[] }).photoIds ?? [];
 
-  // Yozilmadi — chegaraga yetilgan yoki jarayon boshqa turga o'tgan.
-  const joriy = await holatOl(telegramId);
-  if (joriy?.tur !== "ish" || "qadam" in joriy) return null;
-  return joriy.photoIds ?? [];
-}
-
-/**
- * So'rov xabarini ATOMIK yozadi — holatning qolgan qismiga tegmasdan.
- *
- * `sorovniEslat` butun holatni qaytadan yozadi; albom bilan bir vaqtda
- * kelayotgan rasmlar orasida bu yangi qo'shilgan `photoIds`ni eski nusxa
- * bilan bosib yuborishi mumkin (aynan shu poyga rasm yo'qolishiga sabab
- * bo'lgan). Bu yerda faqat `sorov` maydoni o'zgaradi.
- */
-export async function sorovniYoz(
-  telegramId: number,
-  chatId: number,
-  msgId: number,
-): Promise<void> {
-  await sql`
-    UPDATE flow_state
-    SET holat = jsonb_set(holat, '{sorov}', ${sql.json({ chatId, msgId })}, true)
-    WHERE telegram_id = ${telegramId}
-  `;
-}

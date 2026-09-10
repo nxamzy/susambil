@@ -7,6 +7,7 @@ import { orinlarniHisobla, type OdamBall } from "../core/rating.js";
 import { bajarilganMarta, ishRasmlari, vazifaBajarildimi } from "../core/rotation.js";
 import type { NavbatVazifasi } from "../core/vazifalar.js";
 import { MAJBURIY_DOIM_OCHIQ, type NavbatSozlamalari } from "../core/rotation.js";
+import type { Sozlamalar } from "../core/sozlamalar.js";
 import type { XabarKimi } from "./state.js";
 import type { ReportToliq } from "../core/reports.js";
 import type {
@@ -369,6 +370,7 @@ export function navbatAdminPaneli(
   status: VazifaHolati,
   vazifalar: NavbatVazifasi[],
   sozlamalar: NavbatSozlamalari,
+  eslatmaOraligiSoat: number = config.eslatmaOraligiSoat,
 ): string {
   const ishlar = turn.ishlar;
   const bajarilgan = vazifalar.filter((v) => vazifaBajarildimi(ishlar[v.kod], v)).length;
@@ -403,7 +405,7 @@ export function navbatAdminPaneli(
 
   s.push(``, `🔔 Oxirgi shaxsiy eslatma: ${turn.oxirgi_eslatma ? sana(turn.oxirgi_eslatma) : "hali yuborilmagan"}`);
   if (turn.oxirgi_eslatma) {
-    const keyingi = new Date(new Date(turn.oxirgi_eslatma).getTime() + config.eslatmaOraligiSoat * 3_600_000);
+    const keyingi = new Date(new Date(turn.oxirgi_eslatma).getTime() + eslatmaOraligiSoat * 3_600_000);
     s.push(`⏭ Keyingi eslatma taxminan: ${sana(keyingi)}`);
   }
 
@@ -687,7 +689,7 @@ export function shikoyatGuruhXabari(r: ReportToliq): string {
 }
 
 /** Botning tanishtiruvi — "Qanday ishlaydi?" tugmasi shuni chiqaradi. */
-export function tanishtirish(vazifalar: NavbatVazifasi[], siklKuni: number): string {
+export function tanishtirish(vazifalar: NavbatVazifasi[], siklKuni: number, s0: Sozlamalar): string {
   const yarim = Math.round(BALLAR.navbatXona / 2);
   const chorak = Math.round(BALLAR.navbatXona / 4);
 
@@ -719,28 +721,13 @@ export function tanishtirish(vazifalar: NavbatVazifasi[], siklKuni: number): str
     `shu bosilmaguncha bitta rasm bilan tugab qolmaydi.`,
     ``,
     `Hamma vazifa bajarilgach "📸 Yakuniy topshirish" tugmasi chiqadi:`,
-    `   ✅ Boshqa xonadan <b>${config.kerakliTasdiq} kishi</b> tasdiqlasa,`,
+    `   ✅ Boshqa xonadan <b>${s0.kerakliTasdiq} kishi</b> tasdiqlasa,`,
     `   navbat keyingi xonaga o'tadi.`,
     ``,
-    `⚠️ <b>${config.kerakliTasdiq} kishi tasdiqlamaguncha navbat o'tmaydi.</b>`,
-    `⏰ Oxirgi kun boshlanganda har ${config.eslatmaOraligiSoat} soatda eslataman —`,
+    `⚠️ <b>${s0.kerakliTasdiq} kishi tasdiqlamaguncha navbat o'tmaydi.</b>`,
+    `⏰ Oxirgi kun boshlanganda har ${s0.eslatmaOraligiSoat} soatda eslataman —`,
     `   navbatni tugatmaguningizcha to'xtamaydi.`,
     `🔴 Kechiksangiz har kun ball kamayadi.`,
-    ``,
-    `<b>♻️ QO'SHIMCHA ISHLAR</b>`,
-    AJRATGICH,
-    `Navbatda bo'lmasangiz ham ball yig'sangiz bo'ladi.`,
-    ``,
-    `Tugmani bosasiz ➡️ rasm tashlaysiz ➡️ guruh`,
-    `tasdiqlaydi ➡️ ball qo'shiladi.`,
-    ``,
-    ...(Object.keys(ISH_TURLARI) as IshTuri[]).map(
-      (t) => `   ${ISH_TURLARI[t].emoji} ${ISH_TURLARI[t].tugma} — <b>${ISH_TURLARI[t].ball} ball</b>`,
-    ),
-    ``,
-    `⚠️ <b>Rasmsiz va tasdiqsiz ball berilmaydi.</b>`,
-    `<i>Tasdiq kutayotgan ish reytingga qo'shilmaydi —</i>`,
-    `<i>uni "Profil" bo'limida ko'rasiz.</i>`,
     ``,
     `<b>💰 UYGA NARSA OLIB KELISH</b>`,
     AJRATGICH,
@@ -793,7 +780,7 @@ export function tanishtirish(vazifalar: NavbatVazifasi[], siklKuni: number): str
     ``,
     `<b>💳 KVARTIRA TO'LOVI</b>`,
     AJRATGICH,
-    `Kvartira puli har oyning <b>${config.tolovMuddatKuni}-kuni</b> to'lanadi,`,
+    `Kvartira puli har oyning <b>${s0.tolovMuddatKuni}-kuni</b> to'lanadi,`,
     `demak o'z ulushingizni shu kungacha tashlab bo'lishingiz`,
     `kerak. Har oy alohida hisoblanadi — o'tgan oy to'lovi`,
     `yangi oyga o'tmaydi.`,
@@ -806,7 +793,7 @@ export function tanishtirish(vazifalar: NavbatVazifasi[], siklKuni: number): str
     `hisobingizga qo'shiladi. Bir necha marta qisman`,
     `to'lasangiz ham bo'ladi, hammasi qo'shib boriladi.`,
     ``,
-    `Muddatga <b>${config.tolovEslatmaKuni} kun</b> qolganda bot kuniga bir marta`,
+    `Muddatga <b>${s0.tolovEslatmaKuni} kun</b> qolganda bot kuniga bir marta`,
     `eslatib turadi. To'lig'i tushgach eslatma o'z-o'zidan`,
     `to'xtaydi.`,
     ``,

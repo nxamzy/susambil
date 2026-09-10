@@ -652,3 +652,16 @@ DO $$ BEGIN
       ON CONFLICT (kalit) DO NOTHING;
   END IF;
 END $$;
+
+-- ---------------------------------------------------------------------------
+-- TASDIQ KUTMOQDA — guruhga eslatma
+-- ---------------------------------------------------------------------------
+-- Navbat topshirilgan, lekin hech kim "✅ Tasdiqlash" bosmasa navbat
+-- yopilmay, kunlab cho'zilib ketardi (hech kim eslatmasdi). Endi topshiriq
+-- N soatdan ortiq tasdiqsiz tursa, guruhga eslatma boradi — tasdiqlar
+-- yetguncha yoki rad etilguncha har N soatda bir marta.
+--
+-- `tasdiq_eslatma` — oxirgi eslatma vaqti (NULL = hali yuborilmagan).
+-- `turns.oxirgi_ping` bilan bir xil "necha marta chaqirilsa ham xavfsiz"
+-- naqsh: shart har safar DB'dagi vaqtdan qayta hisoblanadi.
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS tasdiq_eslatma TIMESTAMPTZ;

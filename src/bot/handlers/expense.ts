@@ -1,6 +1,7 @@
 import type { Bot, Context } from "grammy";
 import { sql } from "../../db/index.js";
-import { config, BALLAR } from "../../config.js";
+import { BALLAR } from "../../config.js";
+import { sozlamalarOl } from "../../core/sozlamalar.js";
 import { topshiriqYarat } from "../../core/topshiriq.js";
 import { guruhId, kim } from "../group.js";
 import { AJRATGICH, topshiriqXabari } from "../text.js";
@@ -84,12 +85,13 @@ export async function xarajatniSaqla(
     { tur: "xarajat", izoh, summa },
     photoId ? [photoId] : [],
   );
+  const { kerakliTasdiq: kerak } = await sozlamalarOl();
 
   await ctx.reply(
     [
       `✅ <b>Qabul qildim.</b>`,
       ``,
-      `Guruhga tasdiqqa qo'ydim — <b>${config.kerakliTasdiq} kishi</b> bosgach`,
+      `Guruhga tasdiqqa qo'ydim — <b>${kerak} kishi</b> bosgach`,
       `<b>+${BALLAR.xarajat} ball</b> qo'shiladi.`,
     ].join("\n"),
     { parse_mode: "HTML" },
@@ -98,8 +100,8 @@ export async function xarajatniSaqla(
   const chatId = await guruhId();
   if (!chatId) return;
 
-  const matn = topshiriqXabari(sub, u.ism, [], config.kerakliTasdiq);
-  const tugma = tasdiqKeyboard(sub.id, 0, config.kerakliTasdiq);
+  const matn = topshiriqXabari(sub, u.ism, [], kerak);
+  const tugma = tasdiqKeyboard(sub.id, 0, kerak);
 
   const xabar = photoId
     ? await ctx.api.sendPhoto(chatId, photoId, {

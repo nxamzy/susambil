@@ -118,6 +118,8 @@ export type Submission = {
   yopildi: Date | null;
   rad_sababi: string | null;
   rad_qildi: number | null;
+  /** Tasdiq kutmoqda eslatmasi guruhga oxirgi marta qachon yuborilgan */
+  tasdiq_eslatma: Date | null;
 };
 
 /**

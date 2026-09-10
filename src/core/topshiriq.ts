@@ -13,7 +13,8 @@
  * ballning o'zi hech qachon tashqaridan olinmaydi.
  */
 import { sql, type Submission, type User } from "../db/index.js";
-import { config, ISH_TURLARI, BALLAR, type IshTuri } from "../config.js";
+import { ISH_TURLARI, BALLAR, type IshTuri } from "../config.js";
+import { sozlamalarOl } from "./sozlamalar.js";
 
 /** Xarajat summasining yuqori chegarasi — bosh barmoq bilan yozib yuborishdan. */
 export const SUMMA_CHEGARA = 100_000_000;
@@ -99,8 +100,9 @@ export async function tasdiqla(submissionId: number, u: User): Promise<TasdiqNat
   if (qoshildi.length === 0) return { holat: "xato", sabab: "takror" };
 
   const ismlar = await tasdiqlovchilar(submissionId);
-  if (ismlar.length < config.kerakliTasdiq) {
-    return { holat: "yetmadi", ismlar, kerak: config.kerakliTasdiq };
+  const { kerakliTasdiq } = await sozlamalarOl();
+  if (ismlar.length < kerakliTasdiq) {
+    return { holat: "yetmadi", ismlar, kerak: kerakliTasdiq };
   }
 
   const yakun = await yakunla(submissionId);

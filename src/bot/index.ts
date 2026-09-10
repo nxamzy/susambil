@@ -5,12 +5,12 @@ import * as admin from "./handlers/admin.js";
 import * as expense from "./handlers/expense.js";
 import * as photos from "./handlers/photos.js";
 import * as confirm from "./handlers/confirm.js";
-import * as chores from "./handlers/chores.js";
 import * as reports from "./handlers/reports.js";
 import * as tolov from "./handlers/tolov.js";
 import * as navbat from "./handlers/navbat.js";
 import * as adminUsers from "./handlers/adminUsers.js";
 import * as vazifalar from "./handlers/vazifalar.js";
+import * as sozlamalar from "./handlers/sozlamalar.js";
 import * as xabar from "./handlers/xabar.js";
 import * as messages from "./handlers/messages.js";
 
@@ -47,12 +47,12 @@ export function botYarat(): Bot {
   admin.register(bot);
   expense.register(bot);
   confirm.register(bot);
-  chores.register(bot);
   reports.register(bot);
   tolov.register(bot);
   navbat.register(bot);
   adminUsers.register(bot);
   vazifalar.register(bot);
+  sozlamalar.register(bot);
   xabar.register(bot);
   photos.register(bot);
   messages.register(bot);

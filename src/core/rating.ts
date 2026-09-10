@@ -1,5 +1,6 @@
 import { sql } from "../db/index.js";
-import { config, ISH_TURLARI, BALLAR, type IshTuri } from "../config.js";
+import { ISH_TURLARI, BALLAR, type IshTuri } from "../config.js";
+import { sozlamalarOl } from "./sozlamalar.js";
 
 export type OdamBall = {
   userId: number;
@@ -198,13 +199,14 @@ export async function xonaHolati(dan: Date | null = null): Promise<XonaHolat[]> 
     GROUP BY r.raqam, r.id
     ORDER BY r.raqam
   `;
+  const { jarimaKunlik } = await sozlamalarOl();
   return r.map((x) => ({
     xona: x.xona,
     azoSoni: x.azo_soni,
     navbat: x.navbat,
     kechikkan: x.kechikkan,
     kechikkanKun: x.kechikkan_kun,
-    jarima: x.kechikkan_kun * config.jarimaKunlik,
+    jarima: x.kechikkan_kun * jarimaKunlik,
   }));
 }
 

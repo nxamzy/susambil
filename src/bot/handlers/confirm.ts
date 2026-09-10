@@ -1,7 +1,7 @@
 import type { Bot, Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { sql, type Room, type Submission, type Turn, type User } from "../../db/index.js";
-import { config } from "../../config.js";
+import { sozlamalarOl } from "../../core/sozlamalar.js";
 import { navbatniYopish } from "../../core/rotation.js";
 import { radEt, tasdiqla, tasdiqlovchilar } from "../../core/topshiriq.js";
 import { guruhId, kim, shaxsiy } from "../group.js";
@@ -176,11 +176,12 @@ async function navbatniTasdiqla(ctx: Context, u: User, sub: Submission) {
   // tasdiq allaqachon yozilgan, navbat baribir yopilishi kerak.
   await ctx.answerCallbackQuery({ text: "✅ Tasdiqlandi, rahmat!" }).catch(() => {});
 
-  if (ismlar.length < config.kerakliTasdiq) {
+  const { kerakliTasdiq } = await sozlamalarOl();
+  if (ismlar.length < kerakliTasdiq) {
     await xabarniYangila(
       ctx,
-      tasdiqXabari(room, yuklagan.ism, ismlar, config.kerakliTasdiq),
-      tasdiqKeyboard(sub.id, ismlar.length, config.kerakliTasdiq),
+      tasdiqXabari(room, yuklagan.ism, ismlar, kerakliTasdiq),
+      tasdiqKeyboard(sub.id, ismlar.length, kerakliTasdiq),
     );
     return;
   }

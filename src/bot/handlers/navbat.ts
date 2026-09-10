@@ -19,6 +19,7 @@ import type { Api, Bot, Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { sql, type Room, type Turn, type User } from "../../db/index.js";
 import { config } from "../../config.js";
+import { sozlamalarOl } from "../../core/sozlamalar.js";
 import {
   barchaIshlarBajarildimi,
   faolNavbat,
@@ -127,7 +128,7 @@ async function vazifaHolatiniAniqla(turn: Turn): Promise<VazifaHolati> {
   const faolSub = await navbatFaolTopshirigi(turn.id);
   if (faolSub) {
     const ismlar = await tasdiqlovchilar(faolSub.id);
-    return { tur: "kutilmoqda", tasdiqlovchilar: ismlar, kerak: config.kerakliTasdiq };
+    return { tur: "kutilmoqda", tasdiqlovchilar: ismlar, kerak: (await sozlamalarOl()).kerakliTasdiq };
   }
 
   const [oxirgiRad] = await sql<{ rad_sababi: string | null }[]>`
@@ -306,10 +307,11 @@ export async function navbatAdminDashboard(ctx: Context): Promise<void> {
   }
   const { vazifalar, sozlamalar } = await konteksOl();
   const status = await vazifaHolatiniAniqla(n.turn);
-  await ctx.reply(navbatAdminPaneli(n.room, n.turn, n.azolar, status, vazifalar, sozlamalar), {
-    parse_mode: "HTML",
-    reply_markup: navbatAdminKeyboard(n.turn.id),
-  });
+  const { eslatmaOraligiSoat } = await sozlamalarOl();
+  await ctx.reply(
+    navbatAdminPaneli(n.room, n.turn, n.azolar, status, vazifalar, sozlamalar, eslatmaOraligiSoat),
+    { parse_mode: "HTML", reply_markup: navbatAdminKeyboard(n.turn.id) },
+  );
 }
 
 /**
@@ -513,10 +515,11 @@ export function register(bot: Bot) {
     // umuman chiqarmasdi.
     await albomYubor(ctx.api, chatId, sub.photo_ids);
 
+    const { kerakliTasdiq: kerak } = await sozlamalarOl();
     const xabar = await ctx.api.sendMessage(
       chatId,
-      tasdiqXabari(n.room, u.ism, [], config.kerakliTasdiq),
-      { parse_mode: "HTML", reply_markup: tasdiqKeyboard(sub.id, 0, config.kerakliTasdiq) },
+      tasdiqXabari(n.room, u.ism, [], kerak),
+      { parse_mode: "HTML", reply_markup: tasdiqKeyboard(sub.id, 0, kerak) },
     );
     await sql`UPDATE submissions SET guruh_msg_id = ${xabar.message_id} WHERE id = ${sub.id}`;
   });

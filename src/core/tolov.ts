@@ -24,6 +24,7 @@
 import type postgres from "postgres";
 import { sql, type Tolov, type TolovDalilTuri, type TolovSikl, type User } from "../db/index.js";
 import { config, TOLOV_STD } from "../config.js";
+import { sozlamalarOl } from "./sozlamalar.js";
 import { bugungiSana, kunFarqi, siklDavri } from "./vaqt.js";
 import { logla } from "./adminlog.js";
 
@@ -212,7 +213,7 @@ export async function sikllarRoyxati(limit = 12): Promise<TolovSikl[]> {
  * `ON CONFLICT DO NOTHING` — ikkinchisi jimgina mavjudini oladi.
  */
 export async function joriySikl(): Promise<TolovSikl> {
-  const { davr, muddat } = siklDavri(new Date(), config.tolovMuddatKuni);
+  const { davr, muddat } = siklDavri(new Date(), (await sozlamalarOl()).tolovMuddatKuni);
 
   const mavjud = await siklniDavrBoyichaOl(davr);
   if (mavjud) return mavjud;

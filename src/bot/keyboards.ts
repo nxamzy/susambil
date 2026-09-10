@@ -5,11 +5,8 @@ import {
   ORALIQ_KUN_MAX,
   RASM_SONI_MAX,
   TAKROR_MAX,
-  SEKIN_ISHLAR,
   SHIKOYAT_JOYLARI,
-  TEZ_ISHLAR,
   type Ishonch,
-  type IshTuri,
   type ShikoyatJoyi,
 } from "../config.js";
 import type { TurnIshlar, User } from "../db/index.js";
@@ -18,12 +15,6 @@ import type { SiklOdam, TolovDashboard } from "../core/tolov.js";
 import { bajarilganMarta, ishRasmlari, MAJBURIY_DOIM_OCHIQ, vazifaBajarildimi } from "../core/rotation.js";
 import type { NavbatVazifasi } from "../core/vazifalar.js";
 import type { FoydalanuvchiToliq } from "../core/users.js";
-
-/** Ish tugmasining yozuvi — inline va doimiy menyuda bir xil bo'lsin. */
-export function ishTugmasi(t: IshTuri): string {
-  const i = ISH_TURLARI[t];
-  return `${i.emoji} ${i.tugma}`;
-}
 
 /** Doimiy menyudagi ko'rinish tugmalari. */
 export const MENYU = {
@@ -38,8 +29,6 @@ export const MENYU = {
 } as const;
 
 /** Menyudagi tugmasi yo'q ish turlarini ochadigan tugma. */
-export const BOSHQA_ISH = "➕ Boshqa ish";
-
 /**
  * Anonim shikoyat tugmasi. Ataylab faqat shaxsiy chatdagi doimiy menyuda —
  * guruh paneliga qo'shilmagan, chunki bu yerdagi butun oqim (izoh, kim
@@ -65,14 +54,6 @@ export const ADMIN_PANEL_TUGMA = "👑 Admin Panel";
  */
 export const MENING_NAVBATIM_TUGMA = "🧹 Mening navbatim";
 
-/** Yozuv bo'yicha ish turini topadi (doimiy menyu tugmasi bosilganda). */
-export function tugmaIshTuri(matn: string): IshTuri | null {
-  for (const t of Object.keys(ISH_TURLARI) as IshTuri[]) {
-    if (ishTugmasi(t) === matn) return t;
-  }
-  return null;
-}
-
 /**
  * Shaxsiy chatdagi doimiy tugmalar — yozish maydonining ostida turadi va
  * hech qachon yo'qolmaydi. Guruhda ishlatilmaydi: u yerda tugmalar hammaga
@@ -80,8 +61,6 @@ export function tugmaIshTuri(matn: string): IshTuri | null {
  */
 export function menyuKeyboard(isAdmin = false, isDutyUser = false): Keyboard {
   const kb = new Keyboard();
-  for (const t of TEZ_ISHLAR) kb.text(ishTugmasi(t)).row();
-  kb.text(BOSHQA_ISH).row();
   if (isDutyUser) kb.text(MENING_NAVBATIM_TUGMA).row();
   kb.text(MENYU.navbat).text(MENYU.xarajat).row();
   kb.text(MENYU.tolov).row();
@@ -91,14 +70,6 @@ export function menyuKeyboard(isAdmin = false, isDutyUser = false): Keyboard {
   kb.text(SHIKOYAT_TUGMA);
   if (isAdmin) kb.row().text(ADMIN_PANEL_TUGMA);
   return kb.resized().persistent();
-}
-
-/** Menyuda tugmasi yo'q ish turlari. */
-export function boshqaIshKeyboard(): InlineKeyboard {
-  const kb = new InlineKeyboard();
-  for (const t of SEKIN_ISHLAR) kb.text(ishTugmasi(t), `ish:${t}`).row();
-  kb.text("✖️ Bekor qilish", "bekor");
-  return kb;
 }
 
 /**
@@ -118,8 +89,6 @@ export function tasdiqKeyboard(submissionId: number, soni: number, kerak: number
 /** Guruhga pin qilinadigan (va botda ham chiqadigan) asosiy panel. */
 export function panelKeyboard(): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (const t of TEZ_ISHLAR) kb.text(ishTugmasi(t), `ish:${t}`).row();
-  kb.text(BOSHQA_ISH, "korish:boshqaish").row();
   kb.text(MENYU.navbat, "korish:navbat");
   kb.text(MENYU.xarajat, "korish:xarajat").row();
   kb.text(MENYU.reyting, "korish:reyting");
@@ -132,30 +101,6 @@ export function panelKeyboard(): InlineKeyboard {
 
 export function bekorKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("✖️ Bekor qilish", "bekor");
-}
-
-/**
- * Rasm kutilayotgandagi tugmalar. "Rasmim yo'q" kerak, chunki ba'zi ishning
- * (masalan musor tashlash) rasmini olish qiyin — u holda ish baribir guruh
- * tasdig'iga chiqadi, faqat rasmsiz.
- */
-export function rasmKutishKeyboard(): InlineKeyboard {
-  return new InlineKeyboard()
-    .text("📷 Rasmim yo'q — shundoq yuboraman", "rasmsiz")
-    .row()
-    .text("✖️ Bekor qilish", "bekor");
-}
-
-/**
- * Kamida bitta rasm kelgandan keyin — yana rasm tashlash mumkin
- * (to'g'ridan-to'g'ri, tugma shart emas) yoki shu bilan yakunlash mumkin.
- * "Rasmim yo'q" bu yerda yo'q — kamida bitta rasm allaqachon bor.
- */
-export function ishTugatishKeyboard(): InlineKeyboard {
-  return new InlineKeyboard()
-    .text("✅ Tugatdim — yubor", "ish_tugatdi")
-    .row()
-    .text("✖️ Bekor qilish", "bekor");
 }
 
 export function ismTanlashKeyboard(odamlar: { id: number; ism: string }[]): InlineKeyboard {
@@ -510,8 +455,10 @@ export function adminPanelKeyboard(): InlineKeyboard {
     .text("📣 Xabar yuborish", "xabar")
     .text("⚙️ Vazifalar", "vazifalar")
     .row()
-    .text("⚠️ Kelishmovchiliklar", "admin_conflicts")
-    .text("📜 Tarix", "admin_logs");
+    .text("⚙️ Sozlamalar", "sozlamalar")
+    .text("📜 Tarix", "admin_logs")
+    .row()
+    .text("⚠️ Kelishmovchiliklar", "admin_conflicts");
 }
 
 /** Har bir foydalanuvchi — bitta qatorda bitta tugma, holat matnda ko'rinadi. */

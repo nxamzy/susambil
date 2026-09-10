@@ -94,6 +94,50 @@ bosilganda yopiladi. `barchaIshlarBajarildimi` / `vazifaKeyboard`ning
 "Yakuniy topshirish" sharti ham shu — rasm tashlab qo'yib tugmani
 bosmasa, navbat topshirilmaydi (panelda `🟡 3/3 — tasdiqlang` deb turadi).
 
+## Umumiy sozlamalar `settings` jadvalida (`core/sozlamalar.ts`)
+
+`config.ts`dagi `kerakliTasdiq`, `eslatmaKuni`, `eslatmaOraligiSoat`,
+`jarimaKunlik`, `tolovMuddatKuni`, `tolovEslatmaKuni` endi faqat STANDART.
+Haqiqiysi `settings` jadvalidan, `sozlamalarOl()` (KESHLI — deyarli har
+xabarda o'qiladi) orqali. Admin Panel → "⚙️ Sozlamalar".
+
+`SOZLAMA_TAVSIF` — kalit → maydon/nom/izoh/standart/min/max, bir joyda;
+admin pickeri (`SOZLAMA_VARIANT`) va validatsiya shundan. `sozlamaOrnat`
+keshni bo'shatadi va `admin_log`ga yozadi.
+
+Kesh ATAYLAB: `navbatSozlamalari` (sikl/majburiy kun) uchun kesh yo'q edi,
+chunki u navbat YARATISHDA ishlatiladi; bular esa faqat ko'rsatish/eslatma
+gating uchun — eskirgan kesh eng yomoni bitta xabarni bir tasdiq kam/ko'p
+ko'rsatadi, sikl muddatini buzmaydi. `tolov_muddat_kuni` faqat KELGUSI
+sikllarga ta'sir qiladi (`tolov_talab` bilan bir xil "davom etayotgan
+davr qayta yozilmaydi" qoidasi).
+
+`bot/text.ts` sof qoladi: `tanishtirish`/`navbatAdminPaneli` `Sozlamalar`ni
+PARAMETR sifatida oladi, chaqiruvchi `await sozlamalarOl()` qilib uzatadi.
+
+## Tasdiq kutmoqda — guruhga eslatma
+
+Navbat topshirilib, hech kim "✅ Tasdiqlash" bosmasa navbat yopilmay
+kunlab osilib qolardi. `jobs/reminders.ts` `tasdiqEslatmalari`: topshiriq
+`TASDIQ_ESLATMA_SOAT` (12) soatdan ortiq `kutilmoqda` holatida tursa,
+guruhga qisqa eslatma (yetarli tasdiq yig'ilguncha yoki rad etilguncha,
+har 12 soatda). `submissions.tasdiq_eslatma` — oxirgi vaqt; `oxirgi_ping`
+bilan bir xil "holatdan qayta hisoblash" intizomi, yopilgan topshiriq
+shartga tushmaydi.
+
+## Navbatdan tashqari "ball beruvchi tozalash" — olib tashlandi
+
+`ISH_TURLARI` bottom-menu tugmalari ("Musor tashladim" va h.k.),
+`handlers/chores.ts`, `state.ts`dagi `{tur:"ish"}` Flow, `photos.ts`dagi
+ish-rasm oqimi va tanishtirishdagi bo'lim OLIB TASHLANDI — hech kim o'z
+ixtiyori bilan qilmasdi, hammasi navbatda bo'lardi.
+
+`chores` jadvali, `submissions.tur='ish'` CHECK, `core/rating.ts`dagi
+`chores.ball` yig'indisi va `confirm.ts`dagi `tur==='ish'` shoxi QOLADI —
+"tarix hech qachon o'chmaydi" qoidasi. Eski tasdiqlangan yozuvlar reyting
+totaliga qo'shilaveradi, Reyting/Profil ekranida "eski" deb belgilanadi.
+Xarajat ("uyga narsa olib keldim") — alohida, tegilmagan.
+
 ## `oraliq_kun` — navbat o'rtasida bajariladigan vazifa + o'z eslatmasi
 
 `navbat_vazifalari.oraliq_kun` (standart 0 = o'chiq). `> 0` bo'lsa:

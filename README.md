@@ -70,6 +70,21 @@ kerak bo'ladi — keyingi xonaga to'liq 5 kun berish uyni yana shuncha
 kunga tozalanmay qoldirardi. O'zgarish guruhga e'lon qilinadi va
 navbatdagi xonaga xabar boradi.
 
+## Umumiy sozlamalar
+
+**👑 Admin Panel → ⚙️ Sozlamalar** — kod o'zgartirmasdan:
+
+- **Kerakli tasdiqlar** — topshiriqni qabul qilish uchun necha kishi ✅ bosishi kerak (standart 3)
+- **Eslatma chastotasi / oxirgi kun oynasi** — navbat eslatmasi qachon boshlanadi va necha soatda qaytariladi
+- **Kunlik jarima** — kechikkan har kun uchun (reytingda ko'rsatiladi)
+- **To'lov muddati / eslatmasi** — oyning qaysi kuni, qachondan eslatiladi (faqat kelgusi oylarga)
+
+## Tasdiq kutmoqda eslatmasi
+
+Navbat topshirilib, 12 soatdan ortiq hech kim tasdiqlamasa — guruhga
+eslatma boradi ("3-xona topshirdi — 1/3 tasdiq, ko'rib chiqing"), yetarli
+tasdiq yig'ilguncha yoki rad etilguncha har 12 soatda.
+
 ## Adminning erkin xabari
 
 **👑 Admin Panel → 📣 Xabar yuborish** (yoki `/xabar`) — admin o'zi yozgan
@@ -77,12 +92,6 @@ xabarni navbatdagi xonaga, bitta xonaga, bitta odamga, hammaga yoki guruh
 chatiga yuboradi. Masalan: *"Musor navbatdan oldin to'lib ketdi — bugun
 tashlab kelinglar."* Yuborilgach kimga yetgani va kimga yetmagani
 ko'rsatiladi.
-
-## Qo'shimcha ishlar
-
-Panelda uch tugma: **musor**, **hammom**, **oshxona**. Bosilganda bot
-rasm so'raydi. Rasm kelgach ish yoziladi, guruhga xabar chiqadi va ball
-qo'shiladi. Rasmsiz ball berilmaydi.
 
 ## Ball tizimi
 

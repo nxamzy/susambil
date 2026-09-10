@@ -5,17 +5,14 @@ import { esc } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
 import {
   ADMIN_PANEL_TUGMA,
-  BOSHQA_ISH,
   MENING_NAVBATIM_TUGMA,
   MENYU,
   menyuKeyboard,
   SHIKOYAT_TUGMA,
-  tugmaIshTuri,
   xonaTanlashKeyboard,
 } from "../keyboards.js";
 import { summaniSora, xarajatniSaqla } from "./expense.js";
 import { korinish, panelMatni } from "./commands.js";
-import { ishniBoshla, ishRasminiSora } from "./chores.js";
 import { vazifaPaneliniKorsat } from "./navbat.js";
 import { javobgarIzohiSaqlandi, shikoyatBoshla, shikoyatIzohSaqlandi, shikoyatJoySora } from "./reports.js";
 import {
@@ -45,12 +42,6 @@ import { joriyNavbatchimi } from "../../core/rotation.js";
 async function menyuTugmasi(ctx: Context, matn: string): Promise<boolean> {
   if (!ctx.from) return false;
 
-  const ish = tugmaIshTuri(matn);
-  if (ish) {
-    await ishniBoshla(ctx, ish);
-    return true;
-  }
-
   if (matn === SHIKOYAT_TUGMA) {
     await shikoyatBoshla(ctx);
     return true;
@@ -73,10 +64,7 @@ async function menyuTugmasi(ctx: Context, matn: string): Promise<boolean> {
     return true;
   }
 
-  const nom =
-    matn === BOSHQA_ISH
-      ? ("boshqaish" as const)
-      : (Object.keys(MENYU) as (keyof typeof MENYU)[]).find((k) => MENYU[k] === matn);
+  const nom = (Object.keys(MENYU) as (keyof typeof MENYU)[]).find((k) => MENYU[k] === matn);
   if (!nom) return false;
 
   if (!(await kim(ctx.from.id))) {
@@ -133,12 +121,6 @@ export function register(bot: Bot) {
       );
       await sorovniEslat(ctx.from.id, yangi, xabar.chat.id, xabar.message_id);
       return;
-    }
-
-    if (holat?.tur === "ish" && "qadam" in holat && holat.qadam === "izoh") {
-      const izoh = ctx.message.text.trim().slice(0, 300);
-      if (izoh.length < 3) return ctx.reply("Juda qisqa. Nima qilganingizni yozing.");
-      return ishRasminiSora(ctx, holat.ish, izoh);
     }
 
     if (holat?.tur === "xarajat" && holat.qadam === "izoh") {
@@ -259,10 +241,6 @@ export function register(bot: Bot) {
 
     if (holat?.tur === "admin_xabar" && holat.qadam === "tasdiq") {
       return ctx.reply("👆 Yuqoridagi tugmalardan birini tanlang (yuborish yoki bekor qilish).");
-    }
-
-    if (holat?.tur === "ish") {
-      return ctx.reply("📷 Rasm kutyapman — qilgan ishingizning rasmini tashlang.");
     }
 
     const u = await kim(ctx.from.id);
