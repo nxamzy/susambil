@@ -580,8 +580,8 @@ CREATE INDEX IF NOT EXISTS navbat_vazifalari_faol_idx
 INSERT INTO navbat_vazifalari (kod, nom, emoji, rasm_soni, tartib) VALUES
   ('xona',    'Xona',    '🛏',  1, 0),
   ('hammom',  'Hammom',  '🚿', 3, 1),
-  ('oshxona', 'Oshxona', '🍽',  1, 2),
-  ('musor',   'Musor',   '♻️', 1, 3)
+  ('oshxona', 'Oshxona', '🍽',  3, 2),
+  ('musor',   'Musor',   '♻️', 3, 3)
 ON CONFLICT (kod) DO NOTHING;
 
 -- ---------------------------------------------------------------------------
