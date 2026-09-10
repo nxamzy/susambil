@@ -11,6 +11,7 @@ import {
   ishRasmlari,
   majburiyOchildimi,
   navbatRasmlari,
+  MAJBURIY_DOIM_OCHIQ,
 } from "./rotation.js";
 
 /** Berilgan joydan boshlab n ta qadam yuradi va bosib o'tilgan o'rinlarni qaytaradi. */
@@ -190,20 +191,35 @@ test("ishRasmlari eski (photo_id) va yangi (photo_ids) formatni ikkalasini ham o
   assert.deepEqual(ishRasmlari(hammomToliq()), ["a", "b", "c"]);
 });
 
-test("majburiyOchildimi: muddatgacha 2 kun qolganda hali yopiq", () => {
+test("majburiyOchildimi: muddatgacha 2 kun qolganda hali yopiq (ochilish 1 kun)", () => {
   const muddat = new Date("2026-08-10T00:00:00Z");
   const ikkiKunOldin = new Date("2026-08-08T00:00:00Z");
-  assert.equal(majburiyOchildimi(muddat, ikkiKunOldin), false);
+  assert.equal(majburiyOchildimi(muddat, 1, ikkiKunOldin), false);
 });
 
 test("majburiyOchildimi: aynan 1 kun qolganda ochiladi", () => {
   const muddat = new Date("2026-08-10T00:00:00Z");
   const birKunOldin = new Date("2026-08-09T00:00:00Z");
-  assert.equal(majburiyOchildimi(muddat, birKunOldin), true);
+  assert.equal(majburiyOchildimi(muddat, 1, birKunOldin), true);
 });
 
 test("majburiyOchildimi: muddat allaqachon o'tib ketgan bo'lsa ham ochiq", () => {
   const muddat = new Date("2026-08-10T00:00:00Z");
   const kechikkan = new Date("2026-08-15T00:00:00Z");
-  assert.equal(majburiyOchildimi(muddat, kechikkan), true);
+  assert.equal(majburiyOchildimi(muddat, 1, kechikkan), true);
+});
+
+test("majburiyOchildimi: ochilish kuni sozlanadi — 3 kun qolganda ham ochiq", () => {
+  // Admin sikl uzunligini qisqartirsa (masalan 2 kun), majburiy vazifalar
+  // ham erta ochilishi kerak — shuning uchun qiymat sozlamadan keladi.
+  const muddat = new Date("2026-08-10T00:00:00Z");
+  const uchKunOldin = new Date("2026-08-07T00:00:00Z");
+  assert.equal(majburiyOchildimi(muddat, 1, uchKunOldin), false);
+  assert.equal(majburiyOchildimi(muddat, 3, uchKunOldin), true);
+});
+
+test("majburiyOchildimi: MAJBURIY_DOIM_OCHIQ bilan har doim ochiq", () => {
+  const muddat = new Date("2026-08-10T00:00:00Z");
+  const juda_erta = new Date("2026-01-01T00:00:00Z");
+  assert.equal(majburiyOchildimi(muddat, MAJBURIY_DOIM_OCHIQ, juda_erta), true);
 });

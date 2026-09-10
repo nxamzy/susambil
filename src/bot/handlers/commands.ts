@@ -3,7 +3,13 @@ import { InlineKeyboard } from "grammy";
 import { sql, type Room } from "../../db/index.js";
 import { config, ISH_TURLARI, SEKIN_ISHLAR, BALLAR, type IshTuri } from "../../config.js";
 import { ochiqTopshiriqlar } from "../../core/topshiriq.js";
-import { faolNavbat, joriyNavbatchimi, kelgusiTartib, xonaAzolari } from "../../core/rotation.js";
+import {
+  faolNavbat,
+  joriyNavbatchimi,
+  kelgusiTartib,
+  navbatSozlamalari,
+  xonaAzolari,
+} from "../../core/rotation.js";
 import { faolVazifalar } from "../../core/vazifalar.js";
 import { reyting, orinlarniHisobla, xonaHolati, tarix } from "../../core/rating.js";
 import { jamiXarajat, oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
@@ -302,7 +308,11 @@ export async function korinish(ctx: Context, nom: Korinish): Promise<void> {
     case "boshqaish":
       return javob(ctx, boshqaIshMatni(), { reply_markup: boshqaIshKeyboard() });
     case "tanishtirish":
-      return javob(ctx, tanishtirish(await faolVazifalar()), { reply_markup: panelgaKeyboard() });
+      return javob(
+        ctx,
+        tanishtirish(await faolVazifalar(), (await navbatSozlamalari()).siklKuni),
+        { reply_markup: panelgaKeyboard() },
+      );
     case "panel":
       return javob(ctx, await panelMatni(), { reply_markup: panelKeyboard() });
   }
@@ -446,7 +456,10 @@ export function register(bot: Bot) {
     await ctx
       .editMessageText(`✅ <b>Xush kelibsiz, ${esc(ism)}!</b>`, { parse_mode: "HTML" })
       .catch(() => {});
-    await ctx.reply(tanishtirish(await faolVazifalar()), { parse_mode: "HTML" });
+    await ctx.reply(
+      tanishtirish(await faolVazifalar(), (await navbatSozlamalari()).siklKuni),
+      { parse_mode: "HTML" },
+    );
 
     // Bu yerda room_id emas, xona RAQAMI bor — faolNavbat() bilan
     // to'g'ridan-to'g'ri solishtiramiz (joriyNavbatchimi id kutadi).

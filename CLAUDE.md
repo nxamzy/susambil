@@ -117,6 +117,41 @@ rasm 10 tadan ko'p bo'lsa bir nechta albomga bo'linadi (`GURUH_ALBOM_MAX`
 gacha). Ilgari 10 tadan ortig'i bazada qolsa ham tasdiqlovchiga
 ko'rinmasdi.
 
+## Navbat vaqti ham sozlamada: sikl uzunligi va joriy muddat
+
+`config.siklKuni` (5) va `config.majburiyOchilishKuni` (1) endi faqat
+STANDART qiymat — haqiqiysi `settings` jadvalidan (`navbat_sikl_kuni`,
+`navbat_majburiy_kuni`) `core/rotation.ts` `navbatSozlamalari()` orqali
+o'qiladi va Admin Panel → 🧹 Navbat → ⚙️ Navbat sozlamalari'dan
+o'zgartiriladi.
+
+Sabab: navbat guruh tasdig'ini kutib 3 kun cho'zilib ketgach, admin uni
+keyingi xonaga o'tkazsa yangi muddat baribir `now + 5 kun` bo'lardi — uy
+jami ikki sikl (8+ kun) tozalanmay qolardi va buni kodni tahrirlamasdan
+qisqartirib bo'lmasdi.
+
+Ikkita ALOHIDA boshqaruv, ataylab aralashtirilmagan:
+
+- **Sikl uzunligi** (`siklKuniniOrnat`) — faqat KELGUSI navbatlarga.
+  `tolovTalabiniOrnat` bilan bir xil qoida: davom etayotgan davrning sharti
+  qayta yozilmaydi.
+- **Joriy navbat muddati** (`muddatniOzgartir`) — faqat SHU navbatga,
+  "bugundan boshlab N kun". `0` = bugun kechgacha (Toshkent bo'yicha
+  23:59); `now() + 0` bo'lsa muddat o'sha soniyada o'tib ketardi.
+
+`navbatSozlamalari()` ATAYLAB keshlanmaydi. `core/tolov.ts`dagi
+talab/kartadan farqli o'laroq bu qiymat navbat YARATILAYOTGAN paytda
+o'qiladi — issiq Vercel instansiyasidagi eskirgan kesh butun bir siklning
+muddatini buzardi, bitta indeksli so'rov esa arzon.
+
+`majburiyOchildimi(muddat, ochilishKuni, hozir?)` sof qoldi — qiymat
+parametr sifatida beriladi, xuddi `bot/text.ts`ga vazifalar ro'yxati
+berilgani kabi. `MAJBURIY_DOIM_OCHIQ` (999) — "hech qachon qulflanmasin".
+
+Muddat o'zgarishi JIMGINA bo'lmaydi: guruhga e'lon chiqadi va navbatdagi
+xona a'zolariga DM ketadi — muddat jarima soatining boshlanishi, uni
+bildirmasdan surish adolatsiz bo'lardi.
+
 ## Admin xabari — e'lon, ikkinchi tasdiqlash tizimi emas
 
 `bot/handlers/xabar.ts`: admin o'zi yozgan matnni navbatdagi xonaga /

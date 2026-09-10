@@ -29,24 +29,37 @@ import {
   navbatniOzgartirish,
   navbatniQaytaBoshla,
   navbatniYopish,
+  navbatSozlamalari,
   navbatTopshir,
   ishRasmlari,
+  majburiyKuniniOrnat,
+  muddatniOzgartir,
+  MAJBURIY_DOIM_OCHIQ,
+  siklKuniniOrnat,
+  type NavbatSozlamalari,
 } from "../../core/rotation.js";
 import { faolVazifaKodBoyicha, faolVazifalar, type NavbatVazifasi } from "../../core/vazifalar.js";
 import { tasdiqlovchilar } from "../../core/topshiriq.js";
-import { albomYubor, guruhId, kim, shaxsiy } from "../group.js";
+import { albomYubor, guruhgaYubor, guruhId, kim, shaxsiy } from "../group.js";
 import {
   menyuKeyboard,
   navbatAdminKeyboard,
   navbatBoshlashKeyboard,
+  navbatMuddatKeyboard,
+  navbatSozlamaKeyboard,
   navbatXonagaOtkazishKeyboard,
+  majburiyKuniKeyboard,
+  siklKuniKeyboard,
   tasdiqKeyboard,
   vazifaKeyboard,
 } from "../keyboards.js";
 import {
   boshqaXonaMatni,
   majburiyQulfMatni,
+  muddatOzgardiGuruhXabari,
   navbatAdminPaneli,
+  navbatMuddatMatni,
+  navbatSozlamalariMatni,
   navbatXabari,
   tasdiqXabari,
   vazifaPaneli,
@@ -63,6 +76,18 @@ import {
   sorovniTahrirla,
   type Flow,
 } from "../state.js";
+
+/**
+ * Panelni chizish uchun kerak bo'ladigan ikkala ro'yxat — vazifalar va vaqt
+ * sozlamalari. Ikkalasi ham endi bazadan keladi, `bot/text.ts` esa sof
+ * qolishi kerak, shuning uchun bir marta o'qib hamma renderga uzatiladi.
+ */
+export type NavbatKonteksti = { vazifalar: NavbatVazifasi[]; sozlamalar: NavbatSozlamalari };
+
+async function konteksOl(): Promise<NavbatKonteksti> {
+  const [vazifalar, sozlamalar] = await Promise.all([faolVazifalar(), navbatSozlamalari()]);
+  return { vazifalar, sozlamalar };
+}
 
 /**
  * Rasm kutilayotgandagi JONLI xabar klaviaturasi: vazifa tugmalari + bekor.
@@ -113,17 +138,21 @@ async function panelniYubor(
   ctx: Context,
   turn: Turn,
   room: Room,
-  vazifalar?: NavbatVazifasi[],
+  kontekst?: NavbatKonteksti,
 ): Promise<void> {
-  if (!majburiyOchildimi(turn.muddat)) {
-    await ctx.reply(majburiyQulfMatni(room, turn.muddat), { parse_mode: "HTML" });
+  const { vazifalar, sozlamalar } = kontekst ?? (await konteksOl());
+
+  if (!majburiyOchildimi(turn.muddat, sozlamalar.majburiyKuni)) {
+    await ctx.reply(majburiyQulfMatni(room, turn.muddat, sozlamalar.majburiyKuni), {
+      parse_mode: "HTML",
+    });
     return;
   }
 
-  const ro = vazifalar ?? (await faolVazifalar());
   const status = await vazifaHolatiniAniqla(turn);
-  const matn = vazifaPaneli(room, turn, status, ro);
-  const kb = status.tur === "faol" ? vazifaKeyboard(turn.id, turn.ishlar, ro) : new InlineKeyboard();
+  const matn = vazifaPaneli(room, turn, status, vazifalar);
+  const kb =
+    status.tur === "faol" ? vazifaKeyboard(turn.id, turn.ishlar, vazifalar) : new InlineKeyboard();
   await ctx.reply(matn, { parse_mode: "HTML", reply_markup: kb });
 }
 
@@ -207,7 +236,8 @@ export async function vazifaRasmiKeldi(
     return;
   }
 
-  const vazifalar = await faolVazifalar();
+  const kontekst = await konteksOl();
+  const { vazifalar } = kontekst;
 
   // Jarayon davom etadi — `sorov` (jonli xabar) saqlanib qoladi, `updated_at`
   // esa yangilanadi: odam rasmlarni sekin tashlasa ham holat eskirmasin.
@@ -233,7 +263,7 @@ export async function vazifaRasmiKeldi(
   // natijasi bo'lgani uchun butun albom davomida rosa bir marta `true`.
   if (natija.yangiToldi && barchaIshlarBajarildimi(natija.turn.ishlar, vazifalar)) {
     const n = await faolNavbat();
-    if (n) await panelniYubor(ctx, n.turn, n.room, vazifalar);
+    if (n) await panelniYubor(ctx, n.turn, n.room, kontekst);
   }
 }
 
@@ -251,8 +281,9 @@ export async function navbatAdminDashboard(ctx: Context): Promise<void> {
     });
     return;
   }
+  const { vazifalar, sozlamalar } = await konteksOl();
   const status = await vazifaHolatiniAniqla(n.turn);
-  await ctx.reply(navbatAdminPaneli(n.room, n.turn, n.azolar, status, await faolVazifalar()), {
+  await ctx.reply(navbatAdminPaneli(n.room, n.turn, n.azolar, status, vazifalar, sozlamalar), {
     parse_mode: "HTML",
     reply_markup: navbatAdminKeyboard(n.turn.id),
   });
@@ -270,6 +301,7 @@ export async function navbatAdminDashboard(ctx: Context): Promise<void> {
  * yuborganda yangilanadi — boshqa hech qanday "push" usuli yo'q.
  */
 export async function navbatKelganiniXabarQil(api: Api, room: Room, azolar: User[]): Promise<void> {
+  const { majburiyKuni } = await navbatSozlamalari();
   const matn = [
     `🧹 <b>NAVBAT SIZGA KELDI</b>`,
     ``,
@@ -277,7 +309,7 @@ export async function navbatKelganiniXabarQil(api: Api, room: Room, azolar: User
     ``,
     `👇 Pastdagi <b>"🧹 Mening navbatim"</b> tugmasi orqali kuzatib boring.`,
     ``,
-    `<i>Majburiy xona tozalash muddat tugashiga ${config.majburiyOchilishKuni} kun</i>`,
+    `<i>Majburiy xona tozalash muddat tugashiga ${majburiyKuni} kun</i>`,
     `<i>qolganda ochiladi — shu paytgacha ixtiyoriy tozalash tugmalaridan</i>`,
     `<i>foydalanishingiz mumkin.</i>`,
   ].join("\n");
@@ -310,9 +342,10 @@ export function register(bot: Bot) {
 
     // Backend tomonda ham tekshiramiz — eski (keshlangan) tugma hali
     // ko'rinib tursa ham, majburiy tozalash muddatdan oldin ochilmaydi.
-    if (!majburiyOchildimi(n.turn.muddat)) {
+    const { vazifalar, sozlamalar } = await konteksOl();
+    if (!majburiyOchildimi(n.turn.muddat, sozlamalar.majburiyKuni)) {
       return ctx.answerCallbackQuery({
-        text: `Majburiy tozalash hali ochilmagan — navbatingiz tugashiga ${config.majburiyOchilishKuni} kun qolganda ochiladi.`,
+        text: `Majburiy tozalash hali ochilmagan — navbatingiz tugashiga ${sozlamalar.majburiyKuni} kun qolganda ochiladi.`,
         show_alert: true,
       });
     }
@@ -332,7 +365,6 @@ export function register(bot: Bot) {
 
     // Shu vazifada allaqachon rasm bo'lishi mumkin (odam qaytib kelgan) —
     // shuning uchun "0 dan boshlaymiz" deb emas, joriy sanoqdan boshlaymiz.
-    const vazifalar = await faolVazifalar();
     const soni = ishRasmlari(n.turn.ishlar[kod]).length;
 
     // Bu xabar keyin har kelgan rasmda TAHRIRLANADI, qayta yuborilmaydi —
@@ -354,7 +386,8 @@ export function register(bot: Bot) {
     if (!n || n.turn.id !== turnId || u.room_id !== n.room.id) {
       return ctx.answerCallbackQuery({ text: "Bu sizning navbatingiz emas.", show_alert: true });
     }
-    const vazifalar = await faolVazifalar();
+    const kontekst = await konteksOl();
+    const { vazifalar } = kontekst;
     if (!barchaIshlarBajarildimi(n.turn.ishlar, vazifalar)) {
       return ctx.answerCallbackQuery({ text: "Hali barcha vazifalar bajarilmagan.", show_alert: true });
     }
@@ -368,7 +401,7 @@ export function register(bot: Bot) {
     // Jarayon tugadi — jonli "rasm tashlang" xabari endi kerak emas.
     await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
     await holatTozala(ctx.from.id);
-    await panelniYubor(ctx, n.turn, n.room, vazifalar);
+    await panelniYubor(ctx, n.turn, n.room, kontekst);
 
     // Guruhga xuddi eski (rasm-to'plash) mexanizmi bilan bir xil xabar —
     // ikkinchi tasdiqlash tizimi yaratilmagan, faqat tetiklovchisi boshqa.
@@ -426,6 +459,12 @@ export function register(bot: Bot) {
       );
     }
     await navbatKelganiniXabarQil(ctx.api, natija.keyingi.room, natija.keyingi.azolar);
+
+    // Yangi navbat panelini darrov ko'rsatamiz: oldingisi kechikkan bo'lsa
+    // admin aynan shu yerdan "📅 Muddatni o'zgartirish" bilan yangi
+    // navbatni qisqartiradi (aks holda uy jami ikki sikl tozalanmay
+    // qolardi).
+    await navbatAdminDashboard(ctx);
   });
 
   bot.callbackQuery(/^navbat_admin_qayta:(\d+)$/, async (ctx) => {
@@ -516,5 +555,147 @@ export function register(bot: Bot) {
     await ctx.answerCallbackQuery({ text: `✅ ${raqam}-xonaga o'tkazildi.` }).catch(() => {});
     await ctx.reply(navbatXabari(yangi.room, yangi.azolar, yangi.turn.muddat), { parse_mode: "HTML" });
     await navbatKelganiniXabarQil(ctx.api, yangi.room, yangi.azolar);
+    await navbatAdminDashboard(ctx);
+  });
+
+  // -------------------------------------------------------------------------
+  // MUDDAT VA VAQT SOZLAMALARI
+  // -------------------------------------------------------------------------
+  //
+  // Nima uchun bor: navbat guruh tasdig'ini kutib cho'zilib ketsa (masalan
+  // hech kim "✅ Tasdiqlayman" bosmasa), admin uni keyingi xonaga
+  // o'tkazganda yangi muddat baribir "hozir + sikl" bo'lardi — uy jami ikki
+  // sikl tozalanmay qolardi. `siklKuni` esa `config.ts`da qattiq yozilgan
+  // edi, ya'ni buni kodni tahrirlamasdan tuzatib bo'lmasdi.
+
+  bot.callbackQuery(/^navbat_muddat:(\d+)$/, async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+
+    const turnId = Number(ctx.match[1]);
+    const n = await faolNavbat();
+    if (!n || n.turn.id !== turnId) {
+      return ctx.answerCallbackQuery({ text: "Bu navbat endi faol emas." }).catch(() => {});
+    }
+
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.reply(navbatMuddatMatni(n.room, n.turn, await navbatSozlamalari()), {
+      parse_mode: "HTML",
+      reply_markup: navbatMuddatKeyboard(turnId),
+    });
+  });
+
+  bot.callbackQuery(/^navbat_muddat_set:(\d+):(\d+)$/, async (ctx) => {
+    const admin = await faqatAdmin(ctx);
+    if (!admin) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+
+    const turnId = Number(ctx.match[1]);
+    const kun = Number(ctx.match[2]);
+
+    const turn = await muddatniOzgartir(admin.id, turnId, kun);
+    if (!turn) {
+      return ctx.answerCallbackQuery({ text: "Bu navbat endi faol emas." }).catch(() => {});
+    }
+
+    await ctx.answerCallbackQuery({ text: "✅ Muddat o'zgartirildi." }).catch(() => {});
+
+    const n = await faolNavbat();
+    if (!n) return;
+
+    // Muddat — jarima soatining boshlanishi, shuning uchun o'zgarishi
+    // JIMGINA bo'lmasligi kerak: guruh ham, navbatdagi xona ham bilishi
+    // shart. Guruhga e'lon + xonaga panel havolasi bilan DM.
+    await guruhgaYubor(ctx.api, muddatOzgardiGuruhXabari(n.room, turn.muddat, admin.ism));
+    for (const a of n.azolar) {
+      await shaxsiy(ctx.api, a, muddatOzgardiGuruhXabari(n.room, turn.muddat, admin.ism), {
+        reply_markup: new InlineKeyboard().text("👤 Mening Navbatim", "navbat_panel"),
+      });
+    }
+
+    await navbatAdminDashboard(ctx);
+  });
+
+  bot.callbackQuery("navbat_sozlama", async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.reply(navbatSozlamalariMatni(await navbatSozlamalari()), {
+      parse_mode: "HTML",
+      reply_markup: navbatSozlamaKeyboard(),
+    });
+  });
+
+  bot.callbackQuery("navbat_sikl", async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    const s = await navbatSozlamalari();
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.reply(
+      [
+        `🔁 <b>SIKL UZUNLIGI</b>`,
+        ``,
+        `Hozirgisi: <b>${s.siklKuni} kun</b>`,
+        ``,
+        `Har xonaga necha kun berilsin?`,
+        ``,
+        `<i>Faqat KELGUSI navbatlarga ta'sir qiladi — hozir ketayotgani</i>`,
+        `<i>o'z muddatida qoladi ("📅 Muddatni o'zgartirish" bilan sozlanadi).</i>`,
+      ].join("\n"),
+      { parse_mode: "HTML", reply_markup: siklKuniKeyboard() },
+    );
+  });
+
+  bot.callbackQuery(/^navbat_sikl_set:(\d+)$/, async (ctx) => {
+    const admin = await faqatAdmin(ctx);
+    if (!admin) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    const kun = await siklKuniniOrnat(admin.id, Number(ctx.match[1]));
+    await ctx.answerCallbackQuery({ text: `✅ ${kun} kun` }).catch(() => {});
+    await ctx.reply(navbatSozlamalariMatni(await navbatSozlamalari()), {
+      parse_mode: "HTML",
+      reply_markup: navbatSozlamaKeyboard(),
+    });
+  });
+
+  bot.callbackQuery("navbat_majburiy", async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    const s = await navbatSozlamalari();
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.reply(
+      [
+        `🔓 <b>MAJBURIY VAZIFA OCHILISHI</b>`,
+        ``,
+        `Hozirgisi: <b>${s.majburiyKuni >= MAJBURIY_DOIM_OCHIQ ? "har doim ochiq" : `muddatga ${s.majburiyKuni} kun qolganda`}</b>`,
+        ``,
+        `"Mening Navbatim"dagi vazifa tugmalari qachon ochilsin?`,
+        ``,
+        `<i>Sikl qisqartirilsa buni ham qisqartirish kerak — aks holda</i>`,
+        `<i>vazifalar navbat boshlanishidan oldinroq ochilib qolardi.</i>`,
+      ].join("\n"),
+      { parse_mode: "HTML", reply_markup: majburiyKuniKeyboard() },
+    );
+  });
+
+  bot.callbackQuery(/^navbat_majburiy_set:(\d+)$/, async (ctx) => {
+    const admin = await faqatAdmin(ctx);
+    if (!admin) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    const kun = await majburiyKuniniOrnat(admin.id, Number(ctx.match[1]));
+    await ctx
+      .answerCallbackQuery({ text: kun >= MAJBURIY_DOIM_OCHIQ ? "✅ Har doim ochiq" : `✅ ${kun} kun` })
+      .catch(() => {});
+    await ctx.reply(navbatSozlamalariMatni(await navbatSozlamalari()), {
+      parse_mode: "HTML",
+      reply_markup: navbatSozlamaKeyboard(),
+    });
   });
 }

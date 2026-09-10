@@ -9,9 +9,119 @@ import {
 } from "../db/index.js";
 import { config, RASM_MAX } from "../config.js";
 import type { NavbatVazifasi } from "./vazifalar.js";
+import { logla } from "./adminlog.js";
 import { navbatBalli } from "./rating.js";
+import { bugungiSana } from "./vaqt.js";
 
 const KUN_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Navbat vaqt sozlamalari — `config.ts`dagi qiymatlar endi faqat STANDART,
+ * haqiqiysi `settings` jadvalidan o'qiladi (`tolov_talab`/`karta` bilan bir
+ * xil naqsh).
+ *
+ * Nima uchun kerak bo'ldi: navbat guruh tasdig'ini kutib 3 kun cho'zilib
+ * ketgach, admin uni keyingi xonaga o'tkazsa yangi muddat baribir
+ * "hozir + 5 kun" bo'lardi — ya'ni uy jami 8+ kun tozalanmay qolardi va
+ * buni kodni tahrirlamasdan qisqartirib bo'lmasdi.
+ *
+ * ATAYLAB keshlanmaydi (`core/tolov.ts`dagi talab/kartadan farqli): bu
+ * qiymat navbat YARATILAYOTGAN paytda o'qiladi va noto'g'ri qiymat butun
+ * bir siklning muddatini buzadi. Issiq Vercel instansiyasidagi eskirgan
+ * kesh ana shunday xatoga olib kelardi; bitta kichik indeksli so'rov esa
+ * arzon.
+ */
+export type NavbatSozlamalari = {
+  /** Har xonaga beriladigan muddat (kun) */
+  siklKuni: number;
+  /** Majburiy vazifalar muddat tugashiga necha kun qolganda ochiladi */
+  majburiyKuni: number;
+};
+
+/** "Har doim ochiq" — majburiy vazifalar hech qachon qulflanmasin. */
+export const MAJBURIY_DOIM_OCHIQ = 999;
+
+export async function navbatSozlamalari(): Promise<NavbatSozlamalari> {
+  const rows = await sql<{ kalit: string; qiymat: string }[]>`
+    SELECT kalit, qiymat FROM settings
+    WHERE kalit IN ('navbat_sikl_kuni', 'navbat_majburiy_kuni')
+  `;
+  const ol = (k: string, standart: number) => {
+    const xom = Number(rows.find((r) => r.kalit === k)?.qiymat);
+    return Number.isFinite(xom) && xom > 0 ? xom : standart;
+  };
+  return {
+    siklKuni: ol("navbat_sikl_kuni", config.siklKuni),
+    majburiyKuni: ol("navbat_majburiy_kuni", config.majburiyOchilishKuni),
+  };
+}
+
+async function sozlamaYoz(kalit: string, qiymat: number): Promise<void> {
+  await sql`
+    INSERT INTO settings (kalit, qiymat) VALUES (${kalit}, ${String(qiymat)})
+    ON CONFLICT (kalit) DO UPDATE SET qiymat = EXCLUDED.qiymat
+  `;
+}
+
+/**
+ * Sikl uzunligi. FAQAT KELGUSI navbatlarga ta'sir qiladi — hozir ketayotgan
+ * navbatning muddati o'zgarmaydi (`tolovTalabiniOrnat` bilan bir xil
+ * qoida: o'tgan/joriy davrning sharti qayta yozilmaydi). Joriy navbatni
+ * qisqartirish uchun `muddatniOzgartir` bor.
+ */
+export async function siklKuniniOrnat(adminId: number, kun: number): Promise<number> {
+  const eski = (await navbatSozlamalari()).siklKuni;
+  const yangi = Math.min(30, Math.max(1, Math.round(kun)));
+  await sozlamaYoz("navbat_sikl_kuni", yangi);
+  await logla(adminId, "navbat_sikl_kuni", "navbat", null, String(eski), String(yangi));
+  return yangi;
+}
+
+export async function majburiyKuniniOrnat(adminId: number, kun: number): Promise<number> {
+  const eski = (await navbatSozlamalari()).majburiyKuni;
+  const yangi = Math.min(MAJBURIY_DOIM_OCHIQ, Math.max(1, Math.round(kun)));
+  await sozlamaYoz("navbat_majburiy_kuni", yangi);
+  await logla(adminId, "navbat_majburiy_kuni", "navbat", null, String(eski), String(yangi));
+  return yangi;
+}
+
+/**
+ * Joriy navbatning muddatini qo'lda o'zgartiradi — "shu paytdan boshlab N
+ * kun". Sikl sozlamasidan ALOHIDA: oldingi navbat kechikkani uchun uy uzoq
+ * tozalanmay qolgan bo'lsa, admin aynan SHU navbatga kamroq (yoki ko'proq)
+ * vaqt beradi, kelgusi sikllar esa o'z uzunligida qolaveradi.
+ *
+ * `oxirgi_eslatma`/`oxirgi_ping` ATAYLAB tozalanmaydi: eslatma mantig'i
+ * (`jobs/reminders.ts`) har safar muddatdan qayta hisoblaydi, shuning uchun
+ * muddat uzaytirilsa eslatma o'zidan to'xtaydi, qisqartirilsa o'zidan
+ * boshlanadi — qo'shimcha bayroq kerak emas.
+ */
+export async function muddatniOzgartir(
+  adminId: number,
+  turnId: number,
+  kun: number,
+): Promise<Turn | null> {
+  const chegaralangan = Math.min(30, Math.max(0, Math.round(kun)));
+
+  // 0 kun = "bugun kechgacha", ya'ni Toshkent bo'yicha shu kunning oxiri —
+  // `now() + 0` bo'lsa muddat o'sha soniyadayoq o'tib ketgan bo'lardi va
+  // xona hech narsa qilmasdan kechikkan hisoblanardi. +05:00 ofseti
+  // `db/seed.ts` dagi bilan bir xil: Toshkentda yoz/qish vaqti yo'q.
+  const yangiMuddat =
+    chegaralangan === 0
+      ? new Date(`${bugungiSana()}T23:59:00+05:00`)
+      : new Date(Date.now() + chegaralangan * KUN_MS);
+
+  const [turn] = await sql<Turn[]>`
+    UPDATE turns SET muddat = ${yangiMuddat}
+    WHERE id = ${turnId} AND holat = 'faol'
+    RETURNING *
+  `;
+  if (!turn) return null;
+
+  await logla(adminId, "navbat_muddati", "navbat", turnId, null, yangiMuddat.toISOString());
+  return turn;
+}
 
 export type FaolNavbat = {
   turn: Turn;
@@ -164,7 +274,8 @@ export async function navbatniYopish(
   const hozir = new Date();
   const kechikdi = kechikkanKun(turn.muddat, hisoblashVaqti);
   const keyingiRoom = await keyingiXona(room);
-  const yangiMuddat = new Date(hozir.getTime() + config.siklKuni * KUN_MS);
+  const { siklKuni } = await navbatSozlamalari();
+  const yangiMuddat = new Date(hozir.getTime() + siklKuni * KUN_MS);
 
   const yopildi = await sql.begin(async (tx) => {
     const qulf = await tx<{ id: number }[]>`
@@ -211,7 +322,8 @@ export async function navbatniBoshlash(): Promise<FaolNavbat | null> {
   const [birinchi] = await sql<Room[]>`SELECT * FROM rooms ORDER BY tartib LIMIT 1`;
   if (!birinchi) return null;
 
-  const muddat = new Date(Date.now() + config.siklKuni * KUN_MS);
+  const { siklKuni } = await navbatSozlamalari();
+  const muddat = new Date(Date.now() + siklKuni * KUN_MS);
   await sql`INSERT INTO turns (room_id, muddat) VALUES (${birinchi.id}, ${muddat})`;
 
   return faolNavbat();
@@ -222,7 +334,8 @@ export async function navbatniOzgartirish(xonaRaqami: number): Promise<FaolNavba
   const [room] = await sql<Room[]>`SELECT * FROM rooms WHERE raqam = ${xonaRaqami}`;
   if (!room) throw new Error(`${xonaRaqami}-xona topilmadi`);
 
-  const muddat = new Date(Date.now() + config.siklKuni * KUN_MS);
+  const { siklKuni } = await navbatSozlamalari();
+  const muddat = new Date(Date.now() + siklKuni * KUN_MS);
 
   await sql.begin(async (tx) => {
     await tx`UPDATE turns SET holat = 'admin_yopdi', tasdiqlandi = now() WHERE holat = 'faol'`;
@@ -379,13 +492,21 @@ export function navbatRasmlari(ishlar: TurnIshlar, vazifalar: NavbatVazifasi[]):
 }
 
 /**
- * Navbatning MAJBURIY tozalash vazifalari muddat tugashiga
- * `config.majburiyOchilishKuni` kun (yoki kamroq) qolganda ochiladi. Muddat
- * allaqachon o'tib ketgan bo'lsa ham (kechikkan holat) ochiq hisoblanadi —
- * lock faqat "hali erta" holatini to'sadi.
+ * Navbatning MAJBURIY tozalash vazifalari muddat tugashiga `ochilishKuni`
+ * kun (yoki kamroq) qolganda ochiladi. Muddat allaqachon o'tib ketgan
+ * bo'lsa ham (kechikkan holat) ochiq hisoblanadi — qulf faqat "hali erta"
+ * holatini to'sadi.
+ *
+ * `ochilishKuni` ATAYLAB parametr: qiymat endi `settings`dan keladi
+ * (`navbatSozlamalari`), funksiya esa sof qolishi va bazasiz testlanishi
+ * kerak — `bot/text.ts` bilan bir xil qoida.
  */
-export function majburiyOchildimi(muddat: Date, hozir: Date = new Date()): boolean {
-  return hozir.getTime() >= new Date(muddat).getTime() - config.majburiyOchilishKuni * KUN_MS;
+export function majburiyOchildimi(
+  muddat: Date,
+  ochilishKuni: number,
+  hozir: Date = new Date(),
+): boolean {
+  return hozir.getTime() >= new Date(muddat).getTime() - ochilishKuni * KUN_MS;
 }
 
 /**

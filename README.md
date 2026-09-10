@@ -38,6 +38,21 @@ faqat ro'yxatdan chiqariladi.
 Rasm soni **minimum**: shuncha rasm kelgach vazifa bajarilgan hisoblanadi,
 ortig'i esa rad etilmaydi (10 tagacha saqlanadi).
 
+### Navbat vaqti
+
+**👑 Admin Panel → 🧹 Navbat → ⚙️ Navbat sozlamalari**:
+
+- **🔁 Sikl uzunligi** — har xonaga necha kun beriladi (standart 5). Faqat
+  kelgusi navbatlarga ta'sir qiladi.
+- **🔓 Majburiy vazifa ochilishi** — vazifa tugmalari muddatga necha kun
+  qolganda ochiladi (standart 1), yoki "har doim ochiq".
+
+Joriy navbatni alohida qisqartirish/uzaytirish: **🧹 Navbat → 📅 Muddatni
+o'zgartirish**. Oldingi navbat tasdiq kutib cho'zilib ketgan bo'lsa shu
+kerak bo'ladi — keyingi xonaga to'liq 5 kun berish uyni yana shuncha
+kunga tozalanmay qoldirardi. O'zgarish guruhga e'lon qilinadi va
+navbatdagi xonaga xabar boradi.
+
 ## Adminning erkin xabari
 
 **👑 Admin Panel → 📣 Xabar yuborish** (yoki `/xabar`) — admin o'zi yozgan

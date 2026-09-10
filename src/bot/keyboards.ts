@@ -13,7 +13,7 @@ import {
 import type { TurnIshlar, User } from "../db/index.js";
 import type { ReportToliq } from "../core/reports.js";
 import type { SiklOdam, TolovDashboard } from "../core/tolov.js";
-import { ishRasmlari } from "../core/rotation.js";
+import { ishRasmlari, MAJBURIY_DOIM_OCHIQ } from "../core/rotation.js";
 import type { NavbatVazifasi } from "../core/vazifalar.js";
 import type { FoydalanuvchiToliq } from "../core/users.js";
 
@@ -403,13 +403,14 @@ export function navbatAdminKeyboard(turnId: number): InlineKeyboard {
   return new InlineKeyboard()
     .text("✅ Yakunlangan deb belgilash", `navbat_admin_tugat:${turnId}`)
     .row()
-    .text("🔄 Qaytadan boshlash", `navbat_admin_qayta:${turnId}`)
+    .text("📅 Muddatni o'zgartirish", `navbat_muddat:${turnId}`)
     .row()
+    .text("🔄 Qaytadan boshlash", `navbat_admin_qayta:${turnId}`)
     .text("🔔 Hozir eslatish", `navbat_admin_eslatma:${turnId}`)
     .row()
     .text("🔀 Boshqa xonaga o'tkazish", "admin_navbat_xonaga")
     .row()
-    .text("⚙️ Vazifalarni sozlash", "vazifalar");
+    .text("⚙️ Navbat sozlamalari", "navbat_sozlama");
 }
 
 /** Admin: hali navbat boshlanmagan bo'lsa — boshlash tugmasi. */
@@ -417,7 +418,59 @@ export function navbatBoshlashKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("▶️ Navbatni boshlash", "admin_navbat_boshla")
     .row()
-    .text("⚙️ Vazifalarni sozlash", "vazifalar");
+    .text("⚙️ Navbat sozlamalari", "navbat_sozlama");
+}
+
+/**
+ * Joriy navbatga necha kun berilishi. Qiymat "SHU PAYTDAN boshlab N kun" —
+ * kalendar sanasi emas: admin bunga eng ko'p oldingi navbat kechikkanda
+ * murojaat qiladi ("uy allaqachon 8 kun tozalanmagan, bularga 2 kun bering"),
+ * o'shanda aniq sana emas, "qancha vaqt qoldi" muhim.
+ */
+export function navbatMuddatKeyboard(turnId: number): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  kb.text("⚡️ Bugun (bugun kechgacha)", `navbat_muddat_set:${turnId}:0`).row();
+  for (const [i, kun] of [1, 2, 3, 4, 5, 7, 10].entries()) {
+    kb.text(`${kun} kun`, `navbat_muddat_set:${turnId}:${kun}`);
+    if (i % 4 === 3) kb.row();
+  }
+  kb.row().text("⬅️ Orqaga", "admin_link_navbat");
+  return kb;
+}
+
+/** Admin: navbatning vaqt sozlamalari. */
+export function navbatSozlamaKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("🔁 Sikl uzunligi", "navbat_sikl")
+    .row()
+    .text("🔓 Majburiy vazifa ochilishi", "navbat_majburiy")
+    .row()
+    .text("⚙️ Vazifalar ro'yxati", "vazifalar")
+    .row()
+    .text("⬅️ Navbat", "admin_link_navbat");
+}
+
+/** Kelgusi navbatlarning standart uzunligi. */
+export function siklKuniKeyboard(): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const [i, kun] of [1, 2, 3, 4, 5, 6, 7, 10, 14].entries()) {
+    kb.text(`${kun} kun`, `navbat_sikl_set:${kun}`);
+    if (i % 3 === 2) kb.row();
+  }
+  kb.row().text("⬅️ Orqaga", "navbat_sozlama");
+  return kb;
+}
+
+/** Majburiy vazifalar muddat tugashiga necha kun qolganda ochilsin. */
+export function majburiyKuniKeyboard(): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const [i, kun] of [1, 2, 3, 4, 5].entries()) {
+    kb.text(`${kun} kun`, `navbat_majburiy_set:${kun}`);
+    if (i % 3 === 2) kb.row();
+  }
+  kb.row().text("♾ Har doim ochiq", `navbat_majburiy_set:${MAJBURIY_DOIM_OCHIQ}`).row();
+  kb.text("⬅️ Orqaga", "navbat_sozlama");
+  return kb;
 }
 
 /** Admin: navbatni qo'lda qaysi xonaga o'tkazishni tanlash (eski /navbatber). */

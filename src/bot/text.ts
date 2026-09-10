@@ -6,6 +6,7 @@ import {
 import { orinlarniHisobla, type OdamBall } from "../core/rating.js";
 import { ishRasmlari } from "../core/rotation.js";
 import type { NavbatVazifasi } from "../core/vazifalar.js";
+import { MAJBURIY_DOIM_OCHIQ, type NavbatSozlamalari } from "../core/rotation.js";
 import type { XabarKimi } from "./state.js";
 import type { ReportToliq } from "../core/reports.js";
 import type {
@@ -311,7 +312,7 @@ export function vazifaPaneli(
  * ro'yxati/tugmalar o'rniga shu ko'rsatiladi. Ixtiyoriy tozalash tugmalari
  * (bottom menyu) bundan mustaqil — ular shu holatda ham ishlayveradi.
  */
-export function majburiyQulfMatni(room: Room, muddat: Date): string {
+export function majburiyQulfMatni(room: Room, muddat: Date, majburiyKuni: number): string {
   return [
     `👤 <b>MENING NAVBATIM</b>`,
     AJRATGICH,
@@ -323,7 +324,7 @@ export function majburiyQulfMatni(room: Room, muddat: Date): string {
     `🕐 <b>Majburiy xona tozalash hali ochilmagan.</b>`,
     ``,
     `Xonani majburiy tozalash imkoniyati navbatingiz tugashiga`,
-    `<b>${config.majburiyOchilishKuni} kun</b> qolganda ochiladi.`,
+    `<b>${majburiyKuni} kun</b> qolganda ochiladi.`,
     ``,
     `<i>Shu paytgacha pastdagi ixtiyoriy tozalash tugmalaridan</i>`,
     `<i>xohlagancha foydalanishingiz mumkin — ular bu majburiy</i>`,
@@ -354,6 +355,7 @@ export function navbatAdminPaneli(
   azolar: User[],
   status: VazifaHolati,
   vazifalar: NavbatVazifasi[],
+  sozlamalar: NavbatSozlamalari,
 ): string {
   const ishlar = turn.ishlar;
   const bajarilgan = vazifalar.filter(
@@ -381,6 +383,12 @@ export function navbatAdminPaneli(
   } else {
     s.push(``, `📤 Holat: <b>Davom etmoqda</b>`);
   }
+
+  s.push(
+    ``,
+    `⏳ Bu navbatga qolgan vaqt: <b>${qolganKun(turn.muddat)} kun</b>`,
+    `🔁 Sikl uzunligi (kelgusi navbatlar): <b>${sozlamalar.siklKuni} kun</b>`,
+  );
 
   s.push(``, `🔔 Oxirgi shaxsiy eslatma: ${turn.oxirgi_eslatma ? sana(turn.oxirgi_eslatma) : "hali yuborilmagan"}`);
   if (turn.oxirgi_eslatma) {
@@ -668,7 +676,7 @@ export function shikoyatGuruhXabari(r: ReportToliq): string {
 }
 
 /** Botning tanishtiruvi — "Qanday ishlaydi?" tugmasi shuni chiqaradi. */
-export function tanishtirish(vazifalar: NavbatVazifasi[]): string {
+export function tanishtirish(vazifalar: NavbatVazifasi[], siklKuni: number): string {
   const yarim = Math.round(BALLAR.navbatXona / 2);
   const chorak = Math.round(BALLAR.navbatXona / 4);
 
@@ -681,7 +689,7 @@ export function tanishtirish(vazifalar: NavbatVazifasi[]): string {
     ``,
     `<b>🧹 TOZALASH NAVBATI</b>`,
     AJRATGICH,
-    `Navbat har <b>${config.siklKuni} kunda</b> bir xonadan`,
+    `Navbat har <b>${siklKuni} kunda</b> bir xonadan`,
     `ikkinchisiga o'tadi:`,
     `   1-xona ➡️ 2-xona ➡️ 3-xona ➡️ 4-xona ➡️ ...`,
     ``,
@@ -1898,4 +1906,77 @@ export function xabarNatijaMatni(kimga: string, yetdi: string[], yetmadi: string
   }
 
   return s.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// NAVBAT VAQT SOZLAMALARI (admin)
+// ---------------------------------------------------------------------------
+
+/** Majburiy ochilish qiymatini odam tilida. */
+function majburiyQiymati(kun: number): string {
+  return kun >= MAJBURIY_DOIM_OCHIQ ? "har doim ochiq" : `muddatga ${kun} kun qolganda`;
+}
+
+/**
+ * Admin: navbatning vaqt sozlamalari.
+ *
+ * Ikkala qiymat ham `settings` jadvalida — ilgari `config.ts`da qattiq
+ * yozilgan edi, ya'ni sikl uzunligini o'zgartirish uchun deploy kerak
+ * bo'lardi.
+ */
+export function navbatSozlamalariMatni(s: NavbatSozlamalari): string {
+  return [
+    `⚙️ <b>NAVBAT SOZLAMALARI</b>`,
+    AJRATGICH,
+    ``,
+    `🔁 Sikl uzunligi: <b>${s.siklKuni} kun</b>`,
+    `<i>Har xonaga shuncha kun beriladi. O'zgartirish faqat KELGUSI</i>`,
+    `<i>navbatlarga ta'sir qiladi — hozir ketayotgani o'z muddatida</i>`,
+    `<i>qoladi (uni "📅 Muddatni o'zgartirish" bilan sozlaysiz).</i>`,
+    ``,
+    `🔓 Majburiy vazifa ochilishi: <b>${majburiyQiymati(s.majburiyKuni)}</b>`,
+    `<i>Shu paytgacha "Mening Navbatim"da vazifa tugmalari</i>`,
+    `<i>ko'rinmaydi — ixtiyoriy tozalash esa har doim ishlaydi.</i>`,
+  ].join("\n");
+}
+
+/**
+ * Admin: joriy navbatga necha kun berilishini so'raymiz.
+ *
+ * Nima uchun sikl sozlamasidan alohida: oldingi navbat guruh tasdig'ini
+ * kutib cho'zilib ketsa, uy allaqachon uzoq tozalanmagan bo'ladi — bunday
+ * paytda keyingi xonaga to'liq sikl berish uyni yana shuncha kunga
+ * qoldiradi. Bu tugma aynan SHU navbatni qisqartiradi (yoki uzaytiradi),
+ * kelgusi sikllar o'z uzunligida qolaveradi.
+ */
+export function navbatMuddatMatni(room: Room, turn: Turn, s: NavbatSozlamalari): string {
+  const qoldi = qolganKun(turn.muddat);
+  return [
+    `📅 <b>MUDDATNI O'ZGARTIRISH</b>`,
+    AJRATGICH,
+    ``,
+    `🏠 Navbatda: <b>${room.raqam}-xona</b>`,
+    `📅 Hozirgi muddat: <b>${sana(turn.muddat)}</b>`,
+    `${muddatHolati(turn.muddat)}`,
+    qoldi >= 0 ? `⏳ Qolgan: <b>${qoldi} kun</b>` : `🔴 Kechikkan: <b>${-qoldi} kun</b>`,
+    ``,
+    `<b>Bu navbatga bugundan boshlab necha kun beriladi?</b>`,
+    ``,
+    `<i>Faqat shu navbatga tegishli — kelgusi navbatlar baribir</i>`,
+    `<i>${s.siklKuni} kunlik bo'lib qolaveradi.</i>`,
+  ].join("\n");
+}
+
+/** Muddat o'zgartirilgach guruhga chiqadigan xabar — hech kim kutmasin. */
+export function muddatOzgardiGuruhXabari(room: Room, muddat: Date, adminIsm: string): string {
+  return [
+    `📅 <b>NAVBAT MUDDATI O'ZGARDI</b>`,
+    AJRATGICH,
+    ``,
+    `🏠 ${room.raqam}-xona`,
+    `📅 Yangi muddat: <b>${sana(muddat)}</b>`,
+    `${muddatHolati(muddat)}`,
+    ``,
+    `<i>— ${esc(adminIsm)} (admin)</i>`,
+  ].join("\n");
 }
