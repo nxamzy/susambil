@@ -583,3 +583,38 @@ INSERT INTO navbat_vazifalari (kod, nom, emoji, rasm_soni, tartib) VALUES
   ('oshxona', 'Oshxona', '🍽',  1, 2),
   ('musor',   'Musor',   '♻️', 1, 3)
 ON CONFLICT (kod) DO NOTHING;
+
+-- ---------------------------------------------------------------------------
+-- BIR NAVBATDA BIR NECHA MARTA BAJARILADIGAN VAZIFA
+-- ---------------------------------------------------------------------------
+-- Musor idishi 5 kunlik navbat davomida bir marta emas, odatda ikki marta
+-- to'ladi — ya'ni "musor tashlash" bitta topshiriq emas, takrorlanadigan
+-- ish. Ilgari har bir vazifa navbatda ATIGI BIR MARTA bajarilardi, shuning
+-- uchun "musorni ikki marta tashla" degan qoidani umuman ifodalab bo'lmasdi.
+--
+--   rasm_soni   — BIR MARTALIK topshiriq uchun kerakli eng kam rasm
+--   takror_soni — shu vazifa navbat davomida necha marta bajarilishi shart
+--
+-- Har "marta" o'z rasmlari bilan ALOHIDA yopiladi ("✅ Tugatdim"), yopilgan
+-- martaning rasmlari `turns.ishlar[kod].tarix` ichiga ko'chiriladi va
+-- yakuniy albomga baribir chiqadi — hech qanday dalil yo'qolmaydi.
+ALTER TABLE navbat_vazifalari
+  ADD COLUMN IF NOT EXISTS takror_soni INT NOT NULL DEFAULT 1;
+
+DO $$ BEGIN
+  ALTER TABLE navbat_vazifalari ADD CONSTRAINT navbat_vazifalari_takror_chk
+    CHECK (takror_soni BETWEEN 1 AND 10);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Musorning boshlang'ich qiymati: navbat davomida 2 marta, har safar 3 ta
+-- rasm. BIR MARTA qo'yiladi va boshqa hech qachon qaytarilmaydi — admin
+-- keyin bu qiymatlarni o'zgartirsa, `db:setup` uni ortga surib yubormasligi
+-- kerak. Shu sababli oddiy UPDATE emas, `settings`dagi bayroq bilan
+-- qulflangan blok.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM settings WHERE kalit = 'musor_takror_seed') THEN
+    UPDATE navbat_vazifalari SET takror_soni = 2, rasm_soni = 3 WHERE kod = 'musor';
+    INSERT INTO settings (kalit, qiymat) VALUES ('musor_takror_seed', '1')
+      ON CONFLICT (kalit) DO NOTHING;
+  END IF;
+END $$;

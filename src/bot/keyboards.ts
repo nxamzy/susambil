@@ -2,7 +2,8 @@ import { InlineKeyboard, Keyboard } from "grammy";
 import {
   ISH_TURLARI,
   ISHONCH_DARAJASI,
-  RASM_MAX,
+  RASM_SONI_MAX,
+  TAKROR_MAX,
   SEKIN_ISHLAR,
   SHIKOYAT_JOYLARI,
   TEZ_ISHLAR,
@@ -13,7 +14,7 @@ import {
 import type { TurnIshlar, User } from "../db/index.js";
 import type { ReportToliq } from "../core/reports.js";
 import type { SiklOdam, TolovDashboard } from "../core/tolov.js";
-import { ishRasmlari, MAJBURIY_DOIM_OCHIQ } from "../core/rotation.js";
+import { bajarilganMarta, ishRasmlari, MAJBURIY_DOIM_OCHIQ, vazifaBajarildimi } from "../core/rotation.js";
 import type { NavbatVazifasi } from "../core/vazifalar.js";
 import type { FoydalanuvchiToliq } from "../core/users.js";
 
@@ -381,18 +382,29 @@ export function vazifaKeyboard(
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
   for (const v of vazifalar) {
-    const soni = ishRasmlari(ishlar[v.kod]).length;
-    const bajarildi = soni >= v.rasm_soni;
-    const son = v.rasm_soni > 1 || soni > 1 ? ` (${soni}/${v.rasm_soni})` : "";
+    const belgi = ishlar[v.kod];
+    const bajarilgan = bajarilganMarta(belgi);
+    const soni = ishRasmlari(belgi).length;
+    const tugadi = bajarilgan >= v.takror_soni;
+    const marta = v.takror_soni > 1 ? ` ${bajarilgan}/${v.takror_soni} marta` : "";
+
     // Callback'da `kod` ishlatiladi, `id` emas: kod hech qachon o'zgarmaydi,
     // shuning uchun deploydan oldin chatda osilib qolgan eski tugma ham
     // (masalan `navbat_ish:12:hammom`) ishlayveradi.
-    kb.text(
-      bajarildi ? `✅ ${v.nom}${son} — bajarildi` : `${v.emoji} ${v.nom}${son}`,
-      `navbat_ish:${turnId}:${v.kod}`,
-    ).row();
+    let yozuv: string;
+    if (tugadi) {
+      yozuv = `✅ ${v.nom}${marta} — bajarildi`;
+    } else if (soni >= v.rasm_soni) {
+      // Rasm yetarli, lekin "Tugatdim" bosilmagan — bu holatni ajratib
+      // ko'rsatamiz, aks holda odam "bajardim-ku" deb o'ylab qoladi.
+      yozuv = `🟡 ${v.nom}${marta} · ${soni}/${v.rasm_soni} — tasdiqlang`;
+    } else {
+      const son = soni > 0 ? ` · ${soni}/${v.rasm_soni}` : "";
+      yozuv = `${v.emoji} ${v.nom}${marta}${son}`;
+    }
+    kb.text(yozuv, `navbat_ish:${turnId}:${v.kod}`).row();
   }
-  if (vazifalar.length > 0 && vazifalar.every((v) => ishRasmlari(ishlar[v.kod]).length >= v.rasm_soni)) {
+  if (vazifalar.length > 0 && vazifalar.every((v) => vazifaBajarildimi(ishlar[v.kod], v))) {
     kb.text("📸 Yakuniy topshirish", `navbat_topshir:${turnId}`);
   }
   return kb;
@@ -610,6 +622,8 @@ export function vazifaDetalKeyboard(
   const kb = new InlineKeyboard()
     .text("✏️ Nomi", `vazifa_nom:${v.id}`)
     .text("📷 Rasm soni", `vazifa_rasm:${v.id}`)
+    .row()
+    .text("🔁 Necha marta", `vazifa_takror:${v.id}`)
     .row();
 
   if (yuqoriBor) kb.text("⬆️ Yuqoriga", `vazifa_kochir:${v.id}:yuqori`);
@@ -624,10 +638,10 @@ export function vazifaDetalKeyboard(
   return kb;
 }
 
-/** Rasm sonini tanlash — matn yozish o'rniga tugma (1..RASM_MAX). */
+/** Rasm sonini tanlash (eng kam talab) — matn yozish o'rniga tugma. */
 export function vazifaRasmSoniKeyboard(vazifaId: number): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (let n = 1; n <= RASM_MAX; n++) {
+  for (let n = 1; n <= RASM_SONI_MAX; n++) {
     kb.text(String(n), `vazifa_rasm_set:${vazifaId}:${n}`);
     if (n % 5 === 0) kb.row();
   }
@@ -638,6 +652,17 @@ export function vazifaRasmSoniKeyboard(vazifaId: number): InlineKeyboard {
 /** Yangi vazifa qo'shilgach rasm sonini darrov so'raymiz. */
 export function yangiVazifaRasmKeyboard(vazifaId: number): InlineKeyboard {
   return vazifaRasmSoniKeyboard(vazifaId);
+}
+
+/** Vazifa navbat davomida necha marta bajarilishini tanlash. */
+export function vazifaTakrorSoniKeyboard(vazifaId: number): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (let n = 1; n <= TAKROR_MAX; n++) {
+    kb.text(String(n), `vazifa_takror_set:${vazifaId}:${n}`);
+    if (n % 5 === 0) kb.row();
+  }
+  kb.text("⬅️ Orqaga", `vazifa:${vazifaId}`);
+  return kb;
 }
 
 // ---------------------------------------------------------------------------

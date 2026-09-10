@@ -361,25 +361,26 @@ export function ishRasmlari(belgi: TurnIshBelgisi | undefined): string[] {
 
 export type IshBelgilashNatija = {
   turn: Turn;
-  /** Shu vazifa uchun kerakli (MINIMUM) rasm yig'ilib bo'ldimi. */
+  /** Joriy martada kerakli (MINIMUM) rasm yig'ilib bo'ldimi. */
   toliq: boolean;
   /**
-   * AYNAN shu rasm vazifani birinchi marta to'ldirdimi. Qo'shish atomik
-   * bo'lgani uchun bu butun albom davomida ROSA BIR MARTA `true` bo'ladi —
-   * chaqiruvchi panelni shunga qarab bir marta qayta chizadi, har rasmga
-   * emas (albom bilan 9 ta rasm tashlanganda 18 ta xabar ketardi va
-   * Telegram flood chegarasiga urilardi).
+   * AYNAN shu rasm joriy martani birinchi marta MINIMUM'ga yetkazdimi.
+   * Qo'shish atomik bo'lgani uchun butun albom davomida ROSA BIR MARTA
+   * `true` — chaqiruvchi jonli xabarda "endi Tugatdim tugmasi bor" holatiga
+   * shunga qarab bir marta o'tadi.
    */
   yangiToldi: boolean;
+  /** Joriy martada yig'ilgan rasm soni */
   soni: number;
+  /** Bir martani yopish uchun kerakli minimum */
   kerak: number;
+  /** Shu vazifa navbat davomida hozirgacha necha marta YOPILGAN */
+  bajarilgan: number;
+  /** Vazifa jami necha marta bajarilishi shart (`takror_soni`) */
+  takror: number;
   /**
    * Shu chaqiruvdagi rasm saqlandimi. `false` — faqat QATTIQ chegaraga
-   * (`config.RASM_MAX`) yetilgan holat. Ilgari bu "kerakli sondan ortiq"
-   * degani ham edi: musorga 1 ta rasm yetarli bo'lgani uchun albomdagi
-   * qolgan 2 tasi ataylab tashlab yuborilardi. Endi ortiqcha rasm ham
-   * saqlanadi — dalil ko'p bo'lgani hech kimga zarar qilmaydi, yo'qolgani
-   * esa qiladi.
+   * (`RASM_MAX`) yetilgan holat.
    */
   yozildimi: boolean;
 };
@@ -410,12 +411,16 @@ export async function ishBelgila(
   const kod = vazifa.kod;
   const kerak = vazifa.rasm_soni;
 
+  // `COALESCE(ishlar->kod,'{}') || {yangi kalitlar}` — MERGE, to'liq
+  // almashtirish EMAS: aks holda oldingi marta yopilganda yozib qo'yilgan
+  // `bajarilgan` va `tarix` keyingi martaning birinchi rasmida o'chib
+  // ketardi. `||` faqat `photo_ids`/`user_id`/`vaqt`ни yangilaydi.
   const [yangilangan] = await sql<Turn[]>`
     UPDATE turns
     SET ishlar = jsonb_set(
       ishlar,
       ARRAY[${kod}]::text[],
-      jsonb_build_object(
+      COALESCE(ishlar -> ${kod}, '{}'::jsonb) || jsonb_build_object(
         'photo_ids', ${mavjudRasmlar(kod)} || to_jsonb(${photoId}::text),
         'user_id', ${userId}::int,
         'vaqt', now()
@@ -428,16 +433,124 @@ export async function ishBelgila(
   `;
 
   if (yangilangan) {
-    const soni = ishRasmlari(yangilangan.ishlar[kod]).length;
-    return { turn: yangilangan, toliq: soni >= kerak, yangiToldi: soni === kerak, soni, kerak, yozildimi: true };
+    const belgi = yangilangan.ishlar[kod];
+    const soni = ishRasmlari(belgi).length;
+    return {
+      turn: yangilangan,
+      toliq: soni >= kerak,
+      yangiToldi: soni === kerak,
+      soni,
+      kerak,
+      bajarilgan: bajarilganMarta(belgi),
+      takror: vazifa.takror_soni,
+      yozildimi: true,
+    };
   }
 
   // Yozilmadi — navbat yopilganmi yoki qattiq chegaraga yetilganmi.
   const [joriy] = await sql<Turn[]>`SELECT * FROM turns WHERE id = ${turnId} AND holat = 'faol'`;
   if (!joriy) return null;
 
-  const soni = ishRasmlari(joriy.ishlar[kod]).length;
-  return { turn: joriy, toliq: soni >= kerak, yangiToldi: false, soni, kerak, yozildimi: false };
+  const belgi = joriy.ishlar[kod];
+  const soni = ishRasmlari(belgi).length;
+  return {
+    turn: joriy,
+    toliq: soni >= kerak,
+    yangiToldi: false,
+    soni,
+    kerak,
+    bajarilgan: bajarilganMarta(belgi),
+    takror: vazifa.takror_soni,
+    yozildimi: false,
+  };
+}
+
+/**
+ * "✅ Tugatdim" — joriy martani yopadi.
+ *
+ * FAQAT joriy martada kamida `rasm_soni` ta rasm bo'lsa ishlaydi (aks holda
+ * `null`). Ilgari bu narsa AVTOMATIK edi (rasm yetdi → vazifa bajarildi),
+ * endi ochiq harakat: odam "bitta rasm bilan ketib qolmayapman-ku" deb
+ * xotirjam yana rasm qo'sha oladi.
+ *
+ * Yana marta qolgan bo'lsa: joriy rasmlar `tarix`ga ko'chiriladi,
+ * `photo_ids` bo'shatiladi — keyingi marta toza boshlanadi. Oxirgi marta
+ * bo'lsa joriy rasmlar o'z joyida qoladi (yakuniy albomga kiradi).
+ *
+ * `FOR UPDATE` bilan qulflanadi — kech kelgan albom rasmi (`ishBelgila`)
+ * shu yopish bilan poygaga tushmasin.
+ */
+export type MartaYopishNatija = {
+  turn: Turn;
+  /** Vazifa ENDI to'liq bajarildimi (barcha martalar yopildi) */
+  vazifaTugadi: boolean;
+  bajarilgan: number;
+  takror: number;
+};
+
+export async function martaniYop(
+  turnId: number,
+  vazifa: NavbatVazifasi,
+  userId: number,
+): Promise<MartaYopishNatija | null> {
+  return sql.begin(async (tx) => {
+    const [t] = await tx<Turn[]>`
+      SELECT * FROM turns WHERE id = ${turnId} AND holat = 'faol' FOR UPDATE
+    `;
+    if (!t) return null;
+
+    const belgi = t.ishlar[vazifa.kod];
+    const joriySoni = ishRasmlari(belgi).length;
+    const bajarilgan = bajarilganMarta(belgi);
+
+    // Allaqachon to'liq — hech nima qilmaymiz.
+    if (bajarilgan >= vazifa.takror_soni) {
+      return { turn: t, vazifaTugadi: true, bajarilgan, takror: vazifa.takror_soni };
+    }
+    // Hali yetarli rasm yo'q — yopib bo'lmaydi.
+    if (joriySoni < vazifa.rasm_soni) return null;
+
+    const yangiBajarilgan = bajarilgan + 1;
+    const oxirgi = yangiBajarilgan >= vazifa.takror_soni;
+
+    const yangiBelgi = oxirgi
+      ? {
+          photo_ids: ishRasmlari(belgi),
+          user_id: userId,
+          vaqt: new Date().toISOString(),
+          bajarilgan: yangiBajarilgan,
+          tarix: belgi?.tarix ?? [],
+        }
+      : {
+          photo_ids: [] as string[],
+          user_id: userId,
+          vaqt: new Date().toISOString(),
+          bajarilgan: yangiBajarilgan,
+          tarix: [
+            ...(belgi?.tarix ?? []),
+            {
+              photo_ids: ishRasmlari(belgi),
+              user_id: belgi?.user_id ?? userId,
+              vaqt: belgi?.vaqt ?? new Date().toISOString(),
+            },
+          ],
+        };
+
+    const [yangilangan] = await tx<Turn[]>`
+      UPDATE turns
+      SET ishlar = jsonb_set(ishlar, ARRAY[${vazifa.kod}]::text[], ${sql.json(yangiBelgi)}, true)
+      WHERE id = ${turnId} AND holat = 'faol'
+      RETURNING *
+    `;
+    if (!yangilangan) return null;
+
+    return {
+      turn: yangilangan,
+      vazifaTugadi: oxirgi,
+      bajarilgan: yangiBajarilgan,
+      takror: vazifa.takror_soni,
+    };
+  });
 }
 
 /**
@@ -462,15 +575,40 @@ function mavjudRasmlar(kod: string) {
  * parametr: shunda bu yerda ham, `bot/text.ts`da ham baza chaqiruvi
  * bo'lmaydi, ro'yxatni esa chaqiruvchi bir marta o'qib hammasiga uzatadi.
  */
+
+/** Vazifaning YOPILGAN martalari soni ("✅ Tugatdim" bosilganlar). */
+export function bajarilganMarta(belgi: TurnIshBelgisi | undefined): number {
+  return belgi?.bajarilgan ?? 0;
+}
+
+/**
+ * Bitta vazifaning BARCHA rasmlari — joriy marta + `tarix`dagi yopilgan
+ * martalar. Yakuniy albom uchun. `ishRasmlari` esa faqat JORIY martani
+ * qaytaradi (jonli xabar shu martaning progressini ko'rsatadi).
+ */
+export function barchaRasmlar(belgi: TurnIshBelgisi | undefined): string[] {
+  if (!belgi) return [];
+  const oldingi = (belgi.tarix ?? []).flatMap((t) => t.photo_ids ?? []);
+  return [...oldingi, ...ishRasmlari(belgi)];
+}
+
+/**
+ * Vazifa to'liq bajarildimi — kerakli marta yopilgan bo'lsa. Rasm soniga
+ * qarab EMAS: rasm yig'ilgani "Tugatdim" bosilganini anglatmaydi.
+ */
+export function vazifaBajarildimi(belgi: TurnIshBelgisi | undefined, vazifa: NavbatVazifasi): boolean {
+  return bajarilganMarta(belgi) >= vazifa.takror_soni;
+}
+
 export function barchaIshlarBajarildimi(ishlar: TurnIshlar, vazifalar: NavbatVazifasi[]): boolean {
   // Bo'sh ro'yxatda `every` `true` qaytaradi — admin hamma vazifani
   // o'chirib qo'ysa navbatni hech narsa qilmasdan yakunlash mumkin bo'lardi.
   if (vazifalar.length === 0) return false;
-  return vazifalar.every((v) => ishRasmlari(ishlar[v.kod]).length >= v.rasm_soni);
+  return vazifalar.every((v) => vazifaBajarildimi(ishlar[v.kod], v));
 }
 
 export function qolganIshlar(ishlar: TurnIshlar, vazifalar: NavbatVazifasi[]): NavbatVazifasi[] {
-  return vazifalar.filter((v) => ishRasmlari(ishlar[v.kod]).length < v.rasm_soni);
+  return vazifalar.filter((v) => !vazifaBajarildimi(ishlar[v.kod], v));
 }
 
 export function bajarilganIshlarSoni(ishlar: TurnIshlar, vazifalar: NavbatVazifasi[]): number {
@@ -488,7 +626,9 @@ export function bajarilganIshlarSoni(ishlar: TurnIshlar, vazifalar: NavbatVazifa
 export function navbatRasmlari(ishlar: TurnIshlar, vazifalar: NavbatVazifasi[]): string[] {
   const kodlar = vazifalar.map((v) => v.kod);
   const qolganKalitlar = Object.keys(ishlar).filter((k) => !kodlar.includes(k));
-  return [...kodlar, ...qolganKalitlar].flatMap((k) => ishRasmlari(ishlar[k]));
+  // `barchaRasmlar` — har vazifaning HAMMA martalaridagi rasmlar (musor
+  // ikki marta tashlangan bo'lsa ikkalasining ham dalili).
+  return [...kodlar, ...qolganKalitlar].flatMap((k) => barchaRasmlar(ishlar[k]));
 }
 
 /**

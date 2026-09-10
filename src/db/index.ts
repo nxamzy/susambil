@@ -34,11 +34,29 @@ export type User = {
  * ishlatmaydi.
  */
 export type TurnIshBelgisi = {
+  /** JORIY (hali "✅ Tugatdim" bilan yopilmagan) martaning rasmlari */
   photo_ids?: string[];
   /** @deprecated faqat eski yozuvlarni o'qishda ishlatiladi */
   photo_id?: string;
   user_id: number;
   vaqt: string;
+  /**
+   * To'liq yopilgan martalar soni. Vazifa `bajarilgan >= takror_soni`
+   * bo'lganda bajarilgan hisoblanadi — rasm soniga qarab EMAS.
+   *
+   * Ilgari vazifa kerakli rasm yig'ilishi bilan avtomatik "bajarildi"
+   * bo'lardi; endi odam ochiq "✅ Tugatdim" bosishi shart, aks holda bitta
+   * rasm bilan vazifa yopilib ketardi va yana rasm qo'shish imkoni
+   * yo'qoladi deb o'ylanardi.
+   */
+  bajarilgan?: number;
+  /**
+   * Yopilgan martalarning rasmlari. Joriy marta `photo_ids`da turadi,
+   * yopilganda shu massivga ko'chiriladi va `photo_ids` bo'shatiladi —
+   * shunda keyingi marta toza boshlanadi, lekin oldingi martaning dalili
+   * yo'qolmaydi (yakuniy albomga hammasi chiqadi).
+   */
+  tarix?: { photo_ids: string[]; user_id: number; vaqt: string }[];
 };
 
 /**

@@ -11,6 +11,9 @@ import {
   ishRasmlari,
   majburiyOchildimi,
   navbatRasmlari,
+  bajarilganMarta,
+  barchaRasmlar,
+  vazifaBajarildimi,
   MAJBURIY_DOIM_OCHIQ,
 } from "./rotation.js";
 
@@ -76,24 +79,29 @@ test("kechikkanKun boshlangan kunni ham to'liq kun deb sanaydi", () => {
   assert.equal(kechikkanKun(muddat, new Date("2026-08-12T00:00:00Z")), 2);
 });
 
-/** 1-rasmli vazifa uchun — eski (bitta `photo_id`) format ham qo'llab-quvvatlanadi. */
-const fakeBelgisi = { photo_id: "x", user_id: 1, vaqt: "2026-08-09T00:00:00Z" } as const;
+const T = "2026-08-09T00:00:00Z";
+
+/** Eski (bitta `photo_id`) formatli belgi — orqaga moslik testi uchun. */
+const fakeBelgisi = { photo_id: "x", user_id: 1, vaqt: T } as const;
 
 /**
- * Vazifalar ro'yxati endi bazadan keladi, shuning uchun testlarda ham
- * parametr sifatida beriladi — sof funksiyalar hech qanday global ro'yxatga
- * bog'lanmagan.
+ * Vazifalar ro'yxati bazadan keladi — testlarda parametr sifatida beriladi.
+ * `takror` standart 1 (oddiy vazifa); musor kabi takrorlanadigan ish uchun
+ * ochiq beriladi.
  */
-function vazifa(kod: string, rasmSoni: number, tartib: number): NavbatVazifasi {
-  return { id: tartib + 1, kod, nom: kod, emoji: "🧹", rasm_soni: rasmSoni, tartib, faol: true };
+function vazifa(kod: string, rasmSoni: number, tartib: number, takror = 1): NavbatVazifasi {
+  return {
+    id: tartib + 1, kod, nom: kod, emoji: "🧹",
+    rasm_soni: rasmSoni, takror_soni: takror, tartib, faol: true,
+  };
 }
 
-/** Standart to'rttalik — `db/schema.sql` seed qiladigan ro'yxatning o'zi. */
+/** Standart to'rttalik — `db/schema.sql` seed qiladigan ro'yxat (musor 3 rasm × 2 marta). */
 const STANDART: NavbatVazifasi[] = [
   vazifa("xona", 1, 0),
   vazifa("hammom", 3, 1),
   vazifa("oshxona", 1, 2),
-  vazifa("musor", 1, 3),
+  vazifa("musor", 3, 3, 2),
 ];
 
 /** Ikkita hammomli uy — admin ro'yxatni shunday o'zgartirgan holat. */
@@ -102,85 +110,109 @@ const IKKI_HAMMOM: NavbatVazifasi[] = [
   vazifa("hammom", 3, 1),
   vazifa("hammom_2", 3, 2),
   vazifa("oshxona", 1, 3),
-  vazifa("musor", 1, 4),
+  vazifa("musor", 3, 4, 2),
 ];
 
-function rasmlar(...ids: string[]): TurnIshBelgisi {
-  return { photo_ids: ids, user_id: 1, vaqt: "2026-08-09T00:00:00Z" };
+/** Rasm(lar) yig'ilgan, lekin hali "✅ Tugatdim" bosilmagan belgi. */
+function yigilgan(...ids: string[]): TurnIshBelgisi {
+  return { photo_ids: ids, user_id: 1, vaqt: T };
 }
 
-/** Hammom uchun to'liq — 3 ta rasm bilan. */
-function hammomToliq(): TurnIshBelgisi {
-  return rasmlar("a", "b", "c");
+/** `marta` marta yopilgan (Tugatdim bosilgan) belgi. */
+function yopilgan(marta = 1, ids: string[] = ["a"]): TurnIshBelgisi {
+  return { photo_ids: ids, user_id: 1, vaqt: T, bajarilgan: marta };
 }
 
-test("hech qanday vazifa bajarilmagan bo'lsa barchaIshlarBajarildimi=false", () => {
-  assert.equal(barchaIshlarBajarildimi({}, STANDART), false);
-});
-
-test("faqat ba'zi vazifalar bajarilgan bo'lsa hali false", () => {
-  const ishlar: TurnIshlar = { xona: fakeBelgisi, hammom: hammomToliq() };
-  assert.equal(barchaIshlarBajarildimi(ishlar, STANDART), false);
-  assert.deepEqual(qolganIshlar(ishlar, STANDART).map((v) => v.kod), ["oshxona", "musor"]);
-  assert.equal(bajarilganIshlarSoni(ishlar, STANDART), 2);
-});
-
-test("hammom kerakli sondan kam rasm bilan hali bajarilgan hisoblanmaydi (1/3)", () => {
+test("faqat rasm yig'ilgan, lekin marta yopilmagan bo'lsa vazifa BAJARILMAGAN", () => {
+  // Ilgari rasm yig'ilishi bilan avtomatik "bajarildi" bo'lardi. Endi
+  // "✅ Tugatdim" bosilishi shart.
   const ishlar: TurnIshlar = {
-    xona: fakeBelgisi,
-    hammom: rasmlar("a"),
-    oshxona: fakeBelgisi,
-    musor: fakeBelgisi,
+    xona: yigilgan("a"),
+    hammom: yigilgan("a", "b", "c"),
+    oshxona: yigilgan("a"),
+    musor: yigilgan("a", "b", "c"),
   };
   assert.equal(barchaIshlarBajarildimi(ishlar, STANDART), false);
-  assert.deepEqual(qolganIshlar(ishlar, STANDART).map((v) => v.kod), ["hammom"]);
-  assert.equal(bajarilganIshlarSoni(ishlar, STANDART), 3);
+  assert.equal(bajarilganIshlarSoni(ishlar, STANDART), 0);
 });
 
-test("barcha vazifalar (hammom kerakli 3 rasm bilan) bajarilgach barchaIshlarBajarildimi=true", () => {
+test("har vazifa yopilgach (musor 2 marta) barchaIshlarBajarildimi=true", () => {
   const ishlar: TurnIshlar = {
-    xona: fakeBelgisi,
-    hammom: hammomToliq(),
-    oshxona: fakeBelgisi,
-    musor: fakeBelgisi,
+    xona: yopilgan(1),
+    hammom: yopilgan(1, ["a", "b", "c"]),
+    oshxona: yopilgan(1),
+    musor: yopilgan(2, ["x", "y", "z"]),
   };
   assert.equal(barchaIshlarBajarildimi(ishlar, STANDART), true);
   assert.deepEqual(qolganIshlar(ishlar, STANDART), []);
   assert.equal(bajarilganIshlarSoni(ishlar, STANDART), 4);
 });
 
-test("kerakidan ORTIQ rasm ham bajarilgan hisoblanadi — rasm_soni minimum", () => {
-  // Ilgari ortiqcha rasm umuman saqlanmasdi (albom bilan tashlanganida
-  // yo'qolardi); endi saqlanadi va vazifani buzmaydi.
-  const ishlar: TurnIshlar = { musor: rasmlar("a", "b", "c") };
-  assert.equal(qolganIshlar(ishlar, [vazifa("musor", 1, 0)]).length, 0);
-  assert.equal(barchaIshlarBajarildimi(ishlar, [vazifa("musor", 1, 0)]), true);
+test("musor 1/2 marta bajarilgan bo'lsa hali qoladi", () => {
+  const ishlar: TurnIshlar = {
+    xona: yopilgan(1),
+    hammom: yopilgan(1, ["a", "b", "c"]),
+    oshxona: yopilgan(1),
+    musor: yopilgan(1, ["x", "y", "z"]),
+  };
+  assert.equal(barchaIshlarBajarildimi(ishlar, STANDART), false);
+  assert.deepEqual(qolganIshlar(ishlar, STANDART).map((v) => v.kod), ["musor"]);
+  assert.equal(bajarilganIshlarSoni(ishlar, STANDART), 3);
 });
 
-test("ikkita hammom alohida vazifa — biri to'lsa ikkinchisi hali qoladi", () => {
+test("bajarilganMarta va vazifaBajarildimi", () => {
+  assert.equal(bajarilganMarta(undefined), 0);
+  assert.equal(bajarilganMarta(yigilgan("a", "b", "c")), 0); // rasm bor, lekin marta yopilmagan
+  assert.equal(bajarilganMarta(yopilgan(2)), 2);
+
+  const mus = vazifa("musor", 3, 0, 2);
+  assert.equal(vazifaBajarildimi(yopilgan(1), mus), false);
+  assert.equal(vazifaBajarildimi(yopilgan(2), mus), true);
+  assert.equal(vazifaBajarildimi(yopilgan(3), mus), true); // ortiqcha marta ham "bajarilgan"
+});
+
+test("barchaRasmlar joriy marta + tarixdagi martalarni qo'shadi; ishRasmlari faqat joriy", () => {
+  const belgi: TurnIshBelgisi = {
+    photo_ids: ["d", "e", "f"], user_id: 1, vaqt: T, bajarilgan: 1,
+    tarix: [{ photo_ids: ["a", "b", "c"], user_id: 1, vaqt: T }],
+  };
+  assert.deepEqual(barchaRasmlar(belgi), ["a", "b", "c", "d", "e", "f"]);
+  assert.deepEqual(ishRasmlari(belgi), ["d", "e", "f"]);
+  assert.deepEqual(barchaRasmlar(undefined), []);
+});
+
+test("navbatRasmlari musorning IKKALA martasidagi rasmlarni ham yig'adi", () => {
   const ishlar: TurnIshlar = {
-    xona: fakeBelgisi,
-    hammom: hammomToliq(),
-    oshxona: fakeBelgisi,
-    musor: fakeBelgisi,
+    xona: yopilgan(1, ["x"]),
+    musor: {
+      photo_ids: ["m4", "m5", "m6"], user_id: 1, vaqt: T, bajarilgan: 2,
+      tarix: [{ photo_ids: ["m1", "m2", "m3"], user_id: 1, vaqt: T }],
+    },
+  };
+  const vz = [vazifa("xona", 1, 0), vazifa("musor", 3, 1, 2)];
+  assert.deepEqual(navbatRasmlari(ishlar, vz), ["x", "m1", "m2", "m3", "m4", "m5", "m6"]);
+});
+
+test("ikkita hammom alohida vazifa — biri yopilsa ikkinchisi hali qoladi", () => {
+  const ishlar: TurnIshlar = {
+    xona: yopilgan(1),
+    hammom: yopilgan(1, ["a", "b", "c"]),
+    oshxona: yopilgan(1),
+    musor: yopilgan(2, ["x", "y", "z"]),
   };
   assert.equal(barchaIshlarBajarildimi(ishlar, IKKI_HAMMOM), false);
   assert.deepEqual(qolganIshlar(ishlar, IKKI_HAMMOM).map((v) => v.kod), ["hammom_2"]);
 
-  ishlar["hammom_2"] = rasmlar("d", "e", "f");
+  ishlar["hammom_2"] = yopilgan(1, ["d", "e", "f"]);
   assert.equal(barchaIshlarBajarildimi(ishlar, IKKI_HAMMOM), true);
 });
 
 test("bo'sh vazifalar ro'yxatida navbatni yakunlab bo'lmaydi", () => {
-  // `every` bo'sh massivda `true` qaytaradi — admin hamma vazifani
-  // o'chirib qo'ysa hech narsa qilmasdan topshirish mumkin bo'lardi.
-  assert.equal(barchaIshlarBajarildimi({ xona: fakeBelgisi }, []), false);
+  assert.equal(barchaIshlarBajarildimi({ xona: yopilgan(1) }, []), false);
 });
 
 test("navbatRasmlari ro'yxatdan chiqarilgan vazifaning rasmlarini ham oladi", () => {
-  // Admin navbat o'rtasida "hammom"ni ikkiga bo'lsa, eski kalit hech qaysi
-  // faol vazifaga to'g'ri kelmaydi — lekin u ham dalil, yo'qolmasligi kerak.
-  const ishlar: TurnIshlar = { xona: fakeBelgisi, hammom: hammomToliq() };
+  const ishlar: TurnIshlar = { xona: yopilgan(1, ["x"]), hammom: yopilgan(1, ["a", "b", "c"]) };
   const faqatXona = [vazifa("xona", 1, 0)];
   assert.deepEqual(navbatRasmlari(ishlar, faqatXona), ["x", "a", "b", "c"]);
 });
@@ -188,7 +220,7 @@ test("navbatRasmlari ro'yxatdan chiqarilgan vazifaning rasmlarini ham oladi", ()
 test("ishRasmlari eski (photo_id) va yangi (photo_ids) formatni ikkalasini ham o'qiydi", () => {
   assert.deepEqual(ishRasmlari(undefined), []);
   assert.deepEqual(ishRasmlari(fakeBelgisi), ["x"]);
-  assert.deepEqual(ishRasmlari(hammomToliq()), ["a", "b", "c"]);
+  assert.deepEqual(ishRasmlari(yigilgan("a", "b", "c")), ["a", "b", "c"]);
 });
 
 test("majburiyOchildimi: muddatgacha 2 kun qolganda hali yopiq (ochilish 1 kun)", () => {

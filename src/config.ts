@@ -125,15 +125,25 @@ export type IshTuri = keyof typeof ISH_TURLARI;
  */
 
 /**
- * Bitta vazifaga (yoki bitta qo'shimcha ish topshirig'iga) saqlanadigan
- * rasmlarning QATTIQ chegarasi.
+ * Bitta MARTA (bitta vazifa topshirig'i yoki qo'shimcha ish) uchun
+ * saqlanadigan rasmlarning qattiq chegarasi.
  *
- * Vazifadagi `rasm_soni` — MINIMUM ("shuncha kelsa bajarilgan"), bu esa
- * maksimum. Oradagi ortiqcha rasmlar RAD ETILMAYDI, qo'shilaveradi:
- * ilgari kerakli sondan ortig'i ataylab tashlab yuborilardi va odam
- * albom bilan 3 ta rasm tashlaganda 2 tasi yo'qolardi.
+ * Vazifadagi `rasm_soni` — MINIMUM ("shuncha kelmaguncha yopib bo'lmaydi"),
+ * bu esa faqat texnik yuqori chegara. Oradagi ortiqcha rasmlar RAD
+ * ETILMAYDI: talab "qancha bo'lsa yuborsa bo'ladi, faqat kerakli sondan kam
+ * emas". Ilgari 10 edi va `rasm_soni`ning o'zi ham shunga bog'lanardi.
  */
-export const RASM_MAX = 10;
+export const RASM_MAX = 20;
+
+/**
+ * Admin `rasm_soni`ni tanlaydigan eng katta qiymat — bazadagi CHECK bilan
+ * bir xil. `RASM_MAX`dan ATAYLAB alohida: biri "eng kam talab", ikkinchisi
+ * "eng ko'p saqlanadi".
+ */
+export const RASM_SONI_MAX = 10;
+
+/** Vazifa bir navbatda ko'pi bilan shuncha marta takrorlanishi mumkin. */
+export const TAKROR_MAX = 10;
 
 /** Telegram bitta media-guruhga sig'diradigan rasm soni — texnik chegara. */
 export const ALBOM_MAX = 10;

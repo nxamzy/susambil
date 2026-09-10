@@ -80,6 +80,49 @@ PARAMETR sifatida beriladi, ular o'zi bazaga murojaat qilmaydi. Shu sababli
 `bajarilganIshlarSoni` ham ikkinchi argument (`vazifalar`) oladi va bazasiz
 testlanaveradi.
 
+## Vazifa "bajarildi" = "✅ Tugatdim" bosilgan, rasm soni EMAS
+
+Ilgari navbat vazifasi kerakli rasm yig'ilishi bilan AVTOMATIK bajarilgan
+bo'lardi. Endi `turns.ishlar[kod].bajarilgan` (yopilgan martalar soni)
+faqat odam ochiq **"✅ Tugatdim"** bosganda oshadi (`martaniYop`). Vazifa
+`bajarilgan >= takror_soni` bo'lganda tugaydi.
+
+Sabab: "bitta rasm bilan ketib qolmasin" — rasm avtomatik yopsa, odam
+"yana rasm qo'shsam bo'ladimi?" deb ikkilanadi. Endi jonli xabar ochiq
+so'raydi ("Yana rasm yuborasizmi, yoki tugatasizmi?") va faqat tugma
+bosilganda yopiladi. `barchaIshlarBajarildimi` / `vazifaKeyboard`ning
+"Yakuniy topshirish" sharti ham shu — rasm tashlab qo'yib tugmani
+bosmasa, navbat topshirilmaydi (panelda `🟡 3/3 — tasdiqlang` deb turadi).
+
+## `takror_soni` — bir navbatda bir necha marta bajariladigan vazifa
+
+`navbat_vazifalari.takror_soni` (standart 1) = vazifa navbat davomida necha
+marta bajarilishi shart. Musor = 2 (idish 5 kunlik navbatda odatda bir
+marta to'lib qoladi). `db/schema.sql` musorni `settings`dagi
+`musor_takror_seed` bayrog'i bilan BIR MARTA 3 rasm × 2 marta qilib
+qo'yadi — keyin admin `⚙️ Vazifalar` dan o'zgartiradi, `db:setup` ustidan
+yozmaydi.
+
+Har "marta" o'z rasmlari bilan alohida yopiladi. Yopilgan martaning
+rasmlari `turns.ishlar[kod].tarix[]` ichiga ko'chiriladi, `photo_ids`
+bo'shatiladi — keyingi marta toza boshlanadi. `ishRasmlari(belgi)` faqat
+JORIY martani qaytaradi (jonli progress uchun), `barchaRasmlar(belgi)` esa
+`tarix` + joriy (yakuniy albom uchun). `navbatRasmlari` `barchaRasmlar`ni
+ishlatadi — musorning ikkala tashlash dalili ham guruhga chiqadi.
+
+`ishBelgila`ning `jsonb_set` endi TO'LIQ ALMASHTIRMAYDI, MERGE qiladi
+(`COALESCE(ishlar->kod,'{}') || jsonb_build_object(...)`): aks holda
+oldingi marta yopilganda yozilgan `bajarilgan`/`tarix` keyingi martaning
+birinchi rasmida o'chib ketardi.
+
+## Rasm chegarasi: `rasm_soni` minimum, `RASM_MAX` texnik shift
+
+`rasm_soni` (1..`RASM_SONI_MAX`=10) — bir martani yopish uchun eng kam
+rasm. `RASM_MAX` (20) — bitta martada saqlanadigan eng ko'p rasm, sof
+texnik chegara. "Qancha bo'lsa yuborsa bo'ladi, faqat kerakli sondan kam
+emas" — shu ikkisi. Jonli xabar `min(100, soni/rasm_soni*100)` foizini
+ko'rsatib boradi.
+
 ## Rasm yo'qolishi: uchta sabab, uchta qoida
 
 "9 ta rasm tashlasam 5 tasi tushyapti" — Telegram albomni bir nechta

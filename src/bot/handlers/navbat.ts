@@ -22,8 +22,10 @@ import { config } from "../../config.js";
 import {
   barchaIshlarBajarildimi,
   faolNavbat,
+  bajarilganMarta,
   ishBelgila,
   majburiyOchildimi,
+  martaniYop,
   navbatFaolTopshirigi,
   navbatniBoshlash,
   navbatniOzgartirish,
@@ -55,6 +57,7 @@ import {
 } from "../keyboards.js";
 import {
   boshqaXonaMatni,
+  esc,
   majburiyQulfMatni,
   muddatOzgardiGuruhXabari,
   navbatAdminPaneli,
@@ -105,8 +108,16 @@ function rasmKlaviaturasi(
   turnId: number,
   ishlar: Turn["ishlar"],
   vazifalar: NavbatVazifasi[],
+  joriyKod: string,
+  soni: number,
+  kerak: number,
 ): InlineKeyboard {
-  return vazifaKeyboard(turnId, ishlar, vazifalar).row().text("✖️ Bekor qilish", "bekor");
+  const kb = vazifaKeyboard(turnId, ishlar, vazifalar);
+  // "✅ Tugatdim" faqat kerakli rasm yig'ilgach chiqadi — shu bosilmaguncha
+  // vazifa/marta yopilmaydi ("bitta rasm bilan ketib qolmaydi").
+  if (soni >= kerak) kb.row().text("✅ Tugatdim", `navbat_tugat:${turnId}:${joriyKod}`);
+  kb.row().text("✖️ Bekor qilish", "bekor");
+  return kb;
 }
 
 /** Joriy navbat uchun ko'rinish holati — kutilmoqda/rad/faol. */
@@ -247,23 +258,24 @@ export async function vazifaRasmiKeldi(
   await holatOrnat(ctx.from.id, holat);
 
   const matn = natija.yozildimi
-    ? vazifaRasmMatni(vazifa, natija.soni)
+    ? vazifaRasmMatni(vazifa, natija.soni, natija.bajarilgan)
     : vazifaRasmToldiMatni(vazifa);
-  const kb = rasmKlaviaturasi(turnId, natija.turn.ishlar, vazifalar);
+  const kb = rasmKlaviaturasi(
+    turnId,
+    natija.turn.ishlar,
+    vazifalar,
+    kod,
+    natija.soni,
+    natija.kerak,
+  );
 
   // Jonli xabar yo'q bo'lsa (jarayon eskirgan yoki xabar o'chirilgan) —
-  // yangisini yuboramiz va uni jonli xabar qilib belgilaymiz.
+  // yangisini yuboramiz va uni jonli xabar qilib belgilaymiz. Panel bu
+  // yerda QAYTA CHIZILMAYDI — rasm yig'ilishi hali vazifani bajarmaydi,
+  // panel faqat "✅ Tugatdim" bosilganda yangilanadi (navbat_tugat handleri).
   if (!(await sorovniTahrirla(ctx.api, holat, matn, { reply_markup: kb }))) {
     const xabar = await ctx.reply(matn, { parse_mode: "HTML", reply_markup: kb });
     await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
-  }
-
-  // Panel FAQAT hammasi bitgan paytda bir marta qayta chiziladi — aynan shu
-  // rasm oxirgi vazifani to'ldirgan bo'lsa. `yangiToldi` atomik qo'shish
-  // natijasi bo'lgani uchun butun albom davomida rosa bir marta `true`.
-  if (natija.yangiToldi && barchaIshlarBajarildimi(natija.turn.ishlar, vazifalar)) {
-    const n = await faolNavbat();
-    if (n) await panelniYubor(ctx, n.turn, n.room, kontekst);
   }
 }
 
@@ -363,18 +375,80 @@ export function register(bot: Bot) {
     const holat = { tur: "navbat_ish", kod, turnId } as const;
     await holatOrnat(ctx.from.id, holat);
 
-    // Shu vazifada allaqachon rasm bo'lishi mumkin (odam qaytib kelgan) —
-    // shuning uchun "0 dan boshlaymiz" deb emas, joriy sanoqdan boshlaymiz.
-    const soni = ishRasmlari(n.turn.ishlar[kod]).length;
+    // Shu vazifada/martada allaqachon rasm bo'lishi mumkin (odam qaytib
+    // kelgan) — "0 dan boshlaymiz" deb emas, joriy sanoqdan boshlaymiz.
+    const belgi = n.turn.ishlar[kod];
+    const soni = ishRasmlari(belgi).length;
+    const bajarilgan = bajarilganMarta(belgi);
 
     // Bu xabar keyin har kelgan rasmda TAHRIRLANADI, qayta yuborilmaydi —
     // shuning uchun unga vazifa tugmalari ham qo'yiladi: odam bir vazifani
     // tugatgach keyingisiga shu yerdan o'tadi, panel qayta chizilmaydi.
-    const xabar = await ctx.reply(vazifaRasmMatni(vazifa, soni), {
+    const xabar = await ctx.reply(vazifaRasmMatni(vazifa, soni, bajarilgan), {
       parse_mode: "HTML",
-      reply_markup: rasmKlaviaturasi(turnId, n.turn.ishlar, vazifalar),
+      reply_markup: rasmKlaviaturasi(turnId, n.turn.ishlar, vazifalar, kod, soni, vazifa.rasm_soni),
     });
     await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
+  });
+
+  // -------------------------------------------------------------------------
+  // "✅ TUGATDIM" — joriy martani yopish
+  // -------------------------------------------------------------------------
+  // Ilgari rasm yig'ilishi bilan vazifa AVTOMATIK bajarilgan bo'lardi.
+  // Endi ochiq harakat: "bitta rasm bilan ketib qolmaydi", odam xotirjam
+  // yana rasm qo'sha oladi va o'zi tugatadi. Musor kabi `takror_soni > 1`
+  // vazifada har "Tugatdim" bitta martani yopadi, keyingisi navbat davomida
+  // (masalan ertaga) bajariladi.
+  bot.callbackQuery(/^navbat_tugat:(\d+):([A-Za-z0-9_]+)$/, async (ctx) => {
+    const turnId = Number(ctx.match[1]);
+    const kod = ctx.match[2] as string;
+
+    const u = await kim(ctx.from.id);
+    if (!u) return ctx.answerCallbackQuery({ text: "Siz ro'yxatda yo'qsiz." });
+
+    const n = await faolNavbat();
+    if (!n || n.turn.id !== turnId || u.room_id !== n.room.id) {
+      return ctx.answerCallbackQuery({ text: "Bu sizning navbatingiz emas.", show_alert: true });
+    }
+
+    const vazifa = await faolVazifaKodBoyicha(kod);
+    if (!vazifa) {
+      return ctx.answerCallbackQuery({ text: "Bu vazifa ro'yxatdan chiqarilgan.", show_alert: true });
+    }
+
+    const natija = await martaniYop(turnId, vazifa, u.id);
+    if (!natija) {
+      return ctx.answerCallbackQuery({
+        text: `Hali yetarli rasm yo'q — kamida ${vazifa.rasm_soni} ta kerak.`,
+        show_alert: true,
+      });
+    }
+
+    await ctx
+      .answerCallbackQuery({
+        text: natija.vazifaTugadi
+          ? "✅ Vazifa bajarildi"
+          : `✅ ${natija.bajarilgan}/${natija.takror} marta bajarildi`,
+      })
+      .catch(() => {});
+
+    // Jarayon tugadi — jonli "rasm tashlang" xabarini o'chiramiz.
+    await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+    await holatTozala(ctx.from.id);
+
+    const kontekst = await konteksOl();
+    await panelniYubor(ctx, natija.turn, n.room, kontekst);
+
+    if (!natija.vazifaTugadi) {
+      await ctx.reply(
+        [
+          `🔁 <b>${esc(vazifa.nom)}</b> — ${natija.bajarilgan}/${natija.takror} marta bajarildi.`,
+          `<i>Qolgan ${natija.takror - natija.bajarilgan} martasini navbat davomida bajaring —</i>`,
+          `<i>paneldan yana shu tugmani bosib, yangi rasm tashlaysiz.</i>`,
+        ].join("\n"),
+        { parse_mode: "HTML" },
+      );
+    }
   });
 
   bot.callbackQuery(/^navbat_topshir:(\d+)$/, async (ctx) => {

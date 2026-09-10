@@ -4,7 +4,7 @@ import {
   type IshTuri, type Ishonch, type ShikoyatJoyi,
 } from "../config.js";
 import { orinlarniHisobla, type OdamBall } from "../core/rating.js";
-import { ishRasmlari } from "../core/rotation.js";
+import { bajarilganMarta, ishRasmlari, vazifaBajarildimi } from "../core/rotation.js";
 import type { NavbatVazifasi } from "../core/vazifalar.js";
 import { MAJBURIY_DOIM_OCHIQ, type NavbatSozlamalari } from "../core/rotation.js";
 import type { XabarKimi } from "./state.js";
@@ -232,14 +232,24 @@ function bolmalar(soni: number, kerak: number): string {
 }
 
 function vazifaQatori(v: NavbatVazifasi, ishlar: TurnIshlar): string {
-  const soni = ishRasmlari(ishlar[v.kod]).length;
-  const bajarildi = soni >= v.rasm_soni;
-  // Faqat bir nechta rasm kerak bo'lgan vazifalarda sonini ko'rsatamiz —
-  // bitta rasmli vazifalarda ko'rinish avvalgidek qoladi. Kerakidan ortiq
-  // rasm tashlangan bo'lsa ham sanoq ko'rinadi ("4/3"): rasm endi rad
-  // etilmaydi, demak odam nechtasi tushganini bilishi kerak.
-  const son = v.rasm_soni > 1 || soni > 1 ? ` (${soni}/${v.rasm_soni})` : "";
-  return `${bajarildi ? "✅" : "☐"} ${esc(v.emoji)} ${esc(v.nom)}${son}`;
+  const belgi = ishlar[v.kod];
+  const bajarilgan = bajarilganMarta(belgi);
+  const tugadi = bajarilgan >= v.takror_soni;
+  const soni = ishRasmlari(belgi).length;
+
+  // "2 marta" kabi vazifalarda nechinchi marta ekani ko'rinadi.
+  const marta = v.takror_soni > 1 ? ` — ${bajarilgan}/${v.takror_soni} marta` : "";
+
+  // Joriy marta holati: rasm yig'ilyapti, lekin hali "✅ Tugatdim" bosilmagan.
+  let joriy = "";
+  if (!tugadi && soni > 0) {
+    joriy =
+      soni >= v.rasm_soni
+        ? `  ·  🟡 ${soni}/${v.rasm_soni} rasm — "Tugatdim" bosing`
+        : `  ·  ${soni}/${v.rasm_soni} rasm`;
+  }
+
+  return `${tugadi ? "✅" : "☐"} ${esc(v.emoji)} ${esc(v.nom)}${marta}${joriy}`;
 }
 
 /**
@@ -265,9 +275,7 @@ export function vazifaPaneli(
   vazifalar: NavbatVazifasi[],
 ): string {
   const ishlar = turn.ishlar;
-  const bajarilgan = vazifalar.filter(
-    (v) => ishRasmlari(ishlar[v.kod]).length >= v.rasm_soni,
-  ).length;
+  const bajarilgan = vazifalar.filter((v) => vazifaBajarildimi(ishlar[v.kod], v)).length;
   const qoldi = vazifalar.length - bajarilgan;
 
   const s = [
@@ -358,9 +366,7 @@ export function navbatAdminPaneli(
   sozlamalar: NavbatSozlamalari,
 ): string {
   const ishlar = turn.ishlar;
-  const bajarilgan = vazifalar.filter(
-    (v) => ishRasmlari(ishlar[v.kod]).length >= v.rasm_soni,
-  ).length;
+  const bajarilgan = vazifalar.filter((v) => vazifaBajarildimi(ishlar[v.kod], v)).length;
 
   const s = [
     `🛠 <b>JORIY NAVBAT — ADMIN</b>`,
@@ -695,12 +701,19 @@ export function tanishtirish(vazifalar: NavbatVazifasi[], siklKuni: number): str
     ``,
     `Navbatingiz kelganda shaxsiy "👤 Mening Navbatim" paneli`,
     `ochiladi — har vazifaning o'z tugmasi va rasmi bilan:`,
-    ...vazifalar.map(
-      (v) =>
-        `   ${esc(v.emoji)} ${esc(v.nom)}` + (v.rasm_soni > 1 ? ` — ${v.rasm_soni} ta rasm` : ""),
-    ),
+    ...vazifalar.map((v) => {
+      const q = [];
+      if (v.rasm_soni > 1) q.push(`kamida ${v.rasm_soni} rasm`);
+      if (v.takror_soni > 1) q.push(`${v.takror_soni} marta`);
+      return `   ${esc(v.emoji)} ${esc(v.nom)}` + (q.length ? ` — ${q.join(", ")}` : "");
+    }),
     ``,
-    `Hammasi bajarilgach "📸 Yakuniy topshirish" tugmasi chiqadi:`,
+    `Har vazifaga rasm tashlaysiz — <b>xohlagancha ko'p</b>, faqat`,
+    `kerakli sondan kam emas. Bot foizini ko'rsatib boradi.`,
+    `Rasmni yakunlash uchun <b>"✅ Tugatdim"</b> bosasiz —`,
+    `shu bosilmaguncha bitta rasm bilan tugab qolmaydi.`,
+    ``,
+    `Hamma vazifa bajarilgach "📸 Yakuniy topshirish" tugmasi chiqadi:`,
     `   ✅ Boshqa xonadan <b>${config.kerakliTasdiq} kishi</b> tasdiqlasa,`,
     `   navbat keyingi xonaga o'tadi.`,
     ``,
@@ -1712,30 +1725,41 @@ export function adminLogMatni(loglar: AdminLogToliq[]): string {
  * demakdir; Telegram flood chegarasi javoblarni tashlab yubora boshlaydi
  * va odam nechta rasm tushganini umuman bilmay qoladi.
  */
-export function vazifaRasmMatni(v: NavbatVazifasi, soni: number): string {
-  const s = [`${esc(v.emoji)} <b>${esc(v.nom)}</b>`, AJRATGICH, ``];
+export function vazifaRasmMatni(v: NavbatVazifasi, soni: number, bajarilgan = 0): string {
+  const s = [`${esc(v.emoji)} <b>${esc(v.nom)}</b>`];
+
+  // "2 marta" vazifada nechinchi martadaligini eslatib turamiz.
+  if (v.takror_soni > 1) {
+    s.push(`<i>${bajarilgan}/${v.takror_soni} marta bajarilgan — hozir ${bajarilgan + 1}-martasi</i>`);
+  }
+  s.push(AJRATGICH, ``);
 
   if (soni === 0) {
     s.push(
-      v.rasm_soni > 1
-        ? `📷 <b>${v.rasm_soni} ta rasm</b> kerak — birdaniga tashlasangiz ham bo'ladi.`
-        : `📷 Rasmini shu yerga tashlang.`,
+      `📷 <b>Kamida ${v.rasm_soni} ta rasm</b> kerak.`,
+      `<i>Birdaniga tashlasangiz ham bo'ladi. Xohlagancha ko'p —</i>`,
+      `<i>cheklov yo'q, faqat ${v.rasm_soni} tadan kam emas.</i>`,
     );
     return s.join("\n");
   }
 
-  s.push(`${bolmalar(soni, v.rasm_soni)}  <b>${soni}/${v.rasm_soni}</b> rasm qabul qilindi.`);
+  // Foiz — "rasmni nechtaligi ko'rinib tursin". Minimumga yetgach 100% da
+  // to'xtaydi (ortiqcha rasm 100%+ ko'rinmasin, "yetdi" degan ma'no yo'qolmasin).
+  const foiz = Math.min(100, Math.round((soni / v.rasm_soni) * 100));
+  s.push(`${bolmalar(soni, v.rasm_soni)}  <b>${soni}/${v.rasm_soni}</b>  ·  <b>${foiz}%</b>`);
+  s.push(``);
 
   if (soni < v.rasm_soni) {
-    s.push(``, `Yana <b>${v.rasm_soni - soni} ta</b> kerak — shu yerga tashlang.`);
+    s.push(
+      `📷 Yana kamida <b>${v.rasm_soni - soni} ta</b> rasm kerak — shu yerga tashlang.`,
+    );
   } else {
     s.push(
+      `✅ <b>Yetarli rasm yig'ildi.</b>`,
       ``,
-      `✅ <b>Bu vazifa bajarildi.</b>`,
-      ``,
-      `<i>Xohlasangiz yana rasm qo'shishingiz mumkin (${RASM_MAX} tagacha) —</i>`,
-      `<i>ortiqchasi rad etilmaydi. Keyingi vazifaga o'tish uchun</i>`,
-      `<i>pastdagi paneldan uning tugmasini bosing.</i>`,
+      `Yana rasm yuborasizmi, yoki tugatasizmi?`,
+      `<i>Ko'proq dalil — yaxshiroq (${RASM_MAX} tagacha). "✅ Tugatdim"</i>`,
+      `<i>bosilganda ${v.takror_soni > 1 ? "shu marta" : "vazifa"} yopiladi.</i>`,
     );
   }
 
@@ -1745,7 +1769,7 @@ export function vazifaRasmMatni(v: NavbatVazifasi, soni: number): string {
 /** Vazifaga qattiq chegara (`RASM_MAX`) tufayli sig'may qolgan rasm haqida. */
 export function vazifaRasmToldiMatni(v: NavbatVazifasi): string {
   return [
-    `📷 <b>${esc(v.nom)}</b> uchun ${RASM_MAX} ta rasm yig'ildi — bu eng ko'p miqdor.`,
+    `📷 <b>${esc(v.nom)}</b> — bu martada ${RASM_MAX} ta rasm yig'ildi, eng ko'p miqdor.`,
     ``,
     `<i>Yangi rasm qo'shilmadi, lekin avvalgilari joyida turibdi.</i>`,
   ].join("\n");
@@ -1771,7 +1795,8 @@ export function vazifalarMatni(vazifalar: NavbatVazifasi[]): string {
   } else {
     s.push(`<b>Faol (${faol.length}):</b>`);
     for (const [i, v] of faol.entries()) {
-      s.push(`   ${i + 1}. ${esc(v.emoji)} ${esc(v.nom)} — <b>${v.rasm_soni}</b> ta rasm`);
+      const marta = v.takror_soni > 1 ? `, <b>${v.takror_soni}</b> marta` : "";
+      s.push(`   ${i + 1}. ${esc(v.emoji)} ${esc(v.nom)} — <b>${v.rasm_soni}</b> rasm${marta}`);
     }
   }
 
@@ -1782,8 +1807,9 @@ export function vazifalarMatni(vazifalar: NavbatVazifasi[]): string {
 
   s.push(
     ``,
-    `<i>Ikkita hammom bo'lsa: "Hammom"ni "1-hammom" deb qayta</i>`,
-    `<i>nomlab, yangisiga "2-hammom" deb qo'shing.</i>`,
+    `<i>Ikkita hammom bo'lsa: "Hammom"ni "1-hammom" deb qayta nomlab,</i>`,
+    `<i>yangisiga "2-hammom" deb qo'shing. Musor kabi navbat davomida</i>`,
+    `<i>bir necha marta bajariladigan ish uchun "necha marta"ni oshiring.</i>`,
   );
   return s.join("\n");
 }
@@ -1794,7 +1820,8 @@ export function vazifaDetalMatni(v: NavbatVazifasi): string {
     `${esc(v.emoji)} <b>${esc(v.nom)}</b>`,
     AJRATGICH,
     ``,
-    `📷 Kerakli rasm: <b>${v.rasm_soni}</b> ta`,
+    `📷 Kerakli rasm (bir marta): <b>${v.rasm_soni}</b> ta (eng kam)`,
+    `🔁 Navbat davomida: <b>${v.takror_soni}</b> marta`,
     `🔢 Tartib: <b>${v.tartib}</b>`,
     `${v.faol ? "🟢 Faol — panelda ko'rinadi" : "⛔️ O'chirilgan — panelda ko'rinmaydi"}`,
     ``,

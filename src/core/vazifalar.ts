@@ -22,6 +22,7 @@
  * shunda birorta chaqiruvchi buni "unutib qoldirishi" mumkin emas.
  */
 import { sql } from "../db/index.js";
+import { RASM_SONI_MAX, TAKROR_MAX } from "../config.js";
 import { logla } from "./adminlog.js";
 
 export type NavbatVazifasi = {
@@ -30,8 +31,10 @@ export type NavbatVazifasi = {
   kod: string;
   nom: string;
   emoji: string;
-  /** MINIMUM: shuncha rasm kelgach vazifa bajarilgan hisoblanadi */
+  /** MINIMUM: bir martani yopish uchun shuncha rasm kerak */
   rasm_soni: number;
+  /** Navbat davomida vazifa necha marta bajarilishi shart (musor = 2) */
+  takror_soni: number;
   tartib: number;
   faol: boolean;
 };
@@ -160,9 +163,14 @@ export async function vazifaQoshish(
   return { ok: true, vazifa: v };
 }
 
-/** Rasm soni har doim 1..RASM_MAX oralig'ida (CHECK bilan ham qo'llanadi). */
+/** Rasm soni har doim 1..RASM_SONI_MAX oralig'ida (bazadagi CHECK bilan bir xil). */
 function chegarala(n: number): number {
-  return Math.min(10, Math.max(1, Math.round(n)));
+  return Math.min(RASM_SONI_MAX, Math.max(1, Math.round(n)));
+}
+
+/** Takror soni 1..TAKROR_MAX oralig'ida (bazadagi CHECK bilan bir xil). */
+function takrorChegarala(n: number): number {
+  return Math.min(TAKROR_MAX, Math.max(1, Math.round(n)));
 }
 
 /**
@@ -203,6 +211,28 @@ export async function vazifaRasmSoniniOrnat(
   if (!v) return null;
 
   await logla(adminId, "vazifa_rasm_soni", "vazifa", id, String(eski.rasm_soni), String(v.rasm_soni));
+  return v;
+}
+
+/**
+ * Vazifa navbat davomida necha marta bajarilishini o'rnatadi. Musor uchun
+ * 2 — idish odatda navbat o'rtasida bir marta to'lib qoladi. Oddiy
+ * vazifalarга 1 qoladi.
+ */
+export async function vazifaTakrorSoniniOrnat(
+  adminId: number,
+  id: number,
+  soni: number,
+): Promise<NavbatVazifasi | null> {
+  const eski = await vazifaOl(id);
+  if (!eski) return null;
+
+  const [v] = await sql<NavbatVazifasi[]>`
+    UPDATE navbat_vazifalari SET takror_soni = ${takrorChegarala(soni)} WHERE id = ${id} RETURNING *
+  `;
+  if (!v) return null;
+
+  await logla(adminId, "vazifa_takror_soni", "vazifa", id, String(eski.takror_soni), String(v.takror_soni));
   return v;
 }
 

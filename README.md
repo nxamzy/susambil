@@ -35,8 +35,18 @@ vazifa" bilan "🚿 2-hammom" qo'shiladi. Nomini o'zgartirish eski
 navbatlardagi rasmlarni buzmaydi, vazifa esa butunlay o'chirilmaydi —
 faqat ro'yxatdan chiqariladi.
 
-Rasm soni **minimum**: shuncha rasm kelgach vazifa bajarilgan hisoblanadi,
-ortig'i esa rad etilmaydi (10 tagacha saqlanadi).
+**Rasm soni** — minimum: shuncha rasm kelmaguncha martani yopib bo'lmaydi,
+ortig'i esa rad etilmaydi (20 tagacha). Bot foizini ("2/3 · 67%")
+ko'rsatib boradi.
+
+**Necha marta** — vazifa navbat davomida necha marta bajarilishi shart.
+Musor standart holatda **2 marta** (idish 5 kunlik navbatda bir marta
+to'lib qoladi). Har marta o'z rasmlari bilan alohida "✅ Tugatdim" bilan
+yopiladi; ikkala martaning ham dalili yakuniy albomga chiqadi.
+
+Vazifa rasm soni yetgani bilan avtomatik "bajarildi" bo'lmaydi — odam
+**"✅ Tugatdim"** bosishi shart. Shu bosilmaguncha panelda `🟡 3/3 —
+tasdiqlang` deb turadi va "Yakuniy topshirish" chiqmaydi.
 
 ### Navbat vaqti
 

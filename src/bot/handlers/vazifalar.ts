@@ -23,6 +23,7 @@ import {
   vazifaOl,
   vazifaQoshish,
   vazifaRasmSoniniOrnat,
+  vazifaTakrorSoniniOrnat,
   VAZIFA_MAX,
 } from "../../core/vazifalar.js";
 import { kim } from "../group.js";
@@ -31,6 +32,7 @@ import {
   vazifaDetalKeyboard,
   vazifalarKeyboard,
   vazifaRasmSoniKeyboard,
+  vazifaTakrorSoniKeyboard,
 } from "../keyboards.js";
 import { esc, vazifaDetalMatni, vazifalarMatni } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
@@ -220,6 +222,42 @@ export function register(bot: Bot) {
     if (!v) return ctx.answerCallbackQuery({ text: "Vazifa topilmadi." }).catch(() => {});
 
     await ctx.answerCallbackQuery({ text: `✅ ${v.rasm_soni} ta rasm` }).catch(() => {});
+    await vazifaDetalKorsat(ctx, vazifaId);
+  });
+
+  bot.callbackQuery(/^vazifa_takror:(\d+)$/, async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    const vazifaId = Number(ctx.match[1]);
+    const v = await vazifaOl(vazifaId);
+    if (!v) return ctx.answerCallbackQuery({ text: "Vazifa topilmadi." }).catch(() => {});
+
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.reply(
+      [
+        `🔁 <b>${esc(v.nom)} — navbat davomida necha marta?</b>`,
+        ``,
+        `Hozirgisi: <b>${v.takror_soni}</b> marta`,
+        ``,
+        `<i>Musor idishi 5 kunlik navbatda odatda 2 marta to'ladi —</i>`,
+        `<i>har safar alohida rasm bilan tasdiqlanadi. Oddiy vazifaga 1.</i>`,
+      ].join("\n"),
+      { parse_mode: "HTML", reply_markup: vazifaTakrorSoniKeyboard(v.id) },
+    );
+  });
+
+  bot.callbackQuery(/^vazifa_takror_set:(\d+):(\d+)$/, async (ctx) => {
+    const admin = await faqatAdmin(ctx);
+    if (!admin) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+
+    const vazifaId = Number(ctx.match[1]);
+    const v = await vazifaTakrorSoniniOrnat(admin.id, vazifaId, Number(ctx.match[2]));
+    if (!v) return ctx.answerCallbackQuery({ text: "Vazifa topilmadi." }).catch(() => {});
+
+    await ctx.answerCallbackQuery({ text: `✅ ${v.takror_soni} marta` }).catch(() => {});
     await vazifaDetalKorsat(ctx, vazifaId);
   });
 
