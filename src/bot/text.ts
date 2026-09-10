@@ -1,10 +1,12 @@
 import type { Report, Room, SubTur, Tolov, Turn, TurnIshlar, User } from "../db/index.js";
 import {
-  config, ISH_TURLARI, BALLAR, ISHONCH_DARAJASI, NAVBAT_ISHLARI, NAVBAT_RASM_SONI, SHIKOYAT_JOYLARI,
-  type IshTuri, type Ishonch, type NavbatIshi, type ShikoyatJoyi,
+  config, ISH_TURLARI, BALLAR, ISHONCH_DARAJASI, RASM_MAX, SHIKOYAT_JOYLARI,
+  type IshTuri, type Ishonch, type ShikoyatJoyi,
 } from "../config.js";
 import { orinlarniHisobla, type OdamBall } from "../core/rating.js";
 import { ishRasmlari } from "../core/rotation.js";
+import type { NavbatVazifasi } from "../core/vazifalar.js";
+import type { XabarKimi } from "./state.js";
 import type { ReportToliq } from "../core/reports.js";
 import type {
   EslatmaNomzodi, MuddatNatija, MuddatSurati, SiklOdam, SiklXulosa,
@@ -228,15 +230,15 @@ function bolmalar(soni: number, kerak: number): string {
   return "🟩".repeat(Math.min(soni, kerak)) + "⬜️".repeat(Math.max(0, kerak - soni));
 }
 
-function vazifaQatori(ish: NavbatIshi, ishlar: TurnIshlar): string {
-  const t = ISH_TURLARI[ish];
-  const kerak = NAVBAT_RASM_SONI[ish];
-  const soni = ishRasmlari(ishlar[ish]).length;
-  const bajarildi = soni >= kerak;
-  // Faqat bir nechta rasm kerak bo'lgan vazifalarda (masalan hammom) sonini
-  // ko'rsatamiz — bitta rasmli vazifalarda ko'rinish avvalgidek qoladi.
-  const son = kerak > 1 ? ` (${soni}/${kerak})` : "";
-  return `${bajarildi ? "✅" : "☐"} ${t.emoji} ${t.nom}${son}`;
+function vazifaQatori(v: NavbatVazifasi, ishlar: TurnIshlar): string {
+  const soni = ishRasmlari(ishlar[v.kod]).length;
+  const bajarildi = soni >= v.rasm_soni;
+  // Faqat bir nechta rasm kerak bo'lgan vazifalarda sonini ko'rsatamiz —
+  // bitta rasmli vazifalarda ko'rinish avvalgidek qoladi. Kerakidan ortiq
+  // rasm tashlangan bo'lsa ham sanoq ko'rinadi ("4/3"): rasm endi rad
+  // etilmaydi, demak odam nechtasi tushganini bilishi kerak.
+  const son = v.rasm_soni > 1 || soni > 1 ? ` (${soni}/${v.rasm_soni})` : "";
+  return `${bajarildi ? "✅" : "☐"} ${esc(v.emoji)} ${esc(v.nom)}${son}`;
 }
 
 /**
@@ -255,12 +257,17 @@ export type VazifaHolati =
  * qatorda, holati bazadagi `turns.ishlar`dan to'g'ridan-to'g'ri o'qiladi —
  * bot qayta ishga tushsa ham yo'qolmaydi.
  */
-export function vazifaPaneli(room: Room, turn: Turn, status: VazifaHolati): string {
+export function vazifaPaneli(
+  room: Room,
+  turn: Turn,
+  status: VazifaHolati,
+  vazifalar: NavbatVazifasi[],
+): string {
   const ishlar = turn.ishlar;
-  const bajarilgan = NAVBAT_ISHLARI.filter(
-    (k) => ishRasmlari(ishlar[k]).length >= NAVBAT_RASM_SONI[k],
+  const bajarilgan = vazifalar.filter(
+    (v) => ishRasmlari(ishlar[v.kod]).length >= v.rasm_soni,
   ).length;
-  const qoldi = NAVBAT_ISHLARI.length - bajarilgan;
+  const qoldi = vazifalar.length - bajarilgan;
 
   const s = [
     `👤 <b>MENING NAVBATIM</b>`,
@@ -271,7 +278,7 @@ export function vazifaPaneli(room: Room, turn: Turn, status: VazifaHolati): stri
     `${muddatHolati(turn.muddat)}`,
     ``,
     `<b>Vazifalar:</b>`,
-    ...NAVBAT_ISHLARI.map((k) => `   ${vazifaQatori(k, ishlar)}`),
+    ...vazifalar.map((v) => `   ${vazifaQatori(v, ishlar)}`),
     ``,
     `🟢 Bajarilgan: <b>${bajarilgan}</b>   🔴 Qoldi: <b>${qoldi}</b>`,
   ];
@@ -341,10 +348,16 @@ export function boshqaXonaMatni(room: Room, azolar: User[], muddat: Date): strin
  * Admin uchun joriy navbat dashboard'i — vazifalar, dalil, eslatma holati.
  * Real vaqtda qayta hisoblanadi, alohida "admin ko'rinishi" jadvali yo'q.
  */
-export function navbatAdminPaneli(room: Room, turn: Turn, azolar: User[], status: VazifaHolati): string {
+export function navbatAdminPaneli(
+  room: Room,
+  turn: Turn,
+  azolar: User[],
+  status: VazifaHolati,
+  vazifalar: NavbatVazifasi[],
+): string {
   const ishlar = turn.ishlar;
-  const bajarilgan = NAVBAT_ISHLARI.filter(
-    (k) => ishRasmlari(ishlar[k]).length >= NAVBAT_RASM_SONI[k],
+  const bajarilgan = vazifalar.filter(
+    (v) => ishRasmlari(ishlar[v.kod]).length >= v.rasm_soni,
   ).length;
 
   const s = [
@@ -357,8 +370,8 @@ export function navbatAdminPaneli(room: Room, turn: Turn, azolar: User[], status
     `📅 Muddat: ${sana(turn.muddat)}`,
     `${muddatHolati(turn.muddat)}`,
     ``,
-    `<b>Vazifalar (${bajarilgan}/${NAVBAT_ISHLARI.length}):</b>`,
-    ...NAVBAT_ISHLARI.map((k) => `   ${vazifaQatori(k, ishlar)}`),
+    `<b>Vazifalar (${bajarilgan}/${vazifalar.length}):</b>`,
+    ...vazifalar.map((v) => `   ${vazifaQatori(v, ishlar)}`),
   ];
 
   if (status.tur === "kutilmoqda") {
@@ -655,7 +668,7 @@ export function shikoyatGuruhXabari(r: ReportToliq): string {
 }
 
 /** Botning tanishtiruvi — "Qanday ishlaydi?" tugmasi shuni chiqaradi. */
-export function tanishtirish(): string {
+export function tanishtirish(vazifalar: NavbatVazifasi[]): string {
   const yarim = Math.round(BALLAR.navbatXona / 2);
   const chorak = Math.round(BALLAR.navbatXona / 4);
 
@@ -674,7 +687,10 @@ export function tanishtirish(): string {
     ``,
     `Navbatingiz kelganda shaxsiy "👤 Mening Navbatim" paneli`,
     `ochiladi — har vazifaning o'z tugmasi va rasmi bilan:`,
-    ...NAVBAT_ISHLARI.map((t) => `   ${ISH_TURLARI[t].emoji} ${ISH_TURLARI[t].nom}`),
+    ...vazifalar.map(
+      (v) =>
+        `   ${esc(v.emoji)} ${esc(v.nom)}` + (v.rasm_soni > 1 ? ` — ${v.rasm_soni} ta rasm` : ""),
+    ),
     ``,
     `Hammasi bajarilgach "📸 Yakuniy topshirish" tugmasi chiqadi:`,
     `   ✅ Boshqa xonadan <b>${config.kerakliTasdiq} kishi</b> tasdiqlasa,`,
@@ -1672,5 +1688,214 @@ export function adminLogMatni(loglar: AdminLogToliq[]): string {
     }
     s.push(`   📅 ${qisqaSana(l.created_at)}`);
   }
+  return s.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// NAVBAT VAZIFALARINI SOZLASH (admin)
+// ---------------------------------------------------------------------------
+
+/**
+ * "Mening Navbatim" panelida rasm kutilayotgandagi JONLI xabar.
+ *
+ * Bu matn yangi xabar sifatida yuborilmaydi — mavjud so'rov xabari
+ * tahrirlanadi (`state.ts` `sorovniTahrirla`). Sabab: albom bilan
+ * tashlangan har rasmga alohida javob yozilsa 9 ta rasm 18 ta xabar
+ * demakdir; Telegram flood chegarasi javoblarni tashlab yubora boshlaydi
+ * va odam nechta rasm tushganini umuman bilmay qoladi.
+ */
+export function vazifaRasmMatni(v: NavbatVazifasi, soni: number): string {
+  const s = [`${esc(v.emoji)} <b>${esc(v.nom)}</b>`, AJRATGICH, ``];
+
+  if (soni === 0) {
+    s.push(
+      v.rasm_soni > 1
+        ? `📷 <b>${v.rasm_soni} ta rasm</b> kerak — birdaniga tashlasangiz ham bo'ladi.`
+        : `📷 Rasmini shu yerga tashlang.`,
+    );
+    return s.join("\n");
+  }
+
+  s.push(`${bolmalar(soni, v.rasm_soni)}  <b>${soni}/${v.rasm_soni}</b> rasm qabul qilindi.`);
+
+  if (soni < v.rasm_soni) {
+    s.push(``, `Yana <b>${v.rasm_soni - soni} ta</b> kerak — shu yerga tashlang.`);
+  } else {
+    s.push(
+      ``,
+      `✅ <b>Bu vazifa bajarildi.</b>`,
+      ``,
+      `<i>Xohlasangiz yana rasm qo'shishingiz mumkin (${RASM_MAX} tagacha) —</i>`,
+      `<i>ortiqchasi rad etilmaydi. Keyingi vazifaga o'tish uchun</i>`,
+      `<i>pastdagi paneldan uning tugmasini bosing.</i>`,
+    );
+  }
+
+  return s.join("\n");
+}
+
+/** Vazifaga qattiq chegara (`RASM_MAX`) tufayli sig'may qolgan rasm haqida. */
+export function vazifaRasmToldiMatni(v: NavbatVazifasi): string {
+  return [
+    `📷 <b>${esc(v.nom)}</b> uchun ${RASM_MAX} ta rasm yig'ildi — bu eng ko'p miqdor.`,
+    ``,
+    `<i>Yangi rasm qo'shilmadi, lekin avvalgilari joyida turibdi.</i>`,
+  ].join("\n");
+}
+
+/** Admin: navbat vazifalari ro'yxati. */
+export function vazifalarMatni(vazifalar: NavbatVazifasi[]): string {
+  const faol = vazifalar.filter((v) => v.faol);
+  const nofaol = vazifalar.filter((v) => !v.faol);
+
+  const s = [
+    `⚙️ <b>NAVBAT VAZIFALARI</b>`,
+    AJRATGICH,
+    ``,
+    `Navbatdagi xona SHULARNI bajarishi shart. Ro'yxat va har`,
+    `biriga kerakli rasm soni shu yerdan boshqariladi — kod`,
+    `o'zgartirish shart emas.`,
+    ``,
+  ];
+
+  if (faol.length === 0) {
+    s.push(`⚠️ <b>Birorta faol vazifa yo'q</b> — navbatni yakunlab bo'lmaydi.`);
+  } else {
+    s.push(`<b>Faol (${faol.length}):</b>`);
+    for (const [i, v] of faol.entries()) {
+      s.push(`   ${i + 1}. ${esc(v.emoji)} ${esc(v.nom)} — <b>${v.rasm_soni}</b> ta rasm`);
+    }
+  }
+
+  if (nofaol.length > 0) {
+    s.push(``, `<b>O'chirilgan (${nofaol.length}):</b>`);
+    for (const v of nofaol) s.push(`   ⛔️ ${esc(v.emoji)} ${esc(v.nom)}`);
+  }
+
+  s.push(
+    ``,
+    `<i>Ikkita hammom bo'lsa: "Hammom"ni "1-hammom" deb qayta</i>`,
+    `<i>nomlab, yangisiga "2-hammom" deb qo'shing.</i>`,
+  );
+  return s.join("\n");
+}
+
+/** Admin: bitta vazifa kartochkasi. */
+export function vazifaDetalMatni(v: NavbatVazifasi): string {
+  return [
+    `${esc(v.emoji)} <b>${esc(v.nom)}</b>`,
+    AJRATGICH,
+    ``,
+    `📷 Kerakli rasm: <b>${v.rasm_soni}</b> ta`,
+    `🔢 Tartib: <b>${v.tartib}</b>`,
+    `${v.faol ? "🟢 Faol — panelda ko'rinadi" : "⛔️ O'chirilgan — panelda ko'rinmaydi"}`,
+    ``,
+    `<i>Ichki kalit: <code>${esc(v.kod)}</code> — o'zgarmaydi, shu sababli</i>`,
+    `<i>nomini o'zgartirsangiz ham eski navbatlardagi rasmlar</i>`,
+    `<i>yo'qolmaydi.</i>`,
+    ``,
+    `<i>Vazifa butunlay o'chirilmaydi, faqat ro'yxatdan chiqariladi —</i>`,
+    `<i>aks holda eski navbatlardagi rasmlar nimaga tegishli ekani</i>`,
+    `<i>bilinmay qolardi.</i>`,
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// ADMIN XABARI (a'zolarga topshiriq/eslatma)
+// ---------------------------------------------------------------------------
+
+/** Kimga ketishini odam tilida — tasdiq va natija xabarlarida bir xil. */
+export function xabarKimiNomi(k: XabarKimi, qoshimcha?: string): string {
+  switch (k.t) {
+    case "navbatchi":
+      return qoshimcha ? `navbatdagi xona (${qoshimcha})` : "navbatdagi xona";
+    case "hamma":
+      return "hamma a'zo";
+    case "xona":
+      return `${k.raqam}-xona`;
+    case "odam":
+      return qoshimcha ?? "bitta a'zo";
+    case "guruh":
+      return "guruh chati";
+  }
+}
+
+/** Admin xabar matnini yozgach — yuborishdan oldingi ko'rinish. */
+export function xabarTasdiqMatni(k: XabarKimi, matn: string, kimga: string, soni: number): string {
+  const s = [
+    `📣 <b>XABARNI YUBORAMIZMI?</b>`,
+    AJRATGICH,
+    ``,
+    `👥 Kimga: <b>${esc(kimga)}</b>`,
+  ];
+
+  if (k.t !== "guruh") {
+    s.push(
+      soni > 0
+        ? `📬 Botga ulangan: <b>${soni}</b> kishi`
+        : `⚠️ <b>Botga ulangan odam yo'q</b> — xabar hech kimga bormaydi.`,
+    );
+  }
+
+  s.push(``, AJRATGICH, ``, esc(matn), ``, AJRATGICH, ``, `<i>Yuborilgach ortga qaytarib bo'lmaydi.</i>`);
+  return s.join("\n");
+}
+
+/**
+ * A'zoga boradigan xabarning o'zi. Kim yuborgani ochiq ko'rsatiladi —
+ * anonim shikoyatdan farqli o'laroq bu ochiq topshiriq, javobgarligi
+ * bo'lishi kerak.
+ */
+export function adminXabariMatni(adminIsm: string, matn: string): string {
+  return [
+    `📣 <b>ADMINDAN XABAR</b>`,
+    AJRATGICH,
+    ``,
+    esc(matn),
+    ``,
+    AJRATGICH,
+    `<i>— ${esc(adminIsm)} (admin)</i>`,
+  ].join("\n");
+}
+
+/** Guruhga boradigan ko'rinish — DM bilan bir xil, faqat sarlavhasi boshqa. */
+export function xabarGuruhMatni(adminIsm: string, matn: string): string {
+  return [
+    `📣 <b>E'LON</b>`,
+    AJRATGICH,
+    ``,
+    esc(matn),
+    ``,
+    AJRATGICH,
+    `<i>— ${esc(adminIsm)} (admin)</i>`,
+  ].join("\n");
+}
+
+/**
+ * Yuborilgandan keyingi hisobot. Yetmaganlar ATAYLAB ism bilan
+ * ko'rsatiladi: "yuborildi" deb qo'yib, aslida yetmagani adminni
+ * chalg'itardi (`shaxsiy()` bloklangan hisobni ham `false` qaytaradi).
+ */
+export function xabarNatijaMatni(kimga: string, yetdi: string[], yetmadi: string[]): string {
+  const s = [
+    `✅ <b>XABAR YUBORILDI</b>`,
+    AJRATGICH,
+    ``,
+    `👥 Kimga: <b>${esc(kimga)}</b>`,
+    `📬 Yetkazildi: <b>${yetdi.length}</b>`,
+  ];
+
+  if (yetdi.length > 0) s.push(`   ${esc(yetdi.join(", "))}`);
+
+  if (yetmadi.length > 0) {
+    s.push(
+      ``,
+      `⚠️ <b>Yetmadi (${yetmadi.length}):</b>`,
+      `   ${esc(yetmadi.join(", "))}`,
+      ``,
+      `<i>Sabab: botga ulanmagan yoki botni bloklagan.</i>`,
+    );
+  }
+
   return s.join("\n");
 }

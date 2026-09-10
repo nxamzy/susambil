@@ -17,9 +17,8 @@
  */
 import type { Api, Bot, Context } from "grammy";
 import { InlineKeyboard } from "grammy";
-import type { InputMediaPhoto } from "grammy/types";
 import { sql, type Room, type Turn, type User } from "../../db/index.js";
-import { config, ISH_TURLARI, type NavbatIshi } from "../../config.js";
+import { config } from "../../config.js";
 import {
   barchaIshlarBajarildimi,
   faolNavbat,
@@ -31,11 +30,12 @@ import {
   navbatniQaytaBoshla,
   navbatniYopish,
   navbatTopshir,
+  ishRasmlari,
 } from "../../core/rotation.js";
+import { faolVazifaKodBoyicha, faolVazifalar, type NavbatVazifasi } from "../../core/vazifalar.js";
 import { tasdiqlovchilar } from "../../core/topshiriq.js";
-import { guruhId, kim, shaxsiy } from "../group.js";
+import { albomYubor, guruhId, kim, shaxsiy } from "../group.js";
 import {
-  bekorKeyboard,
   menyuKeyboard,
   navbatAdminKeyboard,
   navbatBoshlashKeyboard,
@@ -50,9 +50,39 @@ import {
   navbatXabari,
   tasdiqXabari,
   vazifaPaneli,
+  vazifaRasmMatni,
+  vazifaRasmToldiMatni,
   type VazifaHolati,
 } from "../text.js";
-import { holatOl, holatOrnat, holatTozala, sorovniOchir } from "../state.js";
+import {
+  holatOl,
+  holatOrnat,
+  holatTozala,
+  sorovniEslat,
+  sorovniOchir,
+  sorovniTahrirla,
+  type Flow,
+} from "../state.js";
+
+/**
+ * Rasm kutilayotgandagi JONLI xabar klaviaturasi: vazifa tugmalari + bekor.
+ *
+ * Vazifa tugmalari ataylab shu yerda — odam bir vazifani tugatgach
+ * keyingisiga shu xabardan o'tadi va panel qayta chizilmaydi (albom bilan
+ * tashlanganda har rasmga panel yuborish Telegram flood chegarasiga urilardi).
+ *
+ * "✖️ Bekor qilish" ham shart: vazifa to'lgach holat ATAYLAB tozalanmaydi
+ * (albomning kechikkan rasmlari yo'qolmasin uchun), demak odamga uni ochiq
+ * to'xtatish yo'li kerak — aks holda keyingi 15 daqiqada tasodifan
+ * tashlangan rasm ham shu vazifaga tushib ketardi.
+ */
+function rasmKlaviaturasi(
+  turnId: number,
+  ishlar: Turn["ishlar"],
+  vazifalar: NavbatVazifasi[],
+): InlineKeyboard {
+  return vazifaKeyboard(turnId, ishlar, vazifalar).row().text("✖️ Bekor qilish", "bekor");
+}
 
 /** Joriy navbat uchun ko'rinish holati — kutilmoqda/rad/faol. */
 async function vazifaHolatiniAniqla(turn: Turn): Promise<VazifaHolati> {
@@ -79,15 +109,21 @@ async function vazifaHolatiniAniqla(turn: Turn): Promise<VazifaHolati> {
  * (bottom menyudagi tez ish tugmalari) bundan butunlay mustaqil — ular
  * bu tekshiruvga umuman tegishli emas.
  */
-async function panelniYubor(ctx: Context, turn: Turn, room: Room): Promise<void> {
+async function panelniYubor(
+  ctx: Context,
+  turn: Turn,
+  room: Room,
+  vazifalar?: NavbatVazifasi[],
+): Promise<void> {
   if (!majburiyOchildimi(turn.muddat)) {
     await ctx.reply(majburiyQulfMatni(room, turn.muddat), { parse_mode: "HTML" });
     return;
   }
 
+  const ro = vazifalar ?? (await faolVazifalar());
   const status = await vazifaHolatiniAniqla(turn);
-  const matn = vazifaPaneli(room, turn, status);
-  const kb = status.tur === "faol" ? vazifaKeyboard(turn.id, turn.ishlar) : new InlineKeyboard();
+  const matn = vazifaPaneli(room, turn, status, ro);
+  const kb = status.tur === "faol" ? vazifaKeyboard(turn.id, turn.ishlar, ro) : new InlineKeyboard();
   await ctx.reply(matn, { parse_mode: "HTML", reply_markup: kb });
 }
 
@@ -119,15 +155,30 @@ export async function vazifaPaneliniKorsat(ctx: Context): Promise<void> {
 }
 
 /**
- * Vazifa rasmi kelgach chaqiriladi — photos.ts'dan. Rasm YIG'ILADI, darrov
- * yakunlanmaydi: kerakli sondan (`NAVBAT_RASM_SONI`) kamida bittasi qolgan
- * bo'lsa, jarayon holati ("navbat_ish") ATAYLAB tozalanmaydi — keyingi
- * xabar (masalan albom ichidagi navbatdagi rasm) xuddi shu vazifaga davom
- * etadi, odam qayta tugma bosishi shart emas.
+ * Vazifa rasmi kelgach chaqiriladi — photos.ts'dan.
+ *
+ * UCHTA QOIDA, uchalasi ham "albom bilan tashlangan rasm yo'qolmasin"
+ * degan bitta ildizdan (ilgari 9 ta rasmdan 5 tasi yetib borardi):
+ *
+ *  1) Rasm ATOMIK qo'shiladi (`ishBelgila`) va kerakli sondan ORTIG'I HAM
+ *     saqlanadi. Ilgari `kerak` ga yetgach qolganlari ataylab tashlanardi:
+ *     musorga bitta rasm yetarli bo'lgani uchun albomdagi 3 tadan 2 tasi
+ *     yo'qolardi.
+ *
+ *  2) Vazifa to'lgach holat ATAYLAB TOZALANMAYDI. Ilgari `holatTozala()`
+ *     chaqirilardi va albomning qolgan rasmlari hech qanday holatga
+ *     tushmay, mutlaqo jimgina yo'qolardi — ayni "5 tasi tushdi"ning
+ *     sababi. Endi holat turaveradi: keyingi rasm ham shu vazifaga tushadi,
+ *     boshqa vazifa tugmasi bosilsa holat o'zidan almashadi, hech nima
+ *     bosilmasa 15 daqiqada o'zi eskiradi.
+ *
+ *  3) Har rasmga YANGI xabar yozilmaydi — bitta "jonli" xabar tahrirlanib
+ *     boradi (`sorovniTahrirla`). 9 ta rasm ilgari 18 ta xabar tug'dirardi
+ *     va Telegram flood chegarasi ularni tashlab yubora boshlardi.
  */
 export async function vazifaRasmiKeldi(
   ctx: Context,
-  ish: NavbatIshi,
+  kod: string,
   turnId: number,
   fileId: string,
 ): Promise<void> {
@@ -135,7 +186,20 @@ export async function vazifaRasmiKeldi(
   const u = await kim(ctx.from.id);
   if (!u) return;
 
-  const natija = await ishBelgila(turnId, ish, u.id, fileId);
+  const vazifa = await faolVazifaKodBoyicha(kod);
+  if (!vazifa) {
+    // Admin vazifani ro'yxatdan chiqargan, tugmasi esa chatda osilib
+    // qolgan. Rasm hech qayerga yozilmaydi, lekin odam nima bo'lganini
+    // bilishi kerak — jimgina yutib yuborish aynan tuzatayotgan xatomiz.
+    await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+    await holatTozala(ctx.from.id);
+    await ctx.reply("Bu vazifa ro'yxatdan chiqarilgan. Paneldan qaytadan tanlang.");
+    const n = await faolNavbat();
+    if (n) await panelniYubor(ctx, n.turn, n.room);
+    return;
+  }
+
+  const natija = await ishBelgila(turnId, vazifa, u.id, fileId);
   if (!natija) {
     await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
     await holatTozala(ctx.from.id);
@@ -143,40 +207,34 @@ export async function vazifaRasmiKeldi(
     return;
   }
 
-  const t = ISH_TURLARI[ish];
+  const vazifalar = await faolVazifalar();
 
-  if (!natija.yozildimi) {
-    // Vazifa bu rasmdan OLDIN ham to'liq edi — hech narsa yo'qolmadi,
-    // shu rasm shunchaki hisobga olinmadi (odam adashib qayta tashlagan).
-    await ctx.reply(
-      `✅ <b>${t.nom}</b> uchun kerakli ${natija.kerak} ta rasm allaqachon yig'ilgan — bu rasm qo'shimcha, hisobga olinmadi.`,
-      { parse_mode: "HTML" },
-    );
-  } else if (natija.toliq) {
-    await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
-    await holatTozala(ctx.from.id);
-    await ctx.reply(
-      natija.kerak > 1
-        ? `✅ <b>${t.nom}</b> belgilandi — ${natija.soni}/${natija.kerak} rasm qabul qilindi.`
-        : `✅ <b>${t.nom}</b> belgilandi.`,
-      { parse_mode: "HTML" },
-    );
-  } else {
-    // Jarayonni davom ettiramiz — muddatni yangilab qo'yamiz, aks holda
-    // odam bir nechta rasmni sekin-sekin tashlasa 15 daqiqadan keyin holat
-    // eskirib, keyingi rasm hech nimaga bog'lanmay qolishi mumkin edi.
-    await holatOrnat(ctx.from.id, { tur: "navbat_ish", ish, turnId });
-    await ctx.reply(
-      [
-        `📷 <b>${t.nom}</b> — ${natija.soni}/${natija.kerak} rasm qabul qilindi.`,
-        `Yana <b>${natija.kerak - natija.soni} ta</b> kerak — shu yerga tashlang.`,
-      ].join("\n"),
-      { parse_mode: "HTML", reply_markup: bekorKeyboard() },
-    );
+  // Jarayon davom etadi — `sorov` (jonli xabar) saqlanib qoladi, `updated_at`
+  // esa yangilanadi: odam rasmlarni sekin tashlasa ham holat eskirmasin.
+  const oldingi = await holatOl(ctx.from.id);
+  const sorov = oldingi?.sorov;
+  const holat: Flow = { tur: "navbat_ish", kod, turnId, ...(sorov ? { sorov } : {}) };
+  await holatOrnat(ctx.from.id, holat);
+
+  const matn = natija.yozildimi
+    ? vazifaRasmMatni(vazifa, natija.soni)
+    : vazifaRasmToldiMatni(vazifa);
+  const kb = rasmKlaviaturasi(turnId, natija.turn.ishlar, vazifalar);
+
+  // Jonli xabar yo'q bo'lsa (jarayon eskirgan yoki xabar o'chirilgan) —
+  // yangisini yuboramiz va uni jonli xabar qilib belgilaymiz.
+  if (!(await sorovniTahrirla(ctx.api, holat, matn, { reply_markup: kb }))) {
+    const xabar = await ctx.reply(matn, { parse_mode: "HTML", reply_markup: kb });
+    await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
   }
 
-  const n = await faolNavbat();
-  if (n) await panelniYubor(ctx, n.turn, n.room);
+  // Panel FAQAT hammasi bitgan paytda bir marta qayta chiziladi — aynan shu
+  // rasm oxirgi vazifani to'ldirgan bo'lsa. `yangiToldi` atomik qo'shish
+  // natijasi bo'lgani uchun butun albom davomida rosa bir marta `true`.
+  if (natija.yangiToldi && barchaIshlarBajarildimi(natija.turn.ishlar, vazifalar)) {
+    const n = await faolNavbat();
+    if (n) await panelniYubor(ctx, n.turn, n.room, vazifalar);
+  }
 }
 
 async function faqatAdmin(ctx: Context): Promise<User | null> {
@@ -194,7 +252,7 @@ export async function navbatAdminDashboard(ctx: Context): Promise<void> {
     return;
   }
   const status = await vazifaHolatiniAniqla(n.turn);
-  await ctx.reply(navbatAdminPaneli(n.room, n.turn, n.azolar, status), {
+  await ctx.reply(navbatAdminPaneli(n.room, n.turn, n.azolar, status, await faolVazifalar()), {
     parse_mode: "HTML",
     reply_markup: navbatAdminKeyboard(n.turn.id),
   });
@@ -235,9 +293,12 @@ export function register(bot: Bot) {
     await vazifaPaneliniKorsat(ctx);
   });
 
-  bot.callbackQuery(/^navbat_ish:(\d+):(xona|hammom|oshxona|musor)$/, async (ctx) => {
+  // Kalit sifatida `kod` ishlatiladi, `id` emas — kod hech qachon
+  // o'zgarmagani uchun deploydan oldin chatda osilib qolgan eski tugma
+  // (`navbat_ish:12:hammom`) ham xuddi shu handler'ga tushadi.
+  bot.callbackQuery(/^navbat_ish:(\d+):([A-Za-z0-9_]+)$/, async (ctx) => {
     const turnId = Number(ctx.match[1]);
-    const ish = ctx.match[2] as NavbatIshi;
+    const kod = ctx.match[2] as string;
 
     const u = await kim(ctx.from.id);
     if (!u) return ctx.answerCallbackQuery({ text: "Siz ro'yxatda yo'qsiz." });
@@ -256,16 +317,32 @@ export function register(bot: Bot) {
       });
     }
 
+    const vazifa = await faolVazifaKodBoyicha(kod);
+    if (!vazifa) {
+      return ctx.answerCallbackQuery({
+        text: "Bu vazifa ro'yxatdan chiqarilgan.",
+        show_alert: true,
+      });
+    }
+
     await ctx.answerCallbackQuery({ text: "📷 Rasmni shu yerga tashlang." }).catch(() => {});
 
-    const holat = { tur: "navbat_ish", ish, turnId } as const;
+    const holat = { tur: "navbat_ish", kod, turnId } as const;
     await holatOrnat(ctx.from.id, holat);
 
-    const t = ISH_TURLARI[ish];
-    await ctx.reply(
-      [`${t.emoji} <b>${t.nom}</b>`, ``, `📷 Rasmini shu yerga tashlang.`].join("\n"),
-      { parse_mode: "HTML", reply_markup: bekorKeyboard() },
-    );
+    // Shu vazifada allaqachon rasm bo'lishi mumkin (odam qaytib kelgan) —
+    // shuning uchun "0 dan boshlaymiz" deb emas, joriy sanoqdan boshlaymiz.
+    const vazifalar = await faolVazifalar();
+    const soni = ishRasmlari(n.turn.ishlar[kod]).length;
+
+    // Bu xabar keyin har kelgan rasmda TAHRIRLANADI, qayta yuborilmaydi —
+    // shuning uchun unga vazifa tugmalari ham qo'yiladi: odam bir vazifani
+    // tugatgach keyingisiga shu yerdan o'tadi, panel qayta chizilmaydi.
+    const xabar = await ctx.reply(vazifaRasmMatni(vazifa, soni), {
+      parse_mode: "HTML",
+      reply_markup: rasmKlaviaturasi(turnId, n.turn.ishlar, vazifalar),
+    });
+    await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
   });
 
   bot.callbackQuery(/^navbat_topshir:(\d+)$/, async (ctx) => {
@@ -277,7 +354,8 @@ export function register(bot: Bot) {
     if (!n || n.turn.id !== turnId || u.room_id !== n.room.id) {
       return ctx.answerCallbackQuery({ text: "Bu sizning navbatingiz emas.", show_alert: true });
     }
-    if (!barchaIshlarBajarildimi(n.turn.ishlar)) {
+    const vazifalar = await faolVazifalar();
+    if (!barchaIshlarBajarildimi(n.turn.ishlar, vazifalar)) {
       return ctx.answerCallbackQuery({ text: "Hali barcha vazifalar bajarilmagan.", show_alert: true });
     }
     if (await navbatFaolTopshirigi(turnId)) {
@@ -286,20 +364,22 @@ export function register(bot: Bot) {
 
     await ctx.answerCallbackQuery({ text: "✅ Topshirildi!" }).catch(() => {});
 
-    const sub = await navbatTopshir(n.turn, u.id);
-    await panelniYubor(ctx, n.turn, n.room);
+    const sub = await navbatTopshir(n.turn, u.id, vazifalar);
+    // Jarayon tugadi — jonli "rasm tashlang" xabari endi kerak emas.
+    await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+    await holatTozala(ctx.from.id);
+    await panelniYubor(ctx, n.turn, n.room, vazifalar);
 
     // Guruhga xuddi eski (rasm-to'plash) mexanizmi bilan bir xil xabar —
     // ikkinchi tasdiqlash tizimi yaratilmagan, faqat tetiklovchisi boshqa.
     const chatId = await guruhId();
     if (!chatId) return;
 
-    if (sub.photo_ids.length > 0) {
-      const media: InputMediaPhoto[] = sub.photo_ids
-        .slice(0, 10)
-        .map((file_id) => ({ type: "photo", media: file_id }));
-      await ctx.api.sendMediaGroup(chatId, media).catch(() => {});
-    }
+    // Rasm 10 tadan ko'p bo'lishi endi normal holat (vazifalar soni ham,
+    // har biriga kerakli rasm ham admin qo'lida) — `albomYubor` ularni
+    // bo'lib yuboradi, ilgarigi `.slice(0, 10)` esa ortiqchasini guruhga
+    // umuman chiqarmasdi.
+    await albomYubor(ctx.api, chatId, sub.photo_ids);
 
     const xabar = await ctx.api.sendMessage(
       chatId,

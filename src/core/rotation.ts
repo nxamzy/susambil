@@ -7,7 +7,8 @@ import {
   type TurnIshlar,
   type User,
 } from "../db/index.js";
-import { config, NAVBAT_ISHLARI, NAVBAT_RASM_SONI, type NavbatIshi } from "../config.js";
+import { config, RASM_MAX } from "../config.js";
+import type { NavbatVazifasi } from "./vazifalar.js";
 import { navbatBalli } from "./rating.js";
 
 const KUN_MS = 24 * 60 * 60 * 1000;
@@ -247,87 +248,134 @@ export function ishRasmlari(belgi: TurnIshBelgisi | undefined): string[] {
 
 export type IshBelgilashNatija = {
   turn: Turn;
-  /** Shu vazifa uchun kerakli barcha rasmlar yig'ildimi. */
+  /** Shu vazifa uchun kerakli (MINIMUM) rasm yig'ilib bo'ldimi. */
   toliq: boolean;
+  /**
+   * AYNAN shu rasm vazifani birinchi marta to'ldirdimi. Qo'shish atomik
+   * bo'lgani uchun bu butun albom davomida ROSA BIR MARTA `true` bo'ladi —
+   * chaqiruvchi panelni shunga qarab bir marta qayta chizadi, har rasmga
+   * emas (albom bilan 9 ta rasm tashlanganda 18 ta xabar ketardi va
+   * Telegram flood chegarasiga urilardi).
+   */
+  yangiToldi: boolean;
   soni: number;
   kerak: number;
   /**
-   * Shu chaqiruvdagi rasm haqiqatan saqlandimi. `false` — vazifa bu
-   * rasmdan OLDIN ham allaqachon to'liq bo'lgan (masalan odam adashib
-   * kerakidan ortiq rasm tashlab yuborsa): rasm e'tiborsiz qoldirilgan,
-   * lekin hech narsa yo'qolmagan — mavjud to'plam o'zgarishsiz qoladi.
+   * Shu chaqiruvdagi rasm saqlandimi. `false` — faqat QATTIQ chegaraga
+   * (`config.RASM_MAX`) yetilgan holat. Ilgari bu "kerakli sondan ortiq"
+   * degani ham edi: musorga 1 ta rasm yetarli bo'lgani uchun albomdagi
+   * qolgan 2 tasi ataylab tashlab yuborilardi. Endi ortiqcha rasm ham
+   * saqlanadi — dalil ko'p bo'lgani hech kimga zarar qilmaydi, yo'qolgani
+   * esa qiladi.
    */
   yozildimi: boolean;
 };
 
 /**
- * Bitta vazifaga (xona/hammom/oshxona/musor) rasm qo'shadi — YOZIB
- * YUBORMAYDI, YIG'ADI. Har bir vazifaga nechta rasm kerakligi
- * `NAVBAT_RASM_SONI`dan olinadi (hammom uchun 3, qolganlariga 1).
+ * Bitta vazifaga rasm qo'shadi — YOZIB YUBORMAYDI, YIG'ADI. Nechta rasm
+ * kerakligi `navbat_vazifalari.rasm_soni` dan keladi (admin panelidan
+ * o'zgartiriladi), bu yerda hech qanday qattiq son yo'q.
  *
- * Bitta SQL bilan atomik qo'shiladi (o'qib-yozish emas) — aks holda odam
- * bir nechta rasmni albom sifatida yuborsa (Telegram ularni tez-tez ketma-
- * ket alohida yangilanish sifatida yetkazadi), ikkita chaqiruv bir xil
- * eski qiymatni o'qib, bir-birining ustidan yozib, rasm yo'qolib qolishi
- * mumkin edi. `jsonb_array_length(...) < kerak` sharti WHERE'da turgani
- * uchun kerakdan ortiq rasm ham qo'shilmaydi — qayta-qayta xato bosilsa
- * ham xavfsiz.
+ * Bitta SQL bilan atomik qo'shiladi (o'qib-yozish emas) — Telegram albomni
+ * bir nechta ALOHIDA yangilanish qilib, ko'pincha bir vaqtda yetkazadi;
+ * o'qib-yozish bo'lsa ikkita chaqiruv bir xil eski qiymatni o'qib,
+ * bir-birining ustidan yozib yuborardi.
+ *
+ * `COALESCE` ichidagi `photo_id` bo'limi eski (bitta rasmli) formatdagi
+ * yozuvni yangi massivga ko'chiradi — bo'lmasa migratsiyadan oldin
+ * belgilangan vazifaga yangi rasm tushganda eskisi yo'qolib ketardi.
  *
  * Faqat 'faol' navbatda ishlaydi; yopilgan navbatga eski callback orqali
- * urinilsa yoki vazifa allaqachon to'liq bo'lsa `null` emas, joriy holat
- * qaytadi (`toliq: true`) — chaqiruvchi buni "yozilmadi" deb emas,
- * "allaqachon tayyor" deb ko'rsatishi kerak.
+ * urinilsa `null` qaytadi.
  */
 export async function ishBelgila(
   turnId: number,
-  ish: NavbatIshi,
+  vazifa: NavbatVazifasi,
   userId: number,
   photoId: string,
 ): Promise<IshBelgilashNatija | null> {
-  const kerak = NAVBAT_RASM_SONI[ish];
+  const kod = vazifa.kod;
+  const kerak = vazifa.rasm_soni;
 
   const [yangilangan] = await sql<Turn[]>`
     UPDATE turns
     SET ishlar = jsonb_set(
       ishlar,
-      ARRAY[${ish}]::text[],
+      ARRAY[${kod}]::text[],
       jsonb_build_object(
-        'photo_ids', COALESCE(ishlar -> ${ish} -> 'photo_ids', '[]'::jsonb) || to_jsonb(${photoId}::text),
+        'photo_ids', ${mavjudRasmlar(kod)} || to_jsonb(${photoId}::text),
         'user_id', ${userId}::int,
         'vaqt', now()
       ),
       true
     )
     WHERE id = ${turnId} AND holat = 'faol'
-      AND jsonb_array_length(COALESCE(ishlar -> ${ish} -> 'photo_ids', '[]'::jsonb)) < ${kerak}
+      AND jsonb_array_length(${mavjudRasmlar(kod)}) < ${RASM_MAX}
     RETURNING *
   `;
 
   if (yangilangan) {
-    const soni = ishRasmlari(yangilangan.ishlar[ish]).length;
-    return { turn: yangilangan, toliq: soni >= kerak, soni, kerak, yozildimi: true };
+    const soni = ishRasmlari(yangilangan.ishlar[kod]).length;
+    return { turn: yangilangan, toliq: soni >= kerak, yangiToldi: soni === kerak, soni, kerak, yozildimi: true };
   }
 
-  // Yozilmadi — navbat yopilganmi yoki vazifa allaqachon to'liqmi, aniqlab
-  // beramiz (ikkalasi ham chaqiruvchiga boshqa-boshqa xabar bilan kerak).
+  // Yozilmadi — navbat yopilganmi yoki qattiq chegaraga yetilganmi.
   const [joriy] = await sql<Turn[]>`SELECT * FROM turns WHERE id = ${turnId} AND holat = 'faol'`;
   if (!joriy) return null;
 
-  const soni = ishRasmlari(joriy.ishlar[ish]).length;
-  return { turn: joriy, toliq: soni >= kerak, soni, kerak, yozildimi: false };
+  const soni = ishRasmlari(joriy.ishlar[kod]).length;
+  return { turn: joriy, toliq: soni >= kerak, yangiToldi: false, soni, kerak, yozildimi: false };
 }
 
-/** Sof funksiyalar — bazasiz testlanadi. */
-export function barchaIshlarBajarildimi(ishlar: TurnIshlar): boolean {
-  return NAVBAT_ISHLARI.every((k) => ishRasmlari(ishlar[k]).length >= NAVBAT_RASM_SONI[k]);
+/**
+ * Vazifadagi hozirgi rasmlar massivi — yangi (`photo_ids`) formatni, u
+ * bo'lmasa eski bitta rasmli (`photo_id`) formatni o'qiydi.
+ *
+ * FUNKSIYA, konstanta emas: postgres.js fragment sifatida inline qilinganda
+ * Query obyektini o'zgartiradi, shuning uchun bitta nusxani ikki joyda
+ * ishlatib bo'lmaydi (CLAUDE.md dagi qoida).
+ */
+function mavjudRasmlar(kod: string) {
+  return sql`COALESCE(
+    ishlar -> ${kod} -> 'photo_ids',
+    CASE WHEN jsonb_exists(ishlar -> ${kod}, 'photo_id')
+         THEN jsonb_build_array(ishlar -> ${kod} -> 'photo_id')
+         ELSE '[]'::jsonb END
+  )`;
 }
 
-export function qolganIshlar(ishlar: TurnIshlar): NavbatIshi[] {
-  return NAVBAT_ISHLARI.filter((k) => ishRasmlari(ishlar[k]).length < NAVBAT_RASM_SONI[k]);
+/**
+ * Sof funksiyalar — bazasiz testlanadi. Vazifalar ro'yxati ATAYLAB
+ * parametr: shunda bu yerda ham, `bot/text.ts`da ham baza chaqiruvi
+ * bo'lmaydi, ro'yxatni esa chaqiruvchi bir marta o'qib hammasiga uzatadi.
+ */
+export function barchaIshlarBajarildimi(ishlar: TurnIshlar, vazifalar: NavbatVazifasi[]): boolean {
+  // Bo'sh ro'yxatda `every` `true` qaytaradi — admin hamma vazifani
+  // o'chirib qo'ysa navbatni hech narsa qilmasdan yakunlash mumkin bo'lardi.
+  if (vazifalar.length === 0) return false;
+  return vazifalar.every((v) => ishRasmlari(ishlar[v.kod]).length >= v.rasm_soni);
 }
 
-export function bajarilganIshlarSoni(ishlar: TurnIshlar): number {
-  return NAVBAT_ISHLARI.length - qolganIshlar(ishlar).length;
+export function qolganIshlar(ishlar: TurnIshlar, vazifalar: NavbatVazifasi[]): NavbatVazifasi[] {
+  return vazifalar.filter((v) => ishRasmlari(ishlar[v.kod]).length < v.rasm_soni);
+}
+
+export function bajarilganIshlarSoni(ishlar: TurnIshlar, vazifalar: NavbatVazifasi[]): number {
+  return vazifalar.length - qolganIshlar(ishlar, vazifalar).length;
+}
+
+/**
+ * Navbatda yig'ilgan BARCHA rasmlar — avval joriy vazifalar tartibida,
+ * keyin ro'yxatdan chiqarilgan (nofaol qilingan) vazifalarniki.
+ *
+ * Ikkinchi qism muhim: admin navbat o'rtasida "Hammom"ni ikkiga bo'lsa,
+ * eski `hammom` kaliti endi hech qaysi faol vazifaga to'g'ri kelmaydi —
+ * lekin unga tashlangan rasm ham dalil, guruhga baribir chiqishi kerak.
+ */
+export function navbatRasmlari(ishlar: TurnIshlar, vazifalar: NavbatVazifasi[]): string[] {
+  const kodlar = vazifalar.map((v) => v.kod);
+  const qolganKalitlar = Object.keys(ishlar).filter((k) => !kodlar.includes(k));
+  return [...kodlar, ...qolganKalitlar].flatMap((k) => ishRasmlari(ishlar[k]));
 }
 
 /**
@@ -361,8 +409,12 @@ export async function navbatFaolTopshirigi(turnId: number): Promise<Submission |
  * bosgan odam (guruh xabarida shu ko'rsatiladi, xuddi eski "kim yukladi"
  * bilan bir xil rolda).
  */
-export async function navbatTopshir(turn: Turn, finalizerUserId: number): Promise<Submission> {
-  const photoIds = NAVBAT_ISHLARI.flatMap((k) => ishRasmlari(turn.ishlar[k]));
+export async function navbatTopshir(
+  turn: Turn,
+  finalizerUserId: number,
+  vazifalar: NavbatVazifasi[],
+): Promise<Submission> {
+  const photoIds = navbatRasmlari(turn.ishlar, vazifalar);
 
   const [sub] = await sql<Submission[]>`
     INSERT INTO submissions (turn_id, user_id, photo_ids, tur, holat)

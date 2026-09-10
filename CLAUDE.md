@@ -50,6 +50,102 @@ catch-all `messages.register(bot)` last.
 `bot.use` middleware wrapper inside `botYarat()`. An uncaught error would return 500 and make
 Telegram redeliver the update forever. Never let a handler throw past that wrapper.
 
+## Navbat vazifalari bazadan keladi, koddan emas
+
+`config.ts` ichida ilgari `NAVBAT_ISHLARI` (literal union) va
+`NAVBAT_RASM_SONI` turardi. Ular olib tashlandi: ro'yxat endi
+`navbat_vazifalari` jadvalida, `core/vazifalar.ts` orqali o'qiladi va admin
+panelidan (`bot/handlers/vazifalar.ts`, "⚙️ Vazifalar") boshqariladi — xuddi
+`tolov_talab`/`karta` `settings`ga ko'chirilgani kabi. Standart to'rttalik
+`db/schema.sql` oxirida bir marta seed qilinadi.
+
+Sabab konkret edi: uyda ikkita hammom bor, `NavbatIshi` esa literal union
+bo'lgani uchun beshinchi vazifani kodni tahrirlamasdan qo'shib bo'lmasdi.
+
+Ikkita qoida, ikkalasi ham "tarix yo'qolmaydi" falsafasidan:
+
+- **`kod` yaratilgach o'zgarmaydi.** U — `turns.ishlar` JSONB kaliti va
+  tugma callback'i (`navbat_ish:<turnId>:<kod>`). Nomi o'zgarsa ham o'sha
+  navbatda tashlangan rasmlar joyida qoladi; deploydan oldin chatda osilib
+  qolgan eski tugma ham ishlayveradi.
+- **Vazifa o'chirilmaydi, `faol = false` bo'ladi.** O'chirilsa eski
+  navbatlardagi kalitlar nimaga tegishli ekani bilinmay qolardi. Ro'yxatdan
+  chiqarilgan vazifaning rasmlari `navbatRasmlari()` orqali baribir guruhga
+  chiqadi — admin navbat o'rtasida "Hammom"ni ikkiga bo'lsa ham dalil
+  yo'qolmaydi.
+
+`bot/text.ts` va `bot/keyboards.ts` hamon sof: vazifalar ro'yxati ularga
+PARAMETR sifatida beriladi, ular o'zi bazaga murojaat qilmaydi. Shu sababli
+`core/rotation.ts`dagi `barchaIshlarBajarildimi`/`qolganIshlar`/
+`bajarilganIshlarSoni` ham ikkinchi argument (`vazifalar`) oladi va bazasiz
+testlanaveradi.
+
+## Rasm yo'qolishi: uchta sabab, uchta qoida
+
+"9 ta rasm tashlasam 5 tasi tushyapti" — Telegram albomni bir nechta
+ALOHIDA yangilanish qilib, ko'pincha bir vaqtda yetkazgani uchun. Uchta
+mustaqil sabab bor edi, uchalasi ham tuzatilgan; yangi kod yozganda
+uchalasini ham buzmang:
+
+1. **Kerakli sondan ortiq rasm rad etilmaydi.** `rasm_soni` — MINIMUM
+   ("shuncha kelsa bajarilgan"), maksimum esa `config.RASM_MAX` (10).
+   Ilgari `ishBelgila` dagi `jsonb_array_length(...) < kerak` sharti
+   ortiqchasini ataylab tashlab yuborardi: musorga bitta rasm yetarli
+   bo'lgani uchun albomdagi 3 tadan 2 tasi yo'qolardi.
+
+2. **Vazifa to'lgach `flow_state` TOZALANMAYDI.** Ilgari `holatTozala()`
+   chaqirilardi va albomning qolgan rasmlari hech qanday holatga tushmay,
+   mutlaqo jimgina yo'qolardi. Endi holat turaveradi — keyingi rasm ham shu
+   vazifaga tushadi, boshqa vazifa tugmasi bosilsa holat o'zidan almashadi,
+   hech nima bosilmasa 15 daqiqada eskiradi. Holat faqat yakuniy
+   topshirishda, "✖️ Bekor qilish"da yoki navbat yopilganda tozalanadi.
+
+3. **Har rasmga yangi xabar YOZILMAYDI.** Bitta "jonli" xabar tahrirlanib
+   boradi (`state.ts` `sorovniTahrirla`) — 9 ta rasm ilgari 18 ta xabar
+   tug'dirardi va Telegram flood chegarasi ularni tashlay boshlardi. Panel
+   esa faqat OXIRGI vazifa to'lganda bir marta qayta chiziladi:
+   `ishBelgila` atomik bo'lgani uchun `yangiToldi` butun albom davomida
+   rosa bir marta `true` bo'ladi.
+
+Qo'shimcha ish oqimida (`handlers/photos.ts`) xuddi shu poyga bor edi —
+rasmlar `flow_state` ichida o'qib-yozish bilan yig'ilardi. U ham atomik
+qilindi (`state.ts` `ishRasminiQosh`), va `sorov`ni yozish uchun butun
+holatni bosib yozmaydigan `sorovniYoz` ishlatiladi.
+
+Guruhga yuborishda `.slice(0, 10)` o'rniga `group.ts` `albomYubor()` —
+rasm 10 tadan ko'p bo'lsa bir nechta albomga bo'linadi (`GURUH_ALBOM_MAX`
+gacha). Ilgari 10 tadan ortig'i bazada qolsa ham tasdiqlovchiga
+ko'rinmasdi.
+
+## Admin xabari — e'lon, ikkinchi tasdiqlash tizimi emas
+
+`bot/handlers/xabar.ts`: admin o'zi yozgan matnni navbatdagi xonaga /
+hammaga / bitta xonaga / bitta odamga / guruhga yuboradi. Avtomatik
+eslatmalar qat'iy matnli, uydagi kutilmagan holatni ("musor navbatdan
+oldin to'lib ketdi") ayta olmaydi — shuning uchun bor.
+
+ATAYLAB hech qanday "bajarildi" holati, ball yoki tasdiq yo'q. Ish
+qilinganini ko'rsatish yo'li o'zgarmagan: a'zo mavjud ish tugmasini bosadi
+("♻️ Musor tashladim"), u `submissions`ga tushadi va guruh tasdiqlaydi.
+Yangi topshiriq turi qo'shishdan oldin shu yo'lni kengaytirish mumkinmi
+degan savolga javob bering — parallel oqim yaratmang.
+
+Yetmagan odamlar hisobotda ISM bilan ko'rsatiladi: `shaxsiy()` bloklangan
+hisobni ham `false` qaytaradi, "yuborildi" deb qo'yish adminni
+chalg'itardi.
+
+## Vercel: never `sql.end()` inside a request handler
+
+`db/index.ts`'s `sql` is one connection pool at module scope, shared by *every* invocation on a
+warm instance. `api/webhook.ts` already treated it that way; `api/cron.ts` did not — it called
+`sql.end({ timeout: 5 })` in a `finally`, written back when the project still assumed one
+connection per request. In production that closed the shared pool out from under other requests
+still in flight on the same instance, producing a `CONNECTION_ENDED` cascade. Fixed by deleting
+the call and leaning on `postgres.js`'s own `idle_timeout`.
+
+If you add a new `api/*.ts` entry point, do not add cleanup that tears down a resource other
+concurrent invocations might still be using.
+
 ## Layering
 
 | Layer | Rule |

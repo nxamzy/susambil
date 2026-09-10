@@ -1,9 +1,10 @@
 import type { Bot, Api, Context } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { sql, type Room } from "../../db/index.js";
-import { config, ISH_TURLARI, NAVBAT_ISHLARI, SEKIN_ISHLAR, BALLAR, type IshTuri } from "../../config.js";
+import { config, ISH_TURLARI, SEKIN_ISHLAR, BALLAR, type IshTuri } from "../../config.js";
 import { ochiqTopshiriqlar } from "../../core/topshiriq.js";
 import { faolNavbat, joriyNavbatchimi, kelgusiTartib, xonaAzolari } from "../../core/rotation.js";
+import { faolVazifalar } from "../../core/vazifalar.js";
 import { reyting, orinlarniHisobla, xonaHolati, tarix } from "../../core/rating.js";
 import { jamiXarajat, oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
 import { foydalanuvchiTolovHolati, tolovQabulQiluvchi } from "../../core/tolov.js";
@@ -68,11 +69,15 @@ async function navbatMatni(): Promise<string> {
 
   const s = [navbatXabari(n.room, n.azolar, n.turn.muddat)];
 
+  const vazifalar = await faolVazifalar();
   s.push(
     ``,
     AJRATGICH,
     `<b>BAJARILISHI KERAK</b>`,
-    ...NAVBAT_ISHLARI.map((t) => `   ${ISH_TURLARI[t].emoji} ${ISH_TURLARI[t].nom}`),
+    ...vazifalar.map(
+      (v) =>
+        `   ${esc(v.emoji)} ${esc(v.nom)}` + (v.rasm_soni > 1 ? ` — ${v.rasm_soni} ta rasm` : ""),
+    ),
     ``,
     `👤 Navbatdagi xona a'zolari botda "Mening Navbatim"`,
     `   orqali har birini alohida belgilaydi.`,
@@ -297,7 +302,7 @@ export async function korinish(ctx: Context, nom: Korinish): Promise<void> {
     case "boshqaish":
       return javob(ctx, boshqaIshMatni(), { reply_markup: boshqaIshKeyboard() });
     case "tanishtirish":
-      return javob(ctx, tanishtirish(), { reply_markup: panelgaKeyboard() });
+      return javob(ctx, tanishtirish(await faolVazifalar()), { reply_markup: panelgaKeyboard() });
     case "panel":
       return javob(ctx, await panelMatni(), { reply_markup: panelKeyboard() });
   }
@@ -441,7 +446,7 @@ export function register(bot: Bot) {
     await ctx
       .editMessageText(`✅ <b>Xush kelibsiz, ${esc(ism)}!</b>`, { parse_mode: "HTML" })
       .catch(() => {});
-    await ctx.reply(tanishtirish(), { parse_mode: "HTML" });
+    await ctx.reply(tanishtirish(await faolVazifalar()), { parse_mode: "HTML" });
 
     // Bu yerda room_id emas, xona RAQAMI bor — faolNavbat() bilan
     // to'g'ridan-to'g'ri solishtiramiz (joriyNavbatchimi id kutadi).

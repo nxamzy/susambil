@@ -1,5 +1,5 @@
 import postgres from "postgres";
-import { config, type Ishonch, type NavbatIshi, type ShikoyatJoyi } from "../config.js";
+import { config, type Ishonch, type ShikoyatJoyi } from "../config.js";
 
 /** Neon'ning "-pooler" manzili PgBouncer (transaction mode) orqali ishlaydi —
  *  u prepared statement'larni qo'llab-quvvatlamaydi, shuning uchun o'chiramiz. */
@@ -41,7 +41,14 @@ export type TurnIshBelgisi = {
   vaqt: string;
 };
 
-export type TurnIshlar = Partial<Record<NavbatIshi, TurnIshBelgisi>>;
+/**
+ * Vazifa kodi → o'sha vazifaning belgisi. Kalitlar `navbat_vazifalari.kod`
+ * qiymatlari — ilgari literal union (`NavbatIshi`) edi, endi oddiy matn:
+ * vazifalar ro'yxati bazadan keladi, kod esa TypeScript'ga oldindan
+ * ma'lum bo'lishi mumkin emas. Ro'yxatdan chiqarilgan (nofaol qilingan)
+ * vazifaning kaliti ham shu yerda qolaveradi — hech qachon o'chirilmaydi.
+ */
+export type TurnIshlar = Record<string, TurnIshBelgisi | undefined>;
 
 export type Turn = {
   id: number;
@@ -53,7 +60,7 @@ export type Turn = {
   kechikkan_kun: number;
   /** Muddat o'tgach kunda 1 marta yuboriladigan GURUH ogohlantirishi — o'zgarmagan eski maydon. */
   oxirgi_ping: Date | null;
-  /** Har bir vazifaning (xona/hammom/oshxona/musor) rasmi va kim bajargani */
+  /** Har bir vazifaning rasmlari va kim bajargani — kalit `navbat_vazifalari.kod` */
   ishlar: TurnIshlar;
   /** "Oxirgi kun" oynasida 5 soatda bir yuboriladigan SHAXSIY eslatmaning oxirgi vaqti */
   oxirgi_eslatma: Date | null;

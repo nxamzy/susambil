@@ -15,6 +15,8 @@ import { kutayotganlarniJonat } from "./reports.js";
 import { tolovDashboardKorsat } from "./tolov.js";
 import { navbatAdminDashboard } from "./navbat.js";
 import { adminPanelKorsat } from "./adminUsers.js";
+import { vazifalarKorsat } from "./vazifalar.js";
+import { xabarKimKeyboard } from "../keyboards.js";
 
 async function adminmi(ctx: { from?: { id: number } }): Promise<User | null> {
   const u = await kim(ctx.from?.id);
@@ -78,6 +80,9 @@ export function register(bot: Bot) {
         "/navbatber 2 — navbatni 2-xonaga o'tkazish",
         "/navbatboshla — navbat yo'q bo'lsa boshlash",
         "/joriynavbat — joriy navbat holati va boshqaruvi",
+        "/vazifalar — navbat vazifalari ro'yxati (ikkinchi hammom qo'shish,",
+        "  har biriga nechta rasm kerakligi)",
+        "/xabar — a'zolarga o'zingiz yozgan xabarni yuborish",
         "/tolovlar — shu oylik kvartira to'lovlari dashboardi",
         "/tolovtalab 900000 — har kishidan talab summasini o'zgartirish",
         "  (faqat kelgusi oylarga ta'sir qiladi, o'tgan oy tarixi o'zgarmaydi)",
@@ -234,6 +239,15 @@ export function register(bot: Bot) {
     await navbatAdminDashboard(ctx);
   });
 
+  /**
+   * Navbat vazifalari — ro'yxat, rasm soni, tartib. Admin Panel →
+   * "⚙️ Vazifalar" bilan bir xil ko'rinish, ikkinchi nusxa yo'q.
+   */
+  bot.command("vazifalar", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+    await vazifalarKorsat(ctx);
+  });
+
   // Kvartira to'lovlari — umumiy ko'rinish + tasdiq kutayotganlar ro'yxati.
   // reports.ts'dagi /shikoyatlar bilan bir xil naqsh, ikkinchi nusxa yo'q.
   bot.command("tolovlar", async (ctx) => {
@@ -305,6 +319,18 @@ export function register(bot: Bot) {
         : `✅ Jarima: muddatda yetmagan summaning <b>${foiz}%</b>i.`,
       { parse_mode: "HTML" },
     );
+  });
+
+  /**
+   * A'zolarga erkin xabar yuborish. Admin Panel → "📣 Xabar yuborish"
+   * bilan bir xil oqim (`handlers/xabar.ts`), bu yerda faqat kirish nuqtasi.
+   */
+  bot.command("xabar", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+    await ctx.reply("📣 <b>Kimga yuboramiz?</b>", {
+      parse_mode: "HTML",
+      reply_markup: xabarKimKeyboard(),
+    });
   });
 
   // To'liq foydalanuvchi boshqaruvi — qo'shish/tahrirlash/o'chirish/ball

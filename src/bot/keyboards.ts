@@ -2,8 +2,7 @@ import { InlineKeyboard, Keyboard } from "grammy";
 import {
   ISH_TURLARI,
   ISHONCH_DARAJASI,
-  NAVBAT_ISHLARI,
-  NAVBAT_RASM_SONI,
+  RASM_MAX,
   SEKIN_ISHLAR,
   SHIKOYAT_JOYLARI,
   TEZ_ISHLAR,
@@ -15,6 +14,7 @@ import type { TurnIshlar, User } from "../db/index.js";
 import type { ReportToliq } from "../core/reports.js";
 import type { SiklOdam, TolovDashboard } from "../core/tolov.js";
 import { ishRasmlari } from "../core/rotation.js";
+import type { NavbatVazifasi } from "../core/vazifalar.js";
 import type { FoydalanuvchiToliq } from "../core/users.js";
 
 /** Ish tugmasining yozuvi — inline va doimiy menyuda bir xil bo'lsin. */
@@ -374,20 +374,25 @@ export function tolovFoydalanuvchiKeyboard(userId: number): InlineKeyboard {
  * chiqmaydi — talab qilingan vazifalarsiz yakunlab bo'lmasligi shu bilan
  * kafolatlanadi (server tomonda ham tekshiriladi).
  */
-export function vazifaKeyboard(turnId: number, ishlar: TurnIshlar): InlineKeyboard {
+export function vazifaKeyboard(
+  turnId: number,
+  ishlar: TurnIshlar,
+  vazifalar: NavbatVazifasi[],
+): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (const t of NAVBAT_ISHLARI) {
-    const i = ISH_TURLARI[t];
-    const kerak = NAVBAT_RASM_SONI[t];
-    const soni = ishRasmlari(ishlar[t]).length;
-    const bajarildi = soni >= kerak;
-    const son = kerak > 1 ? ` (${soni}/${kerak})` : "";
+  for (const v of vazifalar) {
+    const soni = ishRasmlari(ishlar[v.kod]).length;
+    const bajarildi = soni >= v.rasm_soni;
+    const son = v.rasm_soni > 1 || soni > 1 ? ` (${soni}/${v.rasm_soni})` : "";
+    // Callback'da `kod` ishlatiladi, `id` emas: kod hech qachon o'zgarmaydi,
+    // shuning uchun deploydan oldin chatda osilib qolgan eski tugma ham
+    // (masalan `navbat_ish:12:hammom`) ishlayveradi.
     kb.text(
-      bajarildi ? `✅ ${i.nom}${son} — bajarildi` : `${i.emoji} ${i.nom}${son}`,
-      `navbat_ish:${turnId}:${t}`,
+      bajarildi ? `✅ ${v.nom}${son} — bajarildi` : `${v.emoji} ${v.nom}${son}`,
+      `navbat_ish:${turnId}:${v.kod}`,
     ).row();
   }
-  if (NAVBAT_ISHLARI.every((t) => ishRasmlari(ishlar[t]).length >= NAVBAT_RASM_SONI[t])) {
+  if (vazifalar.length > 0 && vazifalar.every((v) => ishRasmlari(ishlar[v.kod]).length >= v.rasm_soni)) {
     kb.text("📸 Yakuniy topshirish", `navbat_topshir:${turnId}`);
   }
   return kb;
@@ -402,12 +407,17 @@ export function navbatAdminKeyboard(turnId: number): InlineKeyboard {
     .row()
     .text("🔔 Hozir eslatish", `navbat_admin_eslatma:${turnId}`)
     .row()
-    .text("🔀 Boshqa xonaga o'tkazish", "admin_navbat_xonaga");
+    .text("🔀 Boshqa xonaga o'tkazish", "admin_navbat_xonaga")
+    .row()
+    .text("⚙️ Vazifalarni sozlash", "vazifalar");
 }
 
 /** Admin: hali navbat boshlanmagan bo'lsa — boshlash tugmasi. */
 export function navbatBoshlashKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text("▶️ Navbatni boshlash", "admin_navbat_boshla");
+  return new InlineKeyboard()
+    .text("▶️ Navbatni boshlash", "admin_navbat_boshla")
+    .row()
+    .text("⚙️ Vazifalarni sozlash", "vazifalar");
 }
 
 /** Admin: navbatni qo'lda qaysi xonaga o'tkazishni tanlash (eski /navbatber). */
@@ -427,6 +437,9 @@ export function adminPanelKeyboard(): InlineKeyboard {
     .text("🧹 Navbat", "admin_link_navbat")
     .row()
     .text("🚨 Shikoyatlar", "admin_link_shikoyatlar")
+    .row()
+    .text("📣 Xabar yuborish", "xabar")
+    .text("⚙️ Vazifalar", "vazifalar")
     .row()
     .text("⚠️ Kelishmovchiliklar", "admin_conflicts")
     .text("📜 Tarix", "admin_logs");
@@ -514,4 +527,103 @@ export function ochirishTasdiqKeyboard(userId: number): InlineKeyboard {
   return new InlineKeyboard()
     .text("⚠️ Ha, butunlay o'chir", `admin_delete_ok:${userId}`)
     .text("❌ Yo'q", `admin_delete_yoq:${userId}`);
+}
+
+// ---------------------------------------------------------------------------
+// NAVBAT VAZIFALARINI SOZLASH (admin)
+// ---------------------------------------------------------------------------
+
+/** Vazifalar ro'yxati — har biri alohida tugmada, holati yozuvida. */
+export function vazifalarKeyboard(vazifalar: NavbatVazifasi[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const v of vazifalar) {
+    const belgi = v.faol ? v.emoji : "⛔️";
+    kb.text(`${belgi} ${v.nom} · ${v.rasm_soni} rasm`, `vazifa:${v.id}`).row();
+  }
+  kb.text("➕ Yangi vazifa", "vazifa_yangi").row();
+  kb.text("⬅️ Admin panel", "admin_panel");
+  return kb;
+}
+
+/**
+ * Bitta vazifa kartochkasi. ⬆️/⬇️ faqat ko'chirish mumkin bo'lganda
+ * ko'rinadi — bosilsa hech nima qilmaydigan tugma chalg'itadi.
+ */
+export function vazifaDetalKeyboard(
+  v: NavbatVazifasi,
+  yuqoriBor: boolean,
+  pastBor: boolean,
+): InlineKeyboard {
+  const kb = new InlineKeyboard()
+    .text("✏️ Nomi", `vazifa_nom:${v.id}`)
+    .text("📷 Rasm soni", `vazifa_rasm:${v.id}`)
+    .row();
+
+  if (yuqoriBor) kb.text("⬆️ Yuqoriga", `vazifa_kochir:${v.id}:yuqori`);
+  if (pastBor) kb.text("⬇️ Pastga", `vazifa_kochir:${v.id}:past`);
+  if (yuqoriBor || pastBor) kb.row();
+
+  kb.text(
+    v.faol ? "⛔️ Ro'yxatdan chiqarish" : "✅ Ro'yxatga qaytarish",
+    `vazifa_faol:${v.id}:${v.faol ? 0 : 1}`,
+  ).row();
+  kb.text("⬅️ Vazifalar", "vazifalar");
+  return kb;
+}
+
+/** Rasm sonini tanlash — matn yozish o'rniga tugma (1..RASM_MAX). */
+export function vazifaRasmSoniKeyboard(vazifaId: number): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (let n = 1; n <= RASM_MAX; n++) {
+    kb.text(String(n), `vazifa_rasm_set:${vazifaId}:${n}`);
+    if (n % 5 === 0) kb.row();
+  }
+  kb.text("⬅️ Orqaga", `vazifa:${vazifaId}`);
+  return kb;
+}
+
+/** Yangi vazifa qo'shilgach rasm sonini darrov so'raymiz. */
+export function yangiVazifaRasmKeyboard(vazifaId: number): InlineKeyboard {
+  return vazifaRasmSoniKeyboard(vazifaId);
+}
+
+// ---------------------------------------------------------------------------
+// ADMIN XABARI
+// ---------------------------------------------------------------------------
+
+/** Xabar kimga ketishini tanlash. */
+export function xabarKimKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("🧹 Navbatdagi xonaga", "xabar_kim:navbatchi")
+    .row()
+    .text("👥 Hamma a'zoga", "xabar_kim:hamma")
+    .row()
+    .text("🚪 Bitta xonaga", "xabar_kim:xona")
+    .text("👤 Bitta odamga", "xabar_kim:odam")
+    .row()
+    .text("📢 Guruh chatiga", "xabar_kim:guruh")
+    .row()
+    .text("⬅️ Admin panel", "admin_panel");
+}
+
+export function xabarXonaKeyboard(xonalar: number[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const r of xonalar) kb.text(`🚪 ${r}-xona`, `xabar_xona:${r}`).row();
+  kb.text("⬅️ Orqaga", "xabar");
+  return kb;
+}
+
+export function xabarOdamKeyboard(odamlar: { id: number; ism: string }[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const o of odamlar) kb.text(`👤 ${o.ism}`, `xabar_odam:${o.id}`).row();
+  kb.text("⬅️ Orqaga", "xabar");
+  return kb;
+}
+
+/** Yuborishdan oldingi oxirgi tasdiq — yuborilgach ortga yo'l yo'q. */
+export function xabarTasdiqKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("📤 Ha, yubor", "xabar_yubor")
+    .row()
+    .text("✖️ Bekor qilish", "bekor");
 }

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { TurnIshBelgisi, TurnIshlar } from "../db/index.js";
-import { NAVBAT_RASM_SONI } from "../config.js";
+import type { NavbatVazifasi } from "./vazifalar.js";
 import {
   keyingiJoy,
   kechikkanKun,
@@ -10,6 +10,7 @@ import {
   bajarilganIshlarSoni,
   ishRasmlari,
   majburiyOchildimi,
+  navbatRasmlari,
 } from "./rotation.js";
 
 /** Berilgan joydan boshlab n ta qadam yuradi va bosib o'tilgan o'rinlarni qaytaradi. */
@@ -74,35 +75,65 @@ test("kechikkanKun boshlangan kunni ham to'liq kun deb sanaydi", () => {
   assert.equal(kechikkanKun(muddat, new Date("2026-08-12T00:00:00Z")), 2);
 });
 
-/** 1-rasmli vazifa (xona/oshxona/musor) uchun — eski format ham qo'llab-quvvatlanadi. */
+/** 1-rasmli vazifa uchun — eski (bitta `photo_id`) format ham qo'llab-quvvatlanadi. */
 const fakeBelgisi = { photo_id: "x", user_id: 1, vaqt: "2026-08-09T00:00:00Z" } as const;
 
-/** Hammom uchun to'liq — NAVBAT_RASM_SONI.hammom (3) ta rasm bilan. */
+/**
+ * Vazifalar ro'yxati endi bazadan keladi, shuning uchun testlarda ham
+ * parametr sifatida beriladi — sof funksiyalar hech qanday global ro'yxatga
+ * bog'lanmagan.
+ */
+function vazifa(kod: string, rasmSoni: number, tartib: number): NavbatVazifasi {
+  return { id: tartib + 1, kod, nom: kod, emoji: "🧹", rasm_soni: rasmSoni, tartib, faol: true };
+}
+
+/** Standart to'rttalik — `db/schema.sql` seed qiladigan ro'yxatning o'zi. */
+const STANDART: NavbatVazifasi[] = [
+  vazifa("xona", 1, 0),
+  vazifa("hammom", 3, 1),
+  vazifa("oshxona", 1, 2),
+  vazifa("musor", 1, 3),
+];
+
+/** Ikkita hammomli uy — admin ro'yxatni shunday o'zgartirgan holat. */
+const IKKI_HAMMOM: NavbatVazifasi[] = [
+  vazifa("xona", 1, 0),
+  vazifa("hammom", 3, 1),
+  vazifa("hammom_2", 3, 2),
+  vazifa("oshxona", 1, 3),
+  vazifa("musor", 1, 4),
+];
+
+function rasmlar(...ids: string[]): TurnIshBelgisi {
+  return { photo_ids: ids, user_id: 1, vaqt: "2026-08-09T00:00:00Z" };
+}
+
+/** Hammom uchun to'liq — 3 ta rasm bilan. */
 function hammomToliq(): TurnIshBelgisi {
-  return { photo_ids: ["a", "b", "c"], user_id: 1, vaqt: "2026-08-09T00:00:00Z" };
+  return rasmlar("a", "b", "c");
 }
 
 test("hech qanday vazifa bajarilmagan bo'lsa barchaIshlarBajarildimi=false", () => {
-  assert.equal(barchaIshlarBajarildimi({}), false);
+  assert.equal(barchaIshlarBajarildimi({}, STANDART), false);
 });
 
 test("faqat ba'zi vazifalar bajarilgan bo'lsa hali false", () => {
   const ishlar: TurnIshlar = { xona: fakeBelgisi, hammom: hammomToliq() };
-  assert.equal(barchaIshlarBajarildimi(ishlar), false);
-  assert.deepEqual(qolganIshlar(ishlar), ["oshxona", "musor"]);
-  assert.equal(bajarilganIshlarSoni(ishlar), 2);
+  assert.equal(barchaIshlarBajarildimi(ishlar, STANDART), false);
+  assert.deepEqual(qolganIshlar(ishlar, STANDART).map((v) => v.kod), ["oshxona", "musor"]);
+  assert.equal(bajarilganIshlarSoni(ishlar, STANDART), 2);
 });
 
 test("hammom kerakli sondan kam rasm bilan hali bajarilgan hisoblanmaydi (1/3)", () => {
   const ishlar: TurnIshlar = {
     xona: fakeBelgisi,
-    hammom: { photo_ids: ["a"], user_id: 1, vaqt: "2026-08-09T00:00:00Z" },
+    hammom: rasmlar("a"),
     oshxona: fakeBelgisi,
     musor: fakeBelgisi,
   };
-  assert.equal(barchaIshlarBajarildimi(ishlar), false);
-  assert.deepEqual(qolganIshlar(ishlar), ["hammom"]);
-  assert.equal(bajarilganIshlarSoni(ishlar), 3);
+  assert.equal(barchaIshlarBajarildimi(ishlar, STANDART), false);
+  assert.deepEqual(qolganIshlar(ishlar, STANDART).map((v) => v.kod), ["hammom"]);
+  assert.equal(bajarilganIshlarSoni(ishlar, STANDART), 3);
 });
 
 test("barcha vazifalar (hammom kerakli 3 rasm bilan) bajarilgach barchaIshlarBajarildimi=true", () => {
@@ -112,22 +143,51 @@ test("barcha vazifalar (hammom kerakli 3 rasm bilan) bajarilgach barchaIshlarBaj
     oshxona: fakeBelgisi,
     musor: fakeBelgisi,
   };
-  assert.equal(barchaIshlarBajarildimi(ishlar), true);
-  assert.deepEqual(qolganIshlar(ishlar), []);
-  assert.equal(bajarilganIshlarSoni(ishlar), 4);
+  assert.equal(barchaIshlarBajarildimi(ishlar, STANDART), true);
+  assert.deepEqual(qolganIshlar(ishlar, STANDART), []);
+  assert.equal(bajarilganIshlarSoni(ishlar, STANDART), 4);
+});
+
+test("kerakidan ORTIQ rasm ham bajarilgan hisoblanadi — rasm_soni minimum", () => {
+  // Ilgari ortiqcha rasm umuman saqlanmasdi (albom bilan tashlanganida
+  // yo'qolardi); endi saqlanadi va vazifani buzmaydi.
+  const ishlar: TurnIshlar = { musor: rasmlar("a", "b", "c") };
+  assert.equal(qolganIshlar(ishlar, [vazifa("musor", 1, 0)]).length, 0);
+  assert.equal(barchaIshlarBajarildimi(ishlar, [vazifa("musor", 1, 0)]), true);
+});
+
+test("ikkita hammom alohida vazifa — biri to'lsa ikkinchisi hali qoladi", () => {
+  const ishlar: TurnIshlar = {
+    xona: fakeBelgisi,
+    hammom: hammomToliq(),
+    oshxona: fakeBelgisi,
+    musor: fakeBelgisi,
+  };
+  assert.equal(barchaIshlarBajarildimi(ishlar, IKKI_HAMMOM), false);
+  assert.deepEqual(qolganIshlar(ishlar, IKKI_HAMMOM).map((v) => v.kod), ["hammom_2"]);
+
+  ishlar["hammom_2"] = rasmlar("d", "e", "f");
+  assert.equal(barchaIshlarBajarildimi(ishlar, IKKI_HAMMOM), true);
+});
+
+test("bo'sh vazifalar ro'yxatida navbatni yakunlab bo'lmaydi", () => {
+  // `every` bo'sh massivda `true` qaytaradi — admin hamma vazifani
+  // o'chirib qo'ysa hech narsa qilmasdan topshirish mumkin bo'lardi.
+  assert.equal(barchaIshlarBajarildimi({ xona: fakeBelgisi }, []), false);
+});
+
+test("navbatRasmlari ro'yxatdan chiqarilgan vazifaning rasmlarini ham oladi", () => {
+  // Admin navbat o'rtasida "hammom"ni ikkiga bo'lsa, eski kalit hech qaysi
+  // faol vazifaga to'g'ri kelmaydi — lekin u ham dalil, yo'qolmasligi kerak.
+  const ishlar: TurnIshlar = { xona: fakeBelgisi, hammom: hammomToliq() };
+  const faqatXona = [vazifa("xona", 1, 0)];
+  assert.deepEqual(navbatRasmlari(ishlar, faqatXona), ["x", "a", "b", "c"]);
 });
 
 test("ishRasmlari eski (photo_id) va yangi (photo_ids) formatni ikkalasini ham o'qiydi", () => {
   assert.deepEqual(ishRasmlari(undefined), []);
   assert.deepEqual(ishRasmlari(fakeBelgisi), ["x"]);
   assert.deepEqual(ishRasmlari(hammomToliq()), ["a", "b", "c"]);
-});
-
-test("NAVBAT_RASM_SONI: hammom 3, qolganlari 1", () => {
-  assert.equal(NAVBAT_RASM_SONI.hammom, 3);
-  assert.equal(NAVBAT_RASM_SONI.xona, 1);
-  assert.equal(NAVBAT_RASM_SONI.oshxona, 1);
-  assert.equal(NAVBAT_RASM_SONI.musor, 1);
 });
 
 test("majburiyOchildimi: muddatgacha 2 kun qolganda hali yopiq", () => {

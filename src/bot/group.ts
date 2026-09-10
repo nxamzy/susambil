@@ -1,6 +1,7 @@
 import type { Api } from "grammy";
+import type { InputMediaPhoto } from "grammy/types";
 import { sql, type User } from "../db/index.js";
-import { config } from "../config.js";
+import { ALBOM_MAX, config, GURUH_ALBOM_MAX } from "../config.js";
 
 let keshlanganGuruh: number | null | undefined;
 
@@ -142,5 +143,37 @@ export async function guruhAzosimi(api: Api, telegramId: number): Promise<Azolik
     // Telegram odam guruhda hech qachon bo'lmagan holatda ham xato qaytarishi
     // mumkin — bu ham "a'zo emas" degani.
     return "azo_emas";
+  }
+}
+
+/**
+ * Rasmlarni albom(lar) qilib yuboradi.
+ *
+ * Telegram bitta media-guruhga eng ko'pi bilan `ALBOM_MAX` rasm sig'diradi,
+ * navbatdagi vazifalar soni va har biriga kerakli rasm esa endi admin
+ * qo'lida — ya'ni bitta topshiriqda 10 tadan ko'p rasm bo'lishi normal
+ * holat. Ilgari `.slice(0, 10)` qilinardi va ortiqchasi guruhga umuman
+ * chiqmasdi (bazada qolsa ham, tasdiqlovchi ularni ko'rmasdi).
+ *
+ * `GURUH_ALBOM_MAX` — guruhni himoya qiluvchi yuqori chegara: bazada hamma
+ * rasm qoladi, guruhga esa shuncha tasi chiqadi.
+ *
+ * Media-guruhda tugma ham, matn ham bo'lmaydi — shuning uchun bu funksiya
+ * FAQAT rasmlarni yuboradi, tugmali xabarni chaqiruvchi alohida yuboradi
+ * (mavjud naqsh o'zgarmagan).
+ */
+export async function albomYubor(api: Api, chatId: number, photoIds: string[]): Promise<void> {
+  const yuboriladigan = photoIds.slice(0, GURUH_ALBOM_MAX);
+  for (let i = 0; i < yuboriladigan.length; i += ALBOM_MAX) {
+    const bolak = yuboriladigan.slice(i, i + ALBOM_MAX);
+    // Bitta rasmli "albom"ni Telegram qabul qilmaydi — o'sha holda sendPhoto.
+    const yuborish =
+      bolak.length === 1
+        ? api.sendPhoto(chatId, bolak[0]!)
+        : api.sendMediaGroup(
+            chatId,
+            bolak.map((media): InputMediaPhoto => ({ type: "photo", media })),
+          );
+    await yuborish.catch((e) => console.error("[albomYubor] rasm yuborilmadi:", e));
   }
 }

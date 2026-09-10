@@ -107,26 +107,43 @@ export const ISH_TURLARI = {
 export type IshTuri = keyof typeof ISH_TURLARI;
 
 /**
- * Navbat davomida bajarilishi SHART bo'lgan vazifalar — har biriga alohida
- * tugma va rasm. `ISH_TURLARI`dan farqli: bular istalgan payt qo'shimcha
- * ball uchun emas, aynan shu navbatni yakunlash uchun MAJBURIY. Nomlari
- * ataylab `ISH_TURLARI` bilan bir xil — emoji/nom ikkinchi marta
- * yozilmaydi, o'sha yerdan olinadi.
+ * Navbat davomida bajarilishi SHART bo'lgan vazifalar ENDI SHU YERDA EMAS.
+ *
+ * Ilgari bu yerda `NAVBAT_ISHLARI` (literal union) va `NAVBAT_RASM_SONI`
+ * turardi — ya'ni uyda ikkinchi hammom paydo bo'lsa yoki bitta vazifaga
+ * kerakli rasm soni o'zgarsa, kodni tahrirlab qayta deploy qilish kerak
+ * edi. Endi ular `navbat_vazifalari` jadvalida va admin panelidan
+ * boshqariladi (`core/vazifalar.ts`) — xuddi `tolov_talab`/`karta`
+ * `settings` jadvaliga ko'chirilgani kabi. Standart to'rttalik ro'yxat
+ * `db/schema.sql` ichida bir marta seed qilinadi.
+ *
+ * `ISH_TURLARI` esa O'ZGARMADI: u — ixtiyoriy qo'shimcha ishlar (ball
+ * uchun, istalgan payt), navbat vazifalari bilan bir xil narsa emas.
+ * Ikkalasi ilgari nom/emojini baham ko'rardi, aynan shu bog'liqlik ikkita
+ * hammom qo'shishga to'sqinlik qilardi — endi navbat vazifasining o'z
+ * nomi va emojisi bazada.
  */
-export const NAVBAT_ISHLARI = ["xona", "hammom", "oshxona", "musor"] as const;
-export type NavbatIshi = (typeof NAVBAT_ISHLARI)[number];
 
 /**
- * Har bir majburiy vazifa uchun nechta dalil rasmi kerakligi. Standart 1 —
- * hammom kattaroq ish bo'lgani uchun 3 ta (turli burchak) talab qilinadi.
- * Rasm soni shu yerdan olinadi, hech qayerda qattiq yozilgan "3" yo'q.
+ * Bitta vazifaga (yoki bitta qo'shimcha ish topshirig'iga) saqlanadigan
+ * rasmlarning QATTIQ chegarasi.
+ *
+ * Vazifadagi `rasm_soni` — MINIMUM ("shuncha kelsa bajarilgan"), bu esa
+ * maksimum. Oradagi ortiqcha rasmlar RAD ETILMAYDI, qo'shilaveradi:
+ * ilgari kerakli sondan ortig'i ataylab tashlab yuborilardi va odam
+ * albom bilan 3 ta rasm tashlaganda 2 tasi yo'qolardi.
  */
-export const NAVBAT_RASM_SONI: Record<NavbatIshi, number> = {
-  xona: 1,
-  hammom: 3,
-  oshxona: 1,
-  musor: 1,
-};
+export const RASM_MAX = 10;
+
+/** Telegram bitta media-guruhga sig'diradigan rasm soni — texnik chegara. */
+export const ALBOM_MAX = 10;
+
+/**
+ * Guruhga yuboriladigan rasmlarning eng ko'p soni. Vazifalar soni va har
+ * biriga kerakli rasm endi admin qo'lida bo'lgani uchun jami rasm ancha
+ * ko'p bo'lishi mumkin — guruh cheksiz albom bilan to'lib ketmasin.
+ */
+export const GURUH_ALBOM_MAX = 30;
 
 /** Pastdagi doimiy menyuda tugmasi bor turlar. */
 export const TEZ_ISHLAR = (Object.keys(ISH_TURLARI) as IshTuri[]).filter(

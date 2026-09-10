@@ -32,6 +32,8 @@ import {
   adminPanelKorsat,
   adminYangiIsmiKeldi,
 } from "./adminUsers.js";
+import { vazifaNomiKeldi, vazifaYangiNomiKeldi } from "./vazifalar.js";
+import { xabarMatniKeldi } from "./xabar.js";
 import { summaTekshir } from "../../core/topshiriq.js";
 import { joriyNavbatchimi } from "../../core/rotation.js";
 
@@ -241,6 +243,22 @@ export function register(bot: Bot) {
 
     if (holat?.tur === "admin_ball") {
       return adminBallTuzatishKeldi(ctx, holat.userId, ctx.message.text.trim());
+    }
+
+    if (holat?.tur === "vazifa_yangi") {
+      return vazifaYangiNomiKeldi(ctx, ctx.message.text.trim());
+    }
+
+    if (holat?.tur === "vazifa_nom") {
+      return vazifaNomiKeldi(ctx, holat.vazifaId, ctx.message.text.trim());
+    }
+
+    if (holat?.tur === "admin_xabar" && holat.qadam === "matn") {
+      return xabarMatniKeldi(ctx, holat.kim, ctx.message.text);
+    }
+
+    if (holat?.tur === "admin_xabar" && holat.qadam === "tasdiq") {
+      return ctx.reply("👆 Yuqoridagi tugmalardan birini tanlang (yuborish yoki bekor qilish).");
     }
 
     if (holat?.tur === "ish") {

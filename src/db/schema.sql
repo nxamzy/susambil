@@ -539,3 +539,47 @@ CREATE TABLE IF NOT EXISTS tolov_tuzatish (
 );
 
 CREATE INDEX IF NOT EXISTS tolov_tuzatish_sikl_idx ON tolov_tuzatish (sikl_id, user_id);
+
+-- ---------------------------------------------------------------------------
+-- NAVBAT VAZIFALARI: kod ichidagi ro'yxatdan bazaga
+-- ---------------------------------------------------------------------------
+-- ILDIZ MUAMMO: "Mening Navbatim" panelidagi majburiy vazifalar ro'yxati
+-- (`config.ts` NAVBAT_ISHLARI) va har biriga kerakli rasm soni
+-- (NAVBAT_RASM_SONI) KODDA qattiq yozilgan edi. Uyda ikkinchi hammom paydo
+-- bo'lsa yoki rasm soni o'zgarsa — har safar kod tahriri va deploy kerak
+-- bo'lardi. Bu `tolov_talab`/`karta` bilan bir xil holat edi, ular esa
+-- allaqachon `settings` jadvaliga ko'chirilgan; shu naqsh davom ettirildi.
+--
+-- `kod` — `turns.ishlar` JSONB kaliti va tugma callback'i. YARATILGACH HECH
+-- QACHON o'zgarmaydi: nomi o'zgartirilsa ham eski navbatlardagi rasmlar shu
+-- kalit ostida turaveradi. Shuning uchun vazifa O'CHIRILMAYDI ham — faqat
+-- `faol = false` qilinadi (chores/expenses'dagi "tarix yo'qolmaydi" qoidasi).
+--
+-- `rasm_soni` endi MINIMUM: shuncha rasm kelgach vazifa bajarilgan
+-- hisoblanadi, lekin undan ortig'i ham RAD ETILMAYDI, qo'shilaveradi
+-- (`config.RASM_MAX` gacha). Ilgari ortiqcha rasm ataylab tashlab
+-- yuborilardi — albom bilan tashlangan rasmlarning yo'qolishiga aynan shu
+-- sabab bo'lgan.
+CREATE TABLE IF NOT EXISTS navbat_vazifalari (
+  id         SERIAL PRIMARY KEY,
+  kod        TEXT UNIQUE NOT NULL,
+  nom        TEXT NOT NULL,
+  emoji      TEXT NOT NULL DEFAULT '🧹',
+  rasm_soni  INT NOT NULL DEFAULT 1 CHECK (rasm_soni BETWEEN 1 AND 10),
+  tartib     INT NOT NULL DEFAULT 0,
+  faol       BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS navbat_vazifalari_faol_idx
+  ON navbat_vazifalari (tartib) WHERE faol;
+
+-- Kodda turgan ro'yxatning AYNAN o'zi — kalitlar (`xona`/`hammom`/
+-- `oshxona`/`musor`) bir xil qoldirilgani uchun hozir ketayotgan navbatning
+-- `turns.ishlar` ichidagi rasmlari joyida qoladi, hech narsa ko'chirilmaydi.
+INSERT INTO navbat_vazifalari (kod, nom, emoji, rasm_soni, tartib) VALUES
+  ('xona',    'Xona',    '🛏',  1, 0),
+  ('hammom',  'Hammom',  '🚿', 3, 1),
+  ('oshxona', 'Oshxona', '🍽',  1, 2),
+  ('musor',   'Musor',   '♻️', 1, 3)
+ON CONFLICT (kod) DO NOTHING;

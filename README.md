@@ -23,6 +23,29 @@ Navbat yopiladi → ball beriladi → keyingi xona e'lon qilinadi
 Tasdiqlanmaguncha navbat **keyingi xonaga o'tmaydi**. Muddat o'tsa, bot
 kuniga bir marta guruhga eslatib turadi.
 
+### Vazifalar ro'yxati
+
+Navbatda nima bajarilishi shartligi va har biriga nechta rasm kerakligi
+bazada turadi — admin **👑 Admin Panel → ⚙️ Vazifalar** (yoki `/vazifalar`)
+orqali o'zgartiradi, kod tahrir qilinmaydi. Standart ro'yxat: xona,
+hammom (3 rasm), oshxona, musor.
+
+Ikkita hammom bo'lsa: "Hammom"ni "1-hammom" deb qayta nomlab, "➕ Yangi
+vazifa" bilan "🚿 2-hammom" qo'shiladi. Nomini o'zgartirish eski
+navbatlardagi rasmlarni buzmaydi, vazifa esa butunlay o'chirilmaydi —
+faqat ro'yxatdan chiqariladi.
+
+Rasm soni **minimum**: shuncha rasm kelgach vazifa bajarilgan hisoblanadi,
+ortig'i esa rad etilmaydi (10 tagacha saqlanadi).
+
+## Adminning erkin xabari
+
+**👑 Admin Panel → 📣 Xabar yuborish** (yoki `/xabar`) — admin o'zi yozgan
+xabarni navbatdagi xonaga, bitta xonaga, bitta odamga, hammaga yoki guruh
+chatiga yuboradi. Masalan: *"Musor navbatdan oldin to'lib ketdi — bugun
+tashlab kelinglar."* Yuborilgach kimga yetgani va kimga yetmagani
+ko'rsatiladi.
+
 ## Qo'shimcha ishlar
 
 Panelda uch tugma: **musor**, **hammom**, **oshxona**. Bosilganda bot

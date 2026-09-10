@@ -1,18 +1,23 @@
 import type { Bot, Context } from "grammy";
-import type { InputMediaPhoto } from "grammy/types";
 import { sql, type User } from "../../db/index.js";
-import { config, ISH_TURLARI, type IshTuri } from "../../config.js";
-import { guruhId, kim } from "../group.js";
+import { config, ISH_TURLARI, RASM_MAX, type IshTuri } from "../../config.js";
+import { albomYubor, guruhId, kim } from "../group.js";
 import { tasdiqKeyboard, bekorKeyboard, ishTugatishKeyboard } from "../keyboards.js";
 import { topshiriqXabari } from "../text.js";
 import { topshiriqYarat } from "../../core/topshiriq.js";
-import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
+import {
+  holatOl,
+  holatOrnat,
+  holatTozala,
+  ishRasminiQosh,
+  sorovniEslat,
+  sorovniOchir,
+  sorovniTahrirla,
+  sorovniYoz,
+} from "../state.js";
 import { shikoyatDalilKeldi } from "./reports.js";
 import { tolovDalilKeldi } from "./tolov.js";
 import { vazifaRasmiKeldi } from "./navbat.js";
-
-/** Telegram sendMediaGroup texnik chegarasi — biznes qoida emas. */
-const ISH_RASM_MAX = 10;
 
 /**
  * Rasm besh xil maqsadda kelishi mumkin — tartib muhim, har biri holat
@@ -53,29 +58,42 @@ export function register(bot: Bot) {
         return;
       }
 
-      // Rasm(lar) YIG'ILADI, darrov yuborilmaydi — xohlagancha rasm tashlash
-      // mumkin, "✅ Tugatdim" bosilganda yoki texnik chegaraga (10)
-      // yetganda hammasi birga guruhga tasdiqqa chiqadi.
-      const photoIds = [...(holat.photoIds ?? []), eng.file_id].slice(0, ISH_RASM_MAX);
-      await sorovniOchir(ctx.api, holat);
-
-      if (photoIds.length >= ISH_RASM_MAX) {
-        return ishniYakunla(ctx, u, holat.ish, holat.izoh ?? null, photoIds);
+      // Rasm(lar) YIG'ILADI, darrov yuborilmaydi — "✅ Tugatdim" bosilganda
+      // hammasi birga guruhga tasdiqqa chiqadi.
+      //
+      // Qo'shish ATOMIK (`ishRasminiQosh`): ilgari bu yerda holatdagi
+      // ro'yxat o'qilib, ustiga qo'shilib, qaytadan yozilardi — albom
+      // ichidagi rasmlar bir vaqtda kelgani uchun ikkita chaqiruv bir xil
+      // eski ro'yxatni o'qib, bir-birining ustidan yozib yuborardi va rasm
+      // yo'qolardi (`core/rotation.ts` `ishBelgila` bilan bir xil muammo).
+      const photoIds = await ishRasminiQosh(fromId, eng.file_id);
+      if (!photoIds) {
+        await ctx.reply("Jarayon eskirgan. Qaytadan boshlang.");
+        return;
       }
 
-      const yangi = { tur: "ish", ish: holat.ish, chatId: holat.chatId, izoh: holat.izoh, photoIds } as const;
-      await holatOrnat(fromId, yangi);
+      const toldi = photoIds.length >= RASM_MAX;
+      const matn = [
+        toldi
+          ? `📷 <b>${photoIds.length} ta rasm</b> — bu eng ko'p miqdor.`
+          : `📷 <b>${photoIds.length} ta rasm qabul qilindi.</b>`,
+        ``,
+        toldi
+          ? `Tayyor bo'lsangiz pastdagi tugmani bosing.`
+          : `Yana rasm tashlashingiz yoki tayyor bo'lsangiz pastdagi\ntugmani bosishingiz mumkin.`,
+      ].join("\n");
 
-      const xabar = await ctx.reply(
-        [
-          `📷 <b>${photoIds.length} ta rasm qabul qilindi.</b>`,
-          ``,
-          `Yana rasm tashlashingiz yoki tayyor bo'lsangiz pastdagi`,
-          `tugmani bosishingiz mumkin.`,
-        ].join("\n"),
-        { parse_mode: "HTML", reply_markup: ishTugatishKeyboard() },
-      );
-      await sorovniEslat(fromId, yangi, xabar.chat.id, xabar.message_id);
+      // Har rasmga yangi xabar emas — bittasi tahrirlanib boradi, aks holda
+      // 9 ta rasm 9 ta xabar bo'lib Telegram flood chegarasiga urilardi.
+      if (!(await sorovniTahrirla(ctx.api, holat, matn, { reply_markup: ishTugatishKeyboard() }))) {
+        const xabar = await ctx.reply(matn, {
+          parse_mode: "HTML",
+          reply_markup: ishTugatishKeyboard(),
+        });
+        // Faqat `sorov` yoziladi — butun holatni qayta yozsak, shu orada
+        // qo'shilgan rasm yo'qolib ketishi mumkin.
+        await sorovniYoz(fromId, xabar.chat.id, xabar.message_id);
+      }
       return;
     }
 
@@ -115,7 +133,7 @@ export function register(bot: Bot) {
     // bog'lanmaydi — guruhga tasodifan tashlangan rasm endi avtomatik
     // navbatga hisoblanmaydi (aniq vazifa tugmasi bosilishi shart).
     if (holat?.tur === "navbat_ish" && ctx.chat.type === "private") {
-      return vazifaRasmiKeldi(ctx, holat.ish, holat.turnId, eng.file_id);
+      return vazifaRasmiKeldi(ctx, holat.kod, holat.turnId, eng.file_id);
     }
   });
 
@@ -196,10 +214,7 @@ export async function ishniYakunla(
     // Telegram media-guruhda tugma/caption bo'lmaydi — rasmlar avval alohida
     // albom sifatida, keyin tugmali xabar alohida yuboriladi (navbat.ts'dagi
     // yakuniy topshirish bilan bir xil naqsh, ikkinchi nusxa yaratilmagan).
-    const media: InputMediaPhoto[] = photoIds
-      .slice(0, ISH_RASM_MAX)
-      .map((file_id) => ({ type: "photo", media: file_id }));
-    await ctx.api.sendMediaGroup(guruh, media).catch(() => {});
+    await albomYubor(ctx.api, guruh, photoIds);
     xabar = await ctx.api.sendMessage(guruh, matn, { parse_mode: "HTML", reply_markup: tugma });
   }
 
