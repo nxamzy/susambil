@@ -14,6 +14,8 @@ import {
   bajarilganMarta,
   barchaRasmlar,
   vazifaBajarildimi,
+  vazifaOchiqmi,
+  oraliqKunOtdi,
   MAJBURIY_DOIM_OCHIQ,
 } from "./rotation.js";
 
@@ -89,10 +91,16 @@ const fakeBelgisi = { photo_id: "x", user_id: 1, vaqt: T } as const;
  * `takror` standart 1 (oddiy vazifa); musor kabi takrorlanadigan ish uchun
  * ochiq beriladi.
  */
-function vazifa(kod: string, rasmSoni: number, tartib: number, takror = 1): NavbatVazifasi {
+function vazifa(
+  kod: string,
+  rasmSoni: number,
+  tartib: number,
+  takror = 1,
+  oraliq = 0,
+): NavbatVazifasi {
   return {
     id: tartib + 1, kod, nom: kod, emoji: "🧹",
-    rasm_soni: rasmSoni, takror_soni: takror, tartib, faol: true,
+    rasm_soni: rasmSoni, takror_soni: takror, oraliq_kun: oraliq, tartib, faol: true,
   };
 }
 
@@ -254,4 +262,33 @@ test("majburiyOchildimi: MAJBURIY_DOIM_OCHIQ bilan har doim ochiq", () => {
   const muddat = new Date("2026-08-10T00:00:00Z");
   const juda_erta = new Date("2026-01-01T00:00:00Z");
   assert.equal(majburiyOchildimi(muddat, MAJBURIY_DOIM_OCHIQ, juda_erta), true);
+});
+
+test("vazifaOchiqmi: oraliq_kun=0 vazifa odatdagi 'oxirgi kun' qulfi bilan", () => {
+  const turn = {
+    boshlandi: new Date("2026-08-05T00:00:00Z"),
+    muddat: new Date("2026-08-10T00:00:00Z"),
+  };
+  const xona = vazifa("xona", 1, 0); // oraliq_kun = 0
+  assert.equal(vazifaOchiqmi(turn, xona, 1, new Date("2026-08-08T00:00:00Z")), false); // 2 kun qoldi
+  assert.equal(vazifaOchiqmi(turn, xona, 1, new Date("2026-08-09T00:00:00Z")), true); // 1 kun qoldi
+});
+
+test("vazifaOchiqmi: oraliq_kun>0 vazifa navbat boshlanganidan hisoblanadi, muddatdan emas", () => {
+  const turn = {
+    boshlandi: new Date("2026-08-05T00:00:00Z"),
+    muddat: new Date("2026-08-10T00:00:00Z"),
+  };
+  const musor = vazifa("musor", 3, 3, 2, 3); // 3-kundan ochiladi
+  // Navbat boshlanganiga 2 kun — hali yopiq (majburiyKuni=1 bo'lsa ham).
+  assert.equal(vazifaOchiqmi(turn, musor, 1, new Date("2026-08-07T00:00:00Z")), false);
+  // 3 kun bo'ldi — ochildi (muddatga hali 2 kun bor bo'lsa ham).
+  assert.equal(vazifaOchiqmi(turn, musor, 1, new Date("2026-08-08T00:00:00Z")), true);
+});
+
+test("oraliqKunOtdi: oraliq oynasi ochilganidan beri necha kun", () => {
+  const turn = { boshlandi: new Date("2026-08-05T00:00:00Z") };
+  assert.equal(oraliqKunOtdi(turn, 3, new Date("2026-08-07T12:00:00Z")), -1); // 2.5 kun -> floor 2, -3 = -1
+  assert.equal(oraliqKunOtdi(turn, 3, new Date("2026-08-08T00:00:00Z")), 0); // aynan 3-kun
+  assert.equal(oraliqKunOtdi(turn, 3, new Date("2026-08-10T00:00:00Z")), 2); // 5-kun
 });

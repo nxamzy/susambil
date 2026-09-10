@@ -24,6 +24,7 @@ import {
   vazifaQoshish,
   vazifaRasmSoniniOrnat,
   vazifaTakrorSoniniOrnat,
+  vazifaOraliqKuniniOrnat,
   VAZIFA_MAX,
 } from "../../core/vazifalar.js";
 import { kim } from "../group.js";
@@ -33,6 +34,7 @@ import {
   vazifalarKeyboard,
   vazifaRasmSoniKeyboard,
   vazifaTakrorSoniKeyboard,
+  vazifaOraliqKuniKeyboard,
 } from "../keyboards.js";
 import { esc, vazifaDetalMatni, vazifalarMatni } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
@@ -258,6 +260,47 @@ export function register(bot: Bot) {
     if (!v) return ctx.answerCallbackQuery({ text: "Vazifa topilmadi." }).catch(() => {});
 
     await ctx.answerCallbackQuery({ text: `✅ ${v.takror_soni} marta` }).catch(() => {});
+    await vazifaDetalKorsat(ctx, vazifaId);
+  });
+
+  bot.callbackQuery(/^vazifa_oraliq:(\d+)$/, async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    const vazifaId = Number(ctx.match[1]);
+    const v = await vazifaOl(vazifaId);
+    if (!v) return ctx.answerCallbackQuery({ text: "Vazifa topilmadi." }).catch(() => {});
+
+    await ctx.answerCallbackQuery().catch(() => {});
+    await ctx.reply(
+      [
+        `🕐 <b>${esc(v.nom)} — oraliq eslatma</b>`,
+        ``,
+        v.oraliq_kun > 0
+          ? `Hozirgisi: navbatning <b>${v.oraliq_kun}-kunidan</b>`
+          : `Hozirgisi: <b>o'chiq</b>`,
+        ``,
+        `<i>Yoqilsa, vazifa navbat boshlanganidan shuncha kun o'tgach</i>`,
+        `<i>erta ochiladi va bajarilmasa xona a'zolariga har 5 soatda</i>`,
+        `<i>DM boradi — 1-marta bajarilgunicha. Musor uchun 3-kun.</i>`,
+      ].join("\n"),
+      { parse_mode: "HTML", reply_markup: vazifaOraliqKuniKeyboard(v.id) },
+    );
+  });
+
+  bot.callbackQuery(/^vazifa_oraliq_set:(\d+):(\d+)$/, async (ctx) => {
+    const admin = await faqatAdmin(ctx);
+    if (!admin) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+
+    const vazifaId = Number(ctx.match[1]);
+    const v = await vazifaOraliqKuniniOrnat(admin.id, vazifaId, Number(ctx.match[2]));
+    if (!v) return ctx.answerCallbackQuery({ text: "Vazifa topilmadi." }).catch(() => {});
+
+    await ctx
+      .answerCallbackQuery({ text: v.oraliq_kun > 0 ? `✅ ${v.oraliq_kun}-kundan` : "✅ O'chirildi" })
+      .catch(() => {});
     await vazifaDetalKorsat(ctx, vazifaId);
   });
 

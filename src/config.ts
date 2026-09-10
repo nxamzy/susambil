@@ -145,6 +145,12 @@ export const RASM_SONI_MAX = 10;
 /** Vazifa bir navbatda ko'pi bilan shuncha marta takrorlanishi mumkin. */
 export const TAKROR_MAX = 10;
 
+/**
+ * Vazifaning "oraliq eslatma" boshlanish kuni (navbat boshlanganidan).
+ * 0 = o'chiq. Bazadagi CHECK (`oraliq_kun BETWEEN 0 AND 30`) bilan bir xil.
+ */
+export const ORALIQ_KUN_MAX = 30;
+
 /** Telegram bitta media-guruhga sig'diradigan rasm soni — texnik chegara. */
 export const ALBOM_MAX = 10;
 

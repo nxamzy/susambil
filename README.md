@@ -48,6 +48,13 @@ Vazifa rasm soni yetgani bilan avtomatik "bajarildi" bo'lmaydi — odam
 **"✅ Tugatdim"** bosishi shart. Shu bosilmaguncha panelda `🟡 3/3 —
 tasdiqlang` deb turadi va "Yakuniy topshirish" chiqmaydi.
 
+**Oraliq eslatma** — vazifa navbat oxirini kutmasdan, o'rtasida
+bajarilishi kerak bo'lsa. Musor standart holatda **navbatning 3-kunidan**
+ochiladi va bajarilmasa xona a'zolariga **har 5 soatda** DM boradi —
+birinchi marta bajarilgunicha. Xonadan **kim bo'lsa ham** "✅ Tugatdim"
+bossa eslatma o'zi to'xtaydi. ⚙️ Vazifalar → 🕐 Oraliq eslatma dan
+boshqariladi (0 = o'chiq).
+
 ### Navbat vaqti
 
 **👑 Admin Panel → 🧹 Navbat → ⚙️ Navbat sozlamalari**:

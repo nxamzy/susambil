@@ -2,7 +2,14 @@ import type { Api } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { sql, type Room, type TolovSikl, type User } from "../db/index.js";
 import { config } from "../config.js";
-import { faolNavbat, kechikkanKun, navbatFaolTopshirigi } from "../core/rotation.js";
+import {
+  bajarilganMarta,
+  faolNavbat,
+  kechikkanKun,
+  navbatFaolTopshirigi,
+  oraliqKunOtdi,
+} from "../core/rotation.js";
+import { faolVazifalar } from "../core/vazifalar.js";
 import {
   eslatmaBelgila,
   eslatmaNomzodlari,
@@ -21,6 +28,7 @@ import { guruhgaYubor, shaxsiy } from "../bot/group.js";
 import {
   esc,
   ismlar,
+  oraliqVazifaMatni,
   pul,
   tolovEslatmaXabari,
   tolovGuruhEslatmasi,
@@ -70,7 +78,76 @@ function tolovTugmasi(): InlineKeyboard {
  */
 export async function eslatmalarniTekshir(api: Api): Promise<void> {
   await navbatEslatmalari(api).catch((e) => console.error("[eslatma] navbat xatosi:", e));
+  await oraliqVazifaEslatmalari(api).catch((e) => console.error("[eslatma] oraliq vazifa xatosi:", e));
   await tolovEslatmalari(api).catch((e) => console.error("[eslatma] to'lov xatosi:", e));
+}
+
+// ---------------------------------------------------------------------------
+// ORALIQ VAZIFA ESLATMASI (musor)
+// ---------------------------------------------------------------------------
+
+/**
+ * `oraliq_kun > 0` vazifalar (musor) uchun — navbat BOSHLANGANIDAN
+ * `oraliq_kun` kun o'tgach, vazifa BIRINCHI marta bajarilgunicha, xona
+ * a'zolariga har `config.eslatmaOraligiSoat` (5) soatda shaxsiy eslatma.
+ *
+ * "Oxirgi kun" eslatmasidan (`navbatEslatmalari`) ATAYLAB ALOHIDA: u
+ * muddatga yaqin ishga tushadi, bu esa navbat o'rtasida — musor idishi
+ * to'lganda.
+ *
+ * Xonaning istalgan a'zosi "✅ Tugatdim" bossa `bajarilgan` 1 ga yetadi va
+ * keyingi tekshiruvda `continue` bo'ladi — eslatma o'zidan to'xtaydi,
+ * alohida "o'chirish" bayrog'i kerak emas (`turns.oxirgi_ping` bilan bir xil
+ * "holatdan qayta hisoblash" intizomi).
+ *
+ * Har vazifaning oxirgi eslatma vaqti `turns.oraliq_eslatma` JSONB da
+ * `{ "<kod>": "<ts>" }` — necha marta chaqirilsa ham xavfsiz.
+ */
+async function oraliqVazifaEslatmalari(api: Api): Promise<void> {
+  const n = await faolNavbat();
+  if (!n) return;
+
+  const { turn, azolar } = n;
+
+  // Topshirilgan bo'lsa (tasdiq kutmoqda) — hamma vazifa bajarilgan, kerak emas.
+  if (await navbatFaolTopshirigi(turn.id)) return;
+
+  const vazifalar = (await faolVazifalar()).filter((v) => v.oraliq_kun > 0);
+  if (vazifalar.length === 0) return;
+
+  const hozir = new Date();
+  const oxirgiMap = turn.oraliq_eslatma ?? {};
+
+  for (const v of vazifalar) {
+    // 1-marta bajarilgan bo'lsa — bu vazifa uchun eslatma tugadi.
+    if (bajarilganMarta(turn.ishlar[v.kod]) >= 1) continue;
+    // Oraliq oynasi hali ochilmagan (navbat boshlanganiga oraliq_kun kun yo'q).
+    if (oraliqKunOtdi(turn, v.oraliq_kun, hozir) < 0) continue;
+    // Oxirgi eslatmadan 5 soat o'tmagan.
+    const oxirgiXom = oxirgiMap[v.kod];
+    const oxirgi = oxirgiXom ? new Date(oxirgiXom).getTime() : null;
+    if (oxirgi !== null && hozir.getTime() - oxirgi < config.eslatmaOraligiSoat * SOAT_MS) continue;
+
+    const otganKun = v.oraliq_kun + oraliqKunOtdi(turn, v.oraliq_kun, hozir);
+    const matn = oraliqVazifaMatni(v, otganKun);
+    const natijalar = await Promise.all(
+      azolar.map((a) => shaxsiy(api, a, matn, { reply_markup: panelTugmasi() })),
+    );
+    // Hech kimga yetmasa vaqtni yozmaymiz — ular ulanganda qayta urinilsin
+    // (navbat/to'lov eslatmalaridagi bilan bir xil ehtiyot chorasi).
+    if (!natijalar.some(Boolean)) continue;
+
+    await sql`
+      UPDATE turns
+      SET oraliq_eslatma = jsonb_set(
+        COALESCE(oraliq_eslatma, '{}'::jsonb),
+        ARRAY[${v.kod}]::text[],
+        to_jsonb(now()),
+        true
+      )
+      WHERE id = ${turn.id}
+    `;
+  }
 }
 
 // ---------------------------------------------------------------------------

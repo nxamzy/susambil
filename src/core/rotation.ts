@@ -650,6 +650,35 @@ export function majburiyOchildimi(
 }
 
 /**
+ * Shu vazifaning tugmasi HOZIR bosiladimi.
+ *
+ *  - `oraliq_kun > 0` — vazifa navbat BOSHLANGANIDAN `oraliq_kun` kun
+ *    o'tgach ochiladi. Global "oxirgi kun" qulfidan MUSTAQIL: musorni
+ *    navbat o'rtasida tashlash kerak, oxirini kutib bo'lmaydi.
+ *  - `oraliq_kun = 0` — odatdagidek `majburiyOchildimi` (muddatga
+ *    `majburiyKuni` kun qolganda).
+ *
+ * Sof funksiya, bazasiz testlanadi — `boshlandi`/`muddat` chaqiruvchidan.
+ */
+export function vazifaOchiqmi(
+  turn: { boshlandi: Date; muddat: Date },
+  vazifa: NavbatVazifasi,
+  majburiyKuni: number,
+  hozir: Date = new Date(),
+): boolean {
+  if (vazifa.oraliq_kun > 0) {
+    return hozir.getTime() >= new Date(turn.boshlandi).getTime() + vazifa.oraliq_kun * KUN_MS;
+  }
+  return majburiyOchildimi(turn.muddat, majburiyKuni, hozir);
+}
+
+/** `oraliq_kun` vazifalari uchun: eslatma oynasi ochilganidan beri necha kun. */
+export function oraliqKunOtdi(turn: { boshlandi: Date }, oraliqKun: number, hozir: Date = new Date()): number {
+  const otgan = hozir.getTime() - new Date(turn.boshlandi).getTime();
+  return Math.floor(otgan / KUN_MS) - oraliqKun;
+}
+
+/**
  * Shu navbat uchun hali rad etilmagan topshiriq bormi (kutilmoqda yoki
  * tasdiqlangan). Rad etilgan ataylab hisobga kirmaydi — aks holda bir marta
  * rad etilgach xona qaytadan topshira olmay qolardi (eski buferdagi bilan

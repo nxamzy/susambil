@@ -26,6 +26,8 @@ import {
   ishBelgila,
   majburiyOchildimi,
   martaniYop,
+  oraliqKunOtdi,
+  vazifaOchiqmi,
   navbatFaolTopshirigi,
   navbatniBoshlash,
   navbatniOzgartirish,
@@ -153,7 +155,14 @@ async function panelniYubor(
 ): Promise<void> {
   const { vazifalar, sozlamalar } = kontekst ?? (await konteksOl());
 
-  if (!majburiyOchildimi(turn.muddat, sozlamalar.majburiyKuni)) {
+  // Har vazifa alohida: `oraliq_kun` vazifasi (musor) navbat o'rtasida
+  // ochiladi, qolganlari "oxirgi kun" qulfi bilan.
+  const ochiqKodlar = new Set(
+    vazifalar.filter((v) => vazifaOchiqmi(turn, v, sozlamalar.majburiyKuni)).map((v) => v.kod),
+  );
+
+  // Birorta vazifa ham ochilmagan bo'lsa — faqat qulf xabari.
+  if (ochiqKodlar.size === 0) {
     await ctx.reply(majburiyQulfMatni(room, turn.muddat, sozlamalar.majburiyKuni), {
       parse_mode: "HTML",
     });
@@ -161,9 +170,11 @@ async function panelniYubor(
   }
 
   const status = await vazifaHolatiniAniqla(turn);
-  const matn = vazifaPaneli(room, turn, status, vazifalar);
+  const matn = vazifaPaneli(room, turn, status, vazifalar, ochiqKodlar);
   const kb =
-    status.tur === "faol" ? vazifaKeyboard(turn.id, turn.ishlar, vazifalar) : new InlineKeyboard();
+    status.tur === "faol"
+      ? vazifaKeyboard(turn.id, turn.ishlar, vazifalar, ochiqKodlar)
+      : new InlineKeyboard();
   await ctx.reply(matn, { parse_mode: "HTML", reply_markup: kb });
 }
 
@@ -314,7 +325,9 @@ export async function navbatAdminDashboard(ctx: Context): Promise<void> {
  */
 export async function navbatKelganiniXabarQil(api: Api, room: Room, azolar: User[]): Promise<void> {
   const { majburiyKuni } = await navbatSozlamalari();
-  const matn = [
+  const oraliq = (await faolVazifalar()).filter((v) => v.oraliq_kun > 0);
+
+  const qatorlar = [
     `🧹 <b>NAVBAT SIZGA KELDI</b>`,
     ``,
     `🏠 ${room.raqam}-xona`,
@@ -324,7 +337,15 @@ export async function navbatKelganiniXabarQil(api: Api, room: Room, azolar: User
     `<i>Majburiy xona tozalash muddat tugashiga ${majburiyKuni} kun</i>`,
     `<i>qolganda ochiladi — shu paytgacha ixtiyoriy tozalash tugmalaridan</i>`,
     `<i>foydalanishingiz mumkin.</i>`,
-  ].join("\n");
+  ];
+  for (const v of oraliq) {
+    qatorlar.push(
+      ``,
+      `<i>${esc(v.emoji)} ${esc(v.nom)} navbatning ${v.oraliq_kun}-kunidan ochiladi —</i>`,
+      `<i>bajarilmasa har 5 soatda eslatib turaman.</i>`,
+    );
+  }
+  const matn = qatorlar.join("\n");
 
   for (const a of azolar) {
     await shaxsiy(api, a, matn, { reply_markup: menyuKeyboard(a.admin, true) });
@@ -352,20 +373,24 @@ export function register(bot: Bot) {
       return ctx.answerCallbackQuery({ text: "Bu sizning navbatingiz emas.", show_alert: true });
     }
 
-    // Backend tomonda ham tekshiramiz — eski (keshlangan) tugma hali
-    // ko'rinib tursa ham, majburiy tozalash muddatdan oldin ochilmaydi.
     const { vazifalar, sozlamalar } = await konteksOl();
-    if (!majburiyOchildimi(n.turn.muddat, sozlamalar.majburiyKuni)) {
-      return ctx.answerCallbackQuery({
-        text: `Majburiy tozalash hali ochilmagan — navbatingiz tugashiga ${sozlamalar.majburiyKuni} kun qolganda ochiladi.`,
-        show_alert: true,
-      });
-    }
-
     const vazifa = await faolVazifaKodBoyicha(kod);
     if (!vazifa) {
       return ctx.answerCallbackQuery({
         text: "Bu vazifa ro'yxatdan chiqarilgan.",
+        show_alert: true,
+      });
+    }
+
+    // Backend tomonda ham tekshiramiz — eski (keshlangan) tugma hali
+    // ko'rinib tursa ham. `oraliq_kun` vazifasi navbat o'rtasida,
+    // qolganlari "oxirgi kun" qulfi bilan ochiladi.
+    if (!vazifaOchiqmi(n.turn, vazifa, sozlamalar.majburiyKuni)) {
+      return ctx.answerCallbackQuery({
+        text:
+          vazifa.oraliq_kun > 0
+            ? `Bu vazifa navbat boshlanganiga ${vazifa.oraliq_kun} kun bo'lgach ochiladi.`
+            : `Majburiy tozalash hali ochilmagan — navbatingiz tugashiga ${sozlamalar.majburiyKuni} kun qolganda ochiladi.`,
         show_alert: true,
       });
     }

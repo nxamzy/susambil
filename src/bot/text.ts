@@ -231,7 +231,7 @@ function bolmalar(soni: number, kerak: number): string {
   return "🟩".repeat(Math.min(soni, kerak)) + "⬜️".repeat(Math.max(0, kerak - soni));
 }
 
-function vazifaQatori(v: NavbatVazifasi, ishlar: TurnIshlar): string {
+function vazifaQatori(v: NavbatVazifasi, ishlar: TurnIshlar, ochiq = true): string {
   const belgi = ishlar[v.kod];
   const bajarilgan = bajarilganMarta(belgi);
   const tugadi = bajarilgan >= v.takror_soni;
@@ -249,7 +249,10 @@ function vazifaQatori(v: NavbatVazifasi, ishlar: TurnIshlar): string {
         : `  ·  ${soni}/${v.rasm_soni} rasm`;
   }
 
-  return `${tugadi ? "✅" : "☐"} ${esc(v.emoji)} ${esc(v.nom)}${marta}${joriy}`;
+  // Hali ochilmagan vazifa — tugmasi yo'q, 🔒 bilan belgilanadi.
+  const belgisi = tugadi ? "✅" : !ochiq ? "🔒" : "☐";
+  const qulf = !tugadi && !ochiq ? `  ·  <i>hali ochilmagan</i>` : "";
+  return `${belgisi} ${esc(v.emoji)} ${esc(v.nom)}${marta}${joriy}${qulf}`;
 }
 
 /**
@@ -273,10 +276,12 @@ export function vazifaPaneli(
   turn: Turn,
   status: VazifaHolati,
   vazifalar: NavbatVazifasi[],
+  ochiqKodlar?: Set<string>,
 ): string {
   const ishlar = turn.ishlar;
   const bajarilgan = vazifalar.filter((v) => vazifaBajarildimi(ishlar[v.kod], v)).length;
   const qoldi = vazifalar.length - bajarilgan;
+  const ochiqmi = (v: NavbatVazifasi) => !ochiqKodlar || ochiqKodlar.has(v.kod);
 
   const s = [
     `👤 <b>MENING NAVBATIM</b>`,
@@ -287,7 +292,7 @@ export function vazifaPaneli(
     `${muddatHolati(turn.muddat)}`,
     ``,
     `<b>Vazifalar:</b>`,
-    ...vazifalar.map((v) => `   ${vazifaQatori(v, ishlar)}`),
+    ...vazifalar.map((v) => `   ${vazifaQatori(v, ishlar, ochiqmi(v))}`),
     ``,
     `🟢 Bajarilgan: <b>${bajarilgan}</b>   🔴 Qoldi: <b>${qoldi}</b>`,
   ];
@@ -1766,6 +1771,25 @@ export function vazifaRasmMatni(v: NavbatVazifasi, soni: number, bajarilgan = 0)
   return s.join("\n");
 }
 
+/**
+ * `oraliq_kun` vazifasi (musor) uchun xona a'zolariga boradigan eslatma DM.
+ * Xonaning istalgan a'zosi belgilashi mumkin — belgilangач keyingi tekshiruvda
+ * shart o'zi yolg'on bo'ladi va eslatma to'xtaydi (alohida "o'chirish" yo'q).
+ */
+export function oraliqVazifaMatni(v: NavbatVazifasi, otganKun: number): string {
+  return [
+    `${esc(v.emoji)} <b>${esc(v.nom).toUpperCase()} ESLATMASI</b>`,
+    AJRATGICH,
+    ``,
+    `Navbatingiz boshlanganiga <b>${otganKun} kun</b> bo'ldi —`,
+    `<b>${esc(v.nom)}</b>ni bajarib, "👤 Mening Navbatim" panelidan`,
+    `rasmini yuboring.`,
+    ``,
+    `<i>Xonadan istalgan a'zo belgilashi mumkin — belgilangач</i>`,
+    `<i>bu eslatma o'zi to'xtaydi.</i>`,
+  ].join("\n");
+}
+
 /** Vazifaga qattiq chegara (`RASM_MAX`) tufayli sig'may qolgan rasm haqida. */
 export function vazifaRasmToldiMatni(v: NavbatVazifasi): string {
   return [
@@ -1796,7 +1820,8 @@ export function vazifalarMatni(vazifalar: NavbatVazifasi[]): string {
     s.push(`<b>Faol (${faol.length}):</b>`);
     for (const [i, v] of faol.entries()) {
       const marta = v.takror_soni > 1 ? `, <b>${v.takror_soni}</b> marta` : "";
-      s.push(`   ${i + 1}. ${esc(v.emoji)} ${esc(v.nom)} — <b>${v.rasm_soni}</b> rasm${marta}`);
+      const oraliq = v.oraliq_kun > 0 ? `, 🕐 ${v.oraliq_kun}-kundan eslatma` : "";
+      s.push(`   ${i + 1}. ${esc(v.emoji)} ${esc(v.nom)} — <b>${v.rasm_soni}</b> rasm${marta}${oraliq}`);
     }
   }
 
@@ -1822,6 +1847,9 @@ export function vazifaDetalMatni(v: NavbatVazifasi): string {
     ``,
     `📷 Kerakli rasm (bir marta): <b>${v.rasm_soni}</b> ta (eng kam)`,
     `🔁 Navbat davomida: <b>${v.takror_soni}</b> marta`,
+    v.oraliq_kun > 0
+      ? `🕐 Oraliq eslatma: navbatning <b>${v.oraliq_kun}-kunidan</b> (har 5 soatda, 1-marta bajarilgunicha)`
+      : `🕐 Oraliq eslatma: <b>o'chiq</b> (navbat oxirida ochiladi)`,
     `🔢 Tartib: <b>${v.tartib}</b>`,
     `${v.faol ? "🟢 Faol — panelda ko'rinadi" : "⛔️ O'chirilgan — panelda ko'rinmaydi"}`,
     ``,

@@ -618,3 +618,37 @@ DO $$ BEGIN
       ON CONFLICT (kalit) DO NOTHING;
   END IF;
 END $$;
+
+-- ---------------------------------------------------------------------------
+-- ORALIQ ESLATMA: navbat o'rtasida bajariladigan vazifa (musor)
+-- ---------------------------------------------------------------------------
+-- Musorni navbat OXIRINI kutmasdan, o'rtasida tashlash kerak — idish to'lib
+-- ketadi. `oraliq_kun` = navbat BOSHLANGANIDAN necha kun o'tgach shu vazifa
+-- (a) tugmasi ochiladi ("oxirgi kun" global qulfidan mustaqil) va
+-- (b) o'z eslatmasi ishga tushadi: xona a'zolariga har
+--     `config.eslatmaOraligiSoat` (5) soatda DM, BIRINCHI marta bajarilgunicha
+--     (`jobs/reminders.ts` oraliqVazifaEslatmalari).
+--
+-- 0 = o'chiq (vazifa odatdagidek navbat oxirida ochiladi, oraliq eslatma yo'q).
+ALTER TABLE navbat_vazifalari
+  ADD COLUMN IF NOT EXISTS oraliq_kun INT NOT NULL DEFAULT 0;
+
+DO $$ BEGIN
+  ALTER TABLE navbat_vazifalari ADD CONSTRAINT navbat_vazifalari_oraliq_chk
+    CHECK (oraliq_kun BETWEEN 0 AND 30);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Har vazifa uchun oxirgi oraliq eslatma yuborilgan vaqt: { "<kod>": <ts> }.
+-- `oxirgi_eslatma` (bitta ustun) "oxirgi kun" eslatmasiniki — bu esa har
+-- vazifaga alohida, shuning uchun JSONB.
+ALTER TABLE turns
+  ADD COLUMN IF NOT EXISTS oraliq_eslatma JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- Musor: navbatning 3-kunidan boshlab oraliq eslatma. BIR MARTA qo'yiladi.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM settings WHERE kalit = 'musor_oraliq_seed') THEN
+    UPDATE navbat_vazifalari SET oraliq_kun = 3 WHERE kod = 'musor';
+    INSERT INTO settings (kalit, qiymat) VALUES ('musor_oraliq_seed', '1')
+      ON CONFLICT (kalit) DO NOTHING;
+  END IF;
+END $$;

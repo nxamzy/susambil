@@ -2,6 +2,7 @@ import { InlineKeyboard, Keyboard } from "grammy";
 import {
   ISH_TURLARI,
   ISHONCH_DARAJASI,
+  ORALIQ_KUN_MAX,
   RASM_SONI_MAX,
   TAKROR_MAX,
   SEKIN_ISHLAR,
@@ -379,9 +380,12 @@ export function vazifaKeyboard(
   turnId: number,
   ishlar: TurnIshlar,
   vazifalar: NavbatVazifasi[],
+  ochiqKodlar?: Set<string>,
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
   for (const v of vazifalar) {
+    // Hali ochilmagan vazifaning tugmasi umuman chiqmaydi (panelda 🔒).
+    if (ochiqKodlar && !ochiqKodlar.has(v.kod)) continue;
     const belgi = ishlar[v.kod];
     const bajarilgan = bajarilganMarta(belgi);
     const soni = ishRasmlari(belgi).length;
@@ -624,6 +628,7 @@ export function vazifaDetalKeyboard(
     .text("📷 Rasm soni", `vazifa_rasm:${v.id}`)
     .row()
     .text("🔁 Necha marta", `vazifa_takror:${v.id}`)
+    .text("🕐 Oraliq eslatma", `vazifa_oraliq:${v.id}`)
     .row();
 
   if (yuqoriBor) kb.text("⬆️ Yuqoriga", `vazifa_kochir:${v.id}:yuqori`);
@@ -662,6 +667,21 @@ export function vazifaTakrorSoniKeyboard(vazifaId: number): InlineKeyboard {
     if (n % 5 === 0) kb.row();
   }
   kb.text("⬅️ Orqaga", `vazifa:${vazifaId}`);
+  return kb;
+}
+
+/**
+ * Oraliq eslatma boshlanish kunini tanlash. 0 = o'chiq; 1..7 va 10, 14 —
+ * navbat boshlanganidan shuncha kun o'tgach eslatma ishga tushadi.
+ */
+export function vazifaOraliqKuniKeyboard(vazifaId: number): InlineKeyboard {
+  const kb = new InlineKeyboard().text("O'chiq", `vazifa_oraliq_set:${vazifaId}:0`).row();
+  const kunlar = [1, 2, 3, 4, 5, 6, 7, 10, 14].filter((k) => k <= ORALIQ_KUN_MAX);
+  for (const [i, k] of kunlar.entries()) {
+    kb.text(`${k}-kun`, `vazifa_oraliq_set:${vazifaId}:${k}`);
+    if (i % 4 === 3) kb.row();
+  }
+  kb.row().text("⬅️ Orqaga", `vazifa:${vazifaId}`);
   return kb;
 }
 

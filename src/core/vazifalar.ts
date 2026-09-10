@@ -22,7 +22,7 @@
  * shunda birorta chaqiruvchi buni "unutib qoldirishi" mumkin emas.
  */
 import { sql } from "../db/index.js";
-import { RASM_SONI_MAX, TAKROR_MAX } from "../config.js";
+import { ORALIQ_KUN_MAX, RASM_SONI_MAX, TAKROR_MAX } from "../config.js";
 import { logla } from "./adminlog.js";
 
 export type NavbatVazifasi = {
@@ -35,6 +35,12 @@ export type NavbatVazifasi = {
   rasm_soni: number;
   /** Navbat davomida vazifa necha marta bajarilishi shart (musor = 2) */
   takror_soni: number;
+  /**
+   * Navbat BOSHLANGANIDAN necha kun o'tgach bu vazifa erta ochiladi va
+   * o'z eslatmasi (har 5 soatda, 1-marta bajarilgunicha) ishga tushadi.
+   * 0 = o'chiq (odatdagi "oxirgi kun" qulfi, oraliq eslatma yo'q). Musor = 3.
+   */
+  oraliq_kun: number;
   tartib: number;
   faol: boolean;
 };
@@ -173,6 +179,11 @@ function takrorChegarala(n: number): number {
   return Math.min(TAKROR_MAX, Math.max(1, Math.round(n)));
 }
 
+/** Oraliq kun 0..ORALIQ_KUN_MAX oralig'ida (bazadagi CHECK bilan bir xil). */
+function oraliqChegarala(n: number): number {
+  return Math.min(ORALIQ_KUN_MAX, Math.max(0, Math.round(n)));
+}
+
 /**
  * Nomni (va boshida emoji bo'lsa emojini) o'zgartiradi. `kod` ATAYLAB
  * tegilmaydi — yuqoridagi 1-qoida.
@@ -233,6 +244,28 @@ export async function vazifaTakrorSoniniOrnat(
   if (!v) return null;
 
   await logla(adminId, "vazifa_takror_soni", "vazifa", id, String(eski.takror_soni), String(v.takror_soni));
+  return v;
+}
+
+/**
+ * Vazifaning oraliq eslatma kunini o'rnatadi. `kun > 0` bo'lsa vazifa
+ * navbat boshlanganidan `kun` kun o'tgach erta ochiladi va har 5 soatda
+ * xona a'zolariga eslatma boradi (1-marta bajarilgunicha). 0 = o'chiq.
+ */
+export async function vazifaOraliqKuniniOrnat(
+  adminId: number,
+  id: number,
+  kun: number,
+): Promise<NavbatVazifasi | null> {
+  const eski = await vazifaOl(id);
+  if (!eski) return null;
+
+  const [v] = await sql<NavbatVazifasi[]>`
+    UPDATE navbat_vazifalari SET oraliq_kun = ${oraliqChegarala(kun)} WHERE id = ${id} RETURNING *
+  `;
+  if (!v) return null;
+
+  await logla(adminId, "vazifa_oraliq_kun", "vazifa", id, String(eski.oraliq_kun), String(v.oraliq_kun));
   return v;
 }
 

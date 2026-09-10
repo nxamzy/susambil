@@ -94,6 +94,30 @@ bosilganda yopiladi. `barchaIshlarBajarildimi` / `vazifaKeyboard`ning
 "Yakuniy topshirish" sharti ham shu — rasm tashlab qo'yib tugmani
 bosmasa, navbat topshirilmaydi (panelda `🟡 3/3 — tasdiqlang` deb turadi).
 
+## `oraliq_kun` — navbat o'rtasida bajariladigan vazifa + o'z eslatmasi
+
+`navbat_vazifalari.oraliq_kun` (standart 0 = o'chiq). `> 0` bo'lsa:
+
+- Vazifa navbat BOSHLANGANIDAN `oraliq_kun` kun o'tgach ochiladi —
+  global "oxirgi kun" qulfidan MUSTAQIL (`core/rotation.ts`
+  `vazifaOchiqmi`). Musorni navbat oxirini kutmasdan tashlash kerak.
+  Panel/callback shu bo'yicha har vazifani alohida tekshiradi; ochilmagan
+  vazifa panelda 🔒, tugmasi yo'q.
+- `jobs/reminders.ts` `oraliqVazifaEslatmalari` — o'sha kundan boshlab,
+  vazifa BIRINCHI marta bajarilgunicha (`bajarilganMarta >= 1`), xona
+  a'zolariga har `config.eslatmaOraligiSoat` (5) soatda DM. "Oxirgi kun"
+  eslatmasidan (`navbatEslatmalari`) ATAYLAB alohida funksiya — u
+  muddatga yaqin, bu navbat o'rtasida ishlaydi.
+
+Xonaning istalgan a'zosi "✅ Tugatdim" bossa `bajarilgan` 1 ga yetadi va
+keyingi tekshiruvda `continue` bo'ladi — eslatma o'zidan to'xtaydi,
+alohida bayroq yo'q (`turns.oxirgi_ping` bilan bir xil "holatdan qayta
+hisoblash" intizomi). Har vazifaning oxirgi eslatma vaqti
+`turns.oraliq_eslatma` JSONB da `{ "<kod>": "<ISO ts>" }`.
+
+Musor: `db/schema.sql` `musor_oraliq_seed` bayrog'i bilan BIR MARTA
+`oraliq_kun = 3` qo'yadi.
+
 ## `takror_soni` — bir navbatda bir necha marta bajariladigan vazifa
 
 `navbat_vazifalari.takror_soni` (standart 1) = vazifa navbat davomida necha

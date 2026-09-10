@@ -82,6 +82,12 @@ export type Turn = {
   ishlar: TurnIshlar;
   /** "Oxirgi kun" oynasida 5 soatda bir yuboriladigan SHAXSIY eslatmaning oxirgi vaqti */
   oxirgi_eslatma: Date | null;
+  /**
+   * `oraliq_kun > 0` vazifalar uchun oxirgi ORALIQ eslatma vaqti,
+   * `{ "<kod>": "<ISO ts>" }`. `oxirgi_eslatma`dan alohida: u bitta
+   * "oxirgi kun" eslatmasi, bu esa har vazifaga o'z jadvali bilan.
+   */
+  oraliq_eslatma: Record<string, string>;
 };
 
 /** Topshiriq turi. Uchalasi ham bir xil tasdiqlash yo'lidan o'tadi. */
