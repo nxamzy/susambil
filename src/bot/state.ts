@@ -10,10 +10,6 @@ import { type Ishonch, type ShikoyatJoyi } from "../config.js";
 type Sorov = { sorov?: { chatId: number; msgId: number } };
 
 export type Flow = (
-  /** Yangi xarajat: rasm → nomi → summasi */
-  | { tur: "xarajat"; qadam: "rasm" }
-  | { tur: "xarajat"; qadam: "izoh"; photoId: string }
-  | { tur: "xarajat"; qadam: "summa"; photoId: string; izoh: string }
   /** Yangi a'zo ro'yxatdan o'tyapti */
   | { tur: "royxat"; qadam: "ism" }
   | { tur: "royxat"; qadam: "xona"; ism: string }
@@ -47,12 +43,16 @@ export type Flow = (
   /** Guruhda "💬 Izoh qo'shish" bosgan sababchi — o'z izohini shaxsiy yozadi. */
   | { tur: "javobgar_izoh"; reportId: number }
   /**
-   * Kvartira to'lovi: qancha to'laganini yozadi, keyin dalil (rasm/PDF)
-   * tashlaydi. Ikkalasi ham to'lov yozuvi yaratilgunga qadar — bazaga
-   * faqat dalil kelganda birga yoziladi.
+   * To'lov: qancha to'laganini yozadi, keyin dalil (rasm/PDF) tashlaydi.
+   * Ikkalasi ham to'lov yozuvi yaratilgunga qadar — bazaga faqat dalil
+   * kelganda birga yoziladi.
+   *
+   * `siklId` — PUL YIG'IMIGA to'lov bo'lsa o'sha yig'imning id'si; bo'lmasa
+   * kvartira puli (joriy oy). Oqim ikkalasiga bir xil, shuning uchun
+   * ikkinchi oqim yozilmadi — faqat pul qaysi siklga tushishi farq qiladi.
    */
-  | { tur: "tolov"; qadam: "summa" }
-  | { tur: "tolov"; qadam: "dalil"; summa: number }
+  | { tur: "tolov"; qadam: "summa"; siklId?: number }
+  | { tur: "tolov"; qadam: "dalil"; summa: number; siklId?: number }
   /** Admin "✅ Tasdiqlash" bosgach — haqiqatda qancha kelganini so'raymiz. */
   | { tur: "tolov_tasdiq"; tolovId: number }
   /** Admin "❌ Rad etish" bosgach — sababini so'raymiz. */
@@ -99,6 +99,18 @@ export type Flow = (
    */
   | { tur: "admin_xabar"; qadam: "matn"; kim: XabarKimi }
   | { tur: "admin_xabar"; qadam: "tasdiq"; kim: XabarKimi; matn: string }
+  /**
+   * Admin yangi pul yig'imini boshlayapti: nomi → har kishidan qancha →
+   * muddati (tugma) → tasdiq. Tasdiq qadami ATAYLAB bor: "boshlash" bitta
+   * bosishda guruhga e'lon va hammaga xabar yuboradi, ortga qaytarib
+   * bo'lmaydi (`admin_xabar` bilan bir xil sabab).
+   */
+  | { tur: "yigim_yangi"; qadam: "nom" }
+  | { tur: "yigim_yangi"; qadam: "summa"; nom: string }
+  | { tur: "yigim_yangi"; qadam: "kun"; nom: string; talab: number }
+  | { tur: "yigim_yangi"; qadam: "tasdiq"; nom: string; talab: number; kun: number }
+  /** Admin ochiq yig'imning summasini o'zgartiryapti. */
+  | { tur: "yigim_summa"; siklId: number }
 ) &
   Sorov;
 

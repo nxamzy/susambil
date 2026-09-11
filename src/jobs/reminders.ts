@@ -16,14 +16,18 @@ import type { Submission } from "../db/index.js";
 import {
   eslatmaBelgila,
   eslatmaNomzodlari,
+  eslatmaTsBelgila,
   guruhEslatmasiniBelgila,
   jarimaHisobla,
   joriySikl,
   muddatiOtganSikllar,
+  ochiqYigim,
   siklMuddatiniHisobla,
   tolovDashboard,
   tolovEslatmasiKerakmi,
   tolovJarimaFoizi,
+  tolovQabulQiluvchi,
+  yigimEslatmasiKerakmi,
   type MuddatSurati,
 } from "../core/tolov.js";
 import { bugungiSana, kunFarqi, kunOxirigachaSoat } from "../core/vaqt.js";
@@ -37,7 +41,9 @@ import {
   tolovGuruhEslatmasi,
   tolovMuddatGuruhXabari,
   tolovMuddatXabari,
+  yigimEslatmaXabari,
 } from "../bot/text.js";
+import { yigimTolashKeyboard } from "../bot/keyboards.js";
 
 const SOAT_MS = 60 * 60_000;
 const KUN_MS = 24 * SOAT_MS;
@@ -84,6 +90,7 @@ export async function eslatmalarniTekshir(api: Api): Promise<void> {
   await oraliqVazifaEslatmalari(api).catch((e) => console.error("[eslatma] oraliq vazifa xatosi:", e));
   await tasdiqEslatmalari(api).catch((e) => console.error("[eslatma] tasdiq xatosi:", e));
   await tolovEslatmalari(api).catch((e) => console.error("[eslatma] to'lov xatosi:", e));
+  await yigimEslatmalari(api).catch((e) => console.error("[eslatma] yig'im xatosi:", e));
 }
 
 // ---------------------------------------------------------------------------
@@ -498,4 +505,54 @@ export function guruhEslatmasiKerakmi(p: {
   if (qolgan > p.eslatmaKuni) return false;
   // Oyna ochilgan kun, muddat kuni, va muddatdan keyingi har kun.
   return qolgan === p.eslatmaKuni || qolgan <= 0;
+}
+
+// ---------------------------------------------------------------------------
+// PUL YIG'IMI
+// ---------------------------------------------------------------------------
+
+/**
+ * Ochiq yig'imga hali to'lamaganlarga har `yigimEslatmaSoat` (5) soatda
+ * shaxsiy eslatma — to'langunicha.
+ *
+ * Oylik to'lov eslatmasidan (`shaxsiyTolovEslatmalari`) ATAYLAB alohida
+ * funksiya, garchi ikkalasi ham `eslatmaNomzodlari`ni ishlatsa-da:
+ *
+ *  - u KUNIGA bir marta va faqat muddatga yaqinlashganda boshlanadi
+ *    (`tolovEslatmaKuni` oynasi), bu esa yig'im ochilishi bilanoq va
+ *    SOATLIK — talab aynan shunday edi ("kim bermagan bo'lsa har 5 soatda
+ *    eslatma kelib tursin");
+ *  - u muddat surati/jarima bilan bog'liq, yig'imda esa bular yo'q.
+ *
+ * To'xtashi uchun alohida bayroq kerak emas: qarzi qolmagan odam
+ * `yigimEslatmasiKerakmi`dan o'tmaydi, ya'ni to'lovi tasdiqlangan zahoti
+ * eslatma O'ZIDAN to'xtaydi (`turns.oxirgi_ping` bilan bir xil "holatdan
+ * qayta hisoblash" intizomi). Yig'im yopilsa `ochiqYigim()` `null` qaytaradi
+ * va butun bo'lim jim bo'ladi.
+ */
+async function yigimEslatmalari(api: Api): Promise<void> {
+  const yigim = await ochiqYigim();
+  if (!yigim) return;
+
+  const { yigimEslatmaSoat } = await sozlamalarOl();
+  const hozir = Date.now();
+  const qabul = await tolovQabulQiluvchi();
+
+  for (const n of await eslatmaNomzodlari(yigim)) {
+    const kerak = yigimEslatmasiKerakmi({
+      qoldiq: n.qoldiq,
+      hozir,
+      oxirgiTs: n.oxirgiEslatmaTs,
+      oraliqSoat: yigimEslatmaSoat,
+    });
+    if (!kerak) continue;
+
+    const yetdi = await shaxsiy(api, n.user, yigimEslatmaXabari(yigim, n, qabul), {
+      reply_markup: yigimTolashKeyboard(),
+    });
+    // Faqat yetkazilganda belgilaymiz — bloklangan hisob tufayli keyingi
+    // 5 soat behuda o'tib ketmasin (navbat/to'lov eslatmalaridagi bilan
+    // bir xil ehtiyot chorasi).
+    if (yetdi) await eslatmaTsBelgila(yigim.id, n.userId);
+  }
 }

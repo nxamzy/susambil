@@ -232,11 +232,22 @@ export type SiklHolat = "ochiq" | "muddat_yetdi" | "yakunlandi";
  * formatlaganda bir kunlik siljish xatosiga yo'l ochiladi. Kalendar sanasi
  * matn bo'lib qolsa bunday xato bo'lishi mumkin emas (`core/vaqt.ts`).
  */
+/**
+ * Sikl turi. `oylik` — kvartira puli (kalendar oyi bo'yicha, muddat surati
+ * bilan); `yigim` — admin istalgan paytda boshlaydigan bir martalik pul
+ * yig'imi. Ikkalasi bitta jadvalda yashaydi va bitta to'lov/tekshiruv
+ * oqimidan o'tadi (`core/tolov.ts`).
+ */
+export type SiklTur = "oylik" | "yigim";
+
 export type TolovSikl = {
   id: number;
-  /** Oy boshi — siklning kaliti (`YYYY-MM-01`) */
-  davr: string;
-  /** Shu oy uchun muzlatilgan talab (so'm) */
+  /** Oy boshi — oylik siklning kaliti (`YYYY-MM-01`). Yig'imda `null`. */
+  davr: string | null;
+  tur: SiklTur;
+  /** Yig'imning nomi ("Internet puli"). Oylik siklda `null`. */
+  nom: string | null;
+  /** Shu sikl uchun muzlatilgan talab, har kishidan (so'm) */
   talab: number;
   /** To'lov muddati (`YYYY-MM-15`), kun oxirigacha hisoblanadi */
   muddat: string;

@@ -2,11 +2,11 @@ import { Bot, GrammyError, HttpError } from "grammy";
 import { config } from "../config.js";
 import * as commands from "./handlers/commands.js";
 import * as admin from "./handlers/admin.js";
-import * as expense from "./handlers/expense.js";
 import * as photos from "./handlers/photos.js";
 import * as confirm from "./handlers/confirm.js";
 import * as reports from "./handlers/reports.js";
 import * as tolov from "./handlers/tolov.js";
+import * as yigim from "./handlers/yigim.js";
 import * as navbat from "./handlers/navbat.js";
 import * as adminUsers from "./handlers/adminUsers.js";
 import * as vazifalar from "./handlers/vazifalar.js";
@@ -45,10 +45,10 @@ export function botYarat(): Bot {
   // Tartib muhim: buyruqlar va tugmalar avval, umumiy xabar ushlagichlar oxirida
   commands.register(bot);
   admin.register(bot);
-  expense.register(bot);
   confirm.register(bot);
   reports.register(bot);
   tolov.register(bot);
+  yigim.register(bot);
   navbat.register(bot);
   adminUsers.register(bot);
   vazifalar.register(bot);
@@ -75,7 +75,7 @@ export async function buyruqlarniOrnat(bot: Bot): Promise<void> {
     { command: "navbat", description: "Kim navbatda" },
     { command: "reyting", description: "Shu oylik reyting" },
     { command: "tarix", description: "Oxirgi navbatlar" },
-    { command: "xarajat", description: "Uyga narsa olib keldim" },
+    { command: "yigim", description: "Pul yig'imi — holati va to'lash" },
     { command: "yordam", description: "Buyruqlar ro'yxati" },
   ]);
 }

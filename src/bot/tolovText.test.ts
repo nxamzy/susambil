@@ -13,7 +13,8 @@ import {
   eslatmaShoshilinchligi, pul, sanaQatori, siklOyi, tolovDashboardMatni,
   tolovEslatmaXabari, tolovFoydalanuvchiMatni, tolovGuruhEslatmasi,
   tolovKorinishi, tolovMuddatGuruhXabari, tolovMuddatXabari, tolovRoyxatMatni,
-  tolovTakrorXabari, tolovTarixi, tolovTarixXulosasi,
+  tolovTakrorXabari, tolovTarixi, tolovTarixXulosasi, siklSarlavhasi,
+  yigimEslatmaXabari, yigimGuruhElon, yigimKorinishi,
 } from "./text.js";
 
 const TALAB = 900_000;
@@ -21,6 +22,8 @@ const TALAB = 900_000;
 const AVGUST: TolovSikl = {
   id: 1,
   davr: "2026-08-01",
+  tur: "oylik",
+  nom: null,
   talab: TALAB,
   muddat: "2026-08-15",
   holat: "ochiq",
@@ -173,7 +176,7 @@ test("foydalanuvchi kartochkasi barcha talab qilingan maydonlarni ko'rsatadi", (
       dalil_id: "x", dalil_turi: "rasm", holat: "kutilmoqda", hal_qildi: null,
       rad_sababi: null, admin_msgs: [], guruh_msg_id: null,
       created_at: new Date("2026-08-14T10:00:00Z"), hal_qilindi: null,
-      hal_qildi_ism: null, sikl_davr: "2026-08-01",
+      hal_qildi_ism: null, sikl_davr: "2026-08-01", sikl_tur: "oylik", sikl_nom: null,
     },
     {
       id: 1, user_id: 2, sikl_id: 1, kiritgan_summa: "700000", tasdiqlangan_summa: "700000",
@@ -181,7 +184,7 @@ test("foydalanuvchi kartochkasi barcha talab qilingan maydonlarni ko'rsatadi", (
       rad_sababi: null, admin_msgs: [], guruh_msg_id: null,
       created_at: new Date("2026-08-05T10:00:00Z"),
       hal_qilindi: new Date("2026-08-06T10:00:00Z"),
-      hal_qildi_ism: "Sorabek", sikl_davr: "2026-08-01",
+      hal_qildi_ism: "Sorabek", sikl_davr: "2026-08-01", sikl_tur: "oylik", sikl_nom: null,
     },
   ];
 
@@ -261,7 +264,7 @@ test("to'lov tarixi oylar bo'yicha guruhlanadi — eski oy yangisining ostida qo
     kiritgan_summa: summa, tasdiqlangan_summa: summa, dalil_id: "x", dalil_turi: "rasm",
     holat: "tasdiqlandi", hal_qildi: 9, rad_sababi: null, admin_msgs: [], guruh_msg_id: null,
     created_at: new Date(`${davr}T10:00:00Z`), hal_qilindi: new Date(`${davr}T12:00:00Z`),
-    hal_qildi_ism: "Sorabek", sikl_davr: davr,
+    hal_qildi_ism: "Sorabek", sikl_davr: davr, sikl_tur: "oylik", sikl_nom: null,
   });
 
   const m = tolovTarixi([yozuv(2, "2026-09-01", "900000"), yozuv(1, "2026-08-01", "900000")]);
@@ -314,6 +317,7 @@ function nomzod(over: Partial<EslatmaNomzodi> = {}): EslatmaNomzodi {
     qoldiq: TALAB - tasdiqlangan,
     kutilmoqdaSumma: 0,
     oxirgiEslatma: null,
+    oxirgiEslatmaTs: null,
     ...over,
   };
 }
@@ -446,4 +450,126 @@ test("tarix xulosasi oylarni holati bilan ko'rsatadi", () => {
 
 test("bo'sh tarix tushunarli xabar beradi", () => {
   assert.match(tolovTarixXulosasi([]), /Hali oy yopilmagan/);
+});
+
+// ---------------------------------------------------------------------------
+// PUL YIG'IMI
+// ---------------------------------------------------------------------------
+
+const YIGIM: TolovSikl = {
+  id: 7,
+  davr: null,
+  tur: "yigim",
+  nom: "Internet puli",
+  talab: 30_000,
+  muddat: "2026-09-14",
+  holat: "ochiq",
+  guruh_eslatma: null,
+  muddat_hisoblandi: null,
+  yakunlandi: null,
+  created_at: new Date("2026-09-11T00:00:00Z"),
+};
+
+const KARTA = { ism: "Sorabek", karta: "9860350143875127" };
+
+test("sikl sarlavhasi: oylik — oyi, yig'im — nomi", () => {
+  assert.equal(siklSarlavhasi(AVGUST), "Avgust oyi");
+  assert.match(siklSarlavhasi(YIGIM), /Internet puli/);
+  // Yig'imda `davr` yo'q — siklOyi yiqilmasligi kerak.
+  assert.equal(siklOyi(YIGIM), "Internet puli");
+});
+
+test("guruh e'loni kartani ATAYLAB ko'rsatadi — yig'imning butun ma'nosi shu", () => {
+  const m = yigimGuruhElon(YIGIM, KARTA, 12);
+  assert.match(m, /9860350143875127/);
+  assert.match(m, /Internet puli/);
+  assert.ok(m.includes(pul(30_000)));
+  // 12 kishi × 30 000 = 360 000
+  assert.ok(m.includes(pul(360_000)), "jami summa ko'rinishi kerak");
+});
+
+test("a'zoning yig'im ko'rinishi qolgan summani aniq aytadi", () => {
+  const m = yigimKorinishi(KARTA, {
+    talab: 30_000,
+    tasdiqlangan: 10_000,
+    qoldiq: 20_000,
+    daraja: "qisman",
+    kutilmoqdaSoni: 0,
+    kutilmoqdaSumma: 0,
+    kechikkan: false,
+    jarima: 0,
+    sikl: YIGIM,
+  });
+  assert.ok(m.includes(`Qoldi: <b>${pul(20_000)}</b>`));
+  assert.match(m, /QISMAN TO'LANGAN/);
+});
+
+test("to'liq to'lagan odamga yig'imda 'to'lang' deyilmaydi", () => {
+  const m = yigimKorinishi(KARTA, {
+    talab: 30_000,
+    tasdiqlangan: 30_000,
+    qoldiq: 0,
+    daraja: "tola",
+    kutilmoqdaSoni: 0,
+    kutilmoqdaSumma: 0,
+    kechikkan: false,
+    jarima: 0,
+    sikl: YIGIM,
+  });
+  assert.match(m, /to'liq to'lagansiz/);
+  assert.ok(!/chekni tashlang/.test(m));
+});
+
+test("eslatma qisqa va kartani takrorlaydi — chastotasi baland", () => {
+  const m = yigimEslatmaXabari(
+    YIGIM,
+    { qoldiq: 30_000, tasdiqlangan: 0, kutilmoqdaSumma: 0 },
+    KARTA,
+  );
+  assert.ok(m.includes(pul(30_000)));
+  assert.match(m, /9860350143875127/);
+  assert.match(m, /Internet puli/);
+});
+
+test("tekshiruvda turgan pul eslatmada alohida ko'rsatiladi", () => {
+  const m = yigimEslatmaXabari(
+    YIGIM,
+    { qoldiq: 30_000, tasdiqlangan: 0, kutilmoqdaSumma: 30_000 },
+    KARTA,
+  );
+  assert.match(m, /tekshiruvda turibdi/);
+});
+
+test("yig'im dashboardi 'oyi' demaydi — nomi bilan ko'rinadi", () => {
+  const d: TolovDashboard = {
+    ...dashboard([]),
+    sikl: YIGIM,
+    talab: 30_000,
+  };
+  const m = tolovDashboardMatni(d);
+  assert.match(m, /PUL YIG'IMI/);
+  assert.match(m, /Internet puli/);
+  assert.ok(!/ oyi/.test(m), "yig'imda 'oyi' so'zi bo'lmasligi kerak");
+});
+
+test("to'lov tarixida yig'im va oylik to'lov alohida guruhlanadi", () => {
+  const yozuv = (
+    id: number,
+    over: Partial<TolovTarix>,
+  ): TolovTarix => ({
+    id, user_id: 1, sikl_id: 1, kiritgan_summa: "30000", tasdiqlangan_summa: "30000",
+    dalil_id: `d${id}`, dalil_turi: "rasm", holat: "tasdiqlandi", hal_qildi: 9,
+    rad_sababi: null, admin_msgs: [], guruh_msg_id: null,
+    created_at: new Date("2026-09-11T10:00:00Z"),
+    hal_qilindi: new Date("2026-09-11T12:00:00Z"),
+    hal_qildi_ism: "Sorabek", sikl_davr: null, sikl_tur: "oylik", sikl_nom: null,
+    ...over,
+  });
+
+  const m = tolovTarixi([
+    yozuv(2, { sikl_tur: "yigim", sikl_nom: "Internet puli", sikl_davr: null }),
+    yozuv(1, { sikl_tur: "oylik", sikl_davr: "2026-08-01", kiritgan_summa: "900000" }),
+  ]);
+  assert.match(m, /INTERNET PULI/);
+  assert.match(m, /AVGUST OYI/);
 });

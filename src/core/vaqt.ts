@@ -102,3 +102,15 @@ export function siklDavri(d: Date, muddatKuni: number): SiklDavri {
   const kun = Math.min(Math.max(1, muddatKuni), oyKunlari(yil, oy));
   return { davr: sanaMatni(yil, oy, 1), muddat: sanaMatni(yil, oy, kun) };
 }
+
+/**
+ * Sanaga kun qo'shadi (`YYYY-MM-DD` → `YYYY-MM-DD`). Manfiy son — ayiradi.
+ *
+ * `kunFarqi`ning teskarisi va u bilan bir xil intizomda: ichkarida faqat
+ * UTC lahzasi ishlatiladi, natija esa yana toza kalendar sanasi bo'lib
+ * qaytadi — mintaqa siljishi bir kunlik xatolik bera olmaydi.
+ */
+export function kunQosh(iso: string, kun: number): string {
+  const d = new Date(sanaLahzasi(iso) + kun * 86_400_000);
+  return sanaMatni(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+}

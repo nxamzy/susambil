@@ -1,62 +1,34 @@
 /**
- * Topshiriq — tasdiqqa qo'yilgan har qanday ish. Uch xili bor:
+ * Topshiriq — tasdiqqa qo'yilgan har qanday ish. `submissions` jadvalida
+ * uch turi yashaydi va uchalasi ham bitta `confirmations` orqali
+ * tasdiqlanadi — ikkinchi tasdiqlash tizimi hech qachon yaratilmagan:
  *
  *   navbat  — navbatdagi xonaning tozalash ishi (turn_id bilan)
- *   ish     — qo'shimcha ish: musor, hammom, oshxona, o'z xonasi, boshqa
- *   xarajat — uyga olib kelingan narsa (summa bilan)
+ *   ish     — qo'shimcha ish (ESKI, yangi yozuv yaratilmaydi)
+ *   xarajat — uyga olib kelingan narsa (ESKI, yangi yozuv yaratilmaydi)
  *
- * Uchalasi ham bitta `submissions` jadvalida yashaydi va bitta
- * `confirmations` jadvali orqali tasdiqlanadi. Ikkinchi tasdiqlash tizimi
- * yo'q — navbat uchun yozilgani kengaytirildi.
+ * `ish` va `xarajat` oqimlari OLIB TASHLANDI — hech kim o'z ixtiyori bilan
+ * tozalamas, o'zidan narsa olib kelmas edi; pul esa endi admin boshlaydigan
+ * yig'im orqali yig'iladi (`core/tolov.ts`, `tur='yigim'`). Yozuvlar va
+ * ularning `yakunla()`dagi tarmoqlari QOLDI: eski tasdiqlangan ishlar
+ * reytingda turaveradi, tasdiq kutayotgani esa baribir yopiladi
+ * ("tarix hech qachon o'chmaydi").
  *
- * Ball hisobi shu yerda, server tomonda. Mijozdan faqat ishning TURI keladi,
- * ballning o'zi hech qachon tashqaridan olinmaydi.
+ * Shu sababli bu faylda endi FAQAT navbat topshirig'i yaratiladi
+ * (`core/rotation.ts` orqali) — `topshiriqYarat`/`topshiriqBalli` o'z
+ * chaqiruvchisi bilan birga olib tashlandi.
  */
 import { sql, type Submission, type User } from "../db/index.js";
-import { ISH_TURLARI, BALLAR, type IshTuri } from "../config.js";
 import { sozlamalarOl } from "./sozlamalar.js";
 
-/** Xarajat summasining yuqori chegarasi — bosh barmoq bilan yozib yuborishdan. */
+/** Summaning yuqori chegarasi — bosh barmoq bilan yozib yuborishdan. */
 export const SUMMA_CHEGARA = 100_000_000;
-
-export type Yaratish =
-  | { tur: "ish"; ish: IshTuri; izoh?: string | null }
-  | { tur: "xarajat"; izoh: string; summa: number | null };
-
-/**
- * Ishning balli. Faqat sozlamadan olinadi, hisob-kitobga tashqi qiymat
- * aralashmaydi.
- */
-export function topshiriqBalli(n: Yaratish): number {
-  return n.tur === "ish" ? ISH_TURLARI[n.ish].ball : BALLAR.xarajat;
-}
 
 /** Summani tozalaydi: butun, manfiy emas, chegaradan oshmaydi. */
 export function summaTekshir(xom: unknown): number | null {
   const n = typeof xom === "number" ? xom : Number(String(xom ?? "").replace(/[^\d]/g, ""));
   if (!Number.isFinite(n) || n <= 0) return null;
   return Math.min(Math.floor(n), SUMMA_CHEGARA);
-}
-
-/** Qo'shimcha ish yoki xarajat topshirig'ini yaratadi (hali tasdiqlanmagan). */
-export async function topshiriqYarat(
-  userId: number,
-  n: Yaratish,
-  photoIds: string[],
-): Promise<Submission> {
-  const ball = topshiriqBalli(n);
-  const ishTuri = n.tur === "ish" ? n.ish : null;
-  const summa = n.tur === "xarajat" ? n.summa : null;
-  const izoh = n.izoh?.trim().slice(0, 300) || null;
-
-  const [sub] = await sql<Submission[]>`
-    INSERT INTO submissions (turn_id, user_id, photo_ids, tur, ish_turi, izoh, summa, ball, holat)
-    VALUES (NULL, ${userId}, ${photoIds}, ${n.tur}, ${ishTuri}, ${izoh}, ${summa},
-            ${ball}, 'kutilmoqda')
-    RETURNING *
-  `;
-  if (!sub) throw new Error("Topshiriq yaratilmadi");
-  return sub;
 }
 
 export type TasdiqXato =

@@ -22,10 +22,10 @@
  * siklida, o'sha oyning muzlatilgan talabi bilan qoladi.
  */
 import type postgres from "postgres";
-import { sql, type Tolov, type TolovDalilTuri, type TolovSikl, type User } from "../db/index.js";
+import { sql, type SiklTur, type Tolov, type TolovDalilTuri, type TolovSikl, type User } from "../db/index.js";
 import { config, TOLOV_STD } from "../config.js";
 import { sozlamalarOl } from "./sozlamalar.js";
-import { bugungiSana, kunFarqi, siklDavri } from "./vaqt.js";
+import { bugungiSana, kunFarqi, kunQosh, siklDavri } from "./vaqt.js";
 import { logla } from "./adminlog.js";
 
 let keshlanganTalab: number | undefined;
@@ -158,6 +158,8 @@ export function kechikkanmi(qoldiq: number, muddat: string, bugun = bugungiSana(
 const siklUstunlari = () => sql`
   id,
   to_char(davr, 'YYYY-MM-DD') AS davr,
+  tur,
+  nom,
   talab,
   to_char(muddat, 'YYYY-MM-DD') AS muddat,
   holat,
@@ -188,9 +190,16 @@ export async function siklniOl(id: number): Promise<TolovSikl | null> {
   return s ? siklMap(s) : null;
 }
 
+/**
+ * `tur = 'oylik'` filtri bu fayldagi hamma "sikllarni topish" so'roviga
+ * ATAYLAB qo'shilgan: yig'im ham shu jadvalda yashaydi, lekin u kvartira
+ * puli hisobiga hech qachon aralashmasligi kerak. Bitta id bo'yicha o'qish
+ * (`siklniOl`) filtrsiz — u yerda qaysi sikl kerakligi allaqachon ma'lum.
+ */
 export async function siklniDavrBoyichaOl(davr: string): Promise<TolovSikl | null> {
   const [s] = await sql<SiklQator[]>`
-    SELECT ${siklUstunlari()} FROM tolov_sikllari WHERE davr = ${davr}::date
+    SELECT ${siklUstunlari()} FROM tolov_sikllari
+    WHERE tur = 'oylik' AND davr = ${davr}::date
   `;
   return s ? siklMap(s) : null;
 }
@@ -198,7 +207,8 @@ export async function siklniDavrBoyichaOl(davr: string): Promise<TolovSikl | nul
 /** Eng yangisi birinchi — admin tarixni ko'rishi uchun. */
 export async function sikllarRoyxati(limit = 12): Promise<TolovSikl[]> {
   const rows = await sql<SiklQator[]>`
-    SELECT ${siklUstunlari()} FROM tolov_sikllari ORDER BY davr DESC LIMIT ${limit}
+    SELECT ${siklUstunlari()} FROM tolov_sikllari
+    WHERE tur = 'oylik' ORDER BY davr DESC LIMIT ${limit}
   `;
   return rows.map(siklMap);
 }
@@ -229,7 +239,7 @@ export async function joriySikl(): Promise<TolovSikl> {
   // yopiladi. Hech narsa o'chirilmaydi, faqat holat yakunlanadi.
   await sql`
     UPDATE tolov_sikllari SET holat = 'yakunlandi', yakunlandi = now()
-    WHERE holat = 'muddat_yetdi' AND davr < ${davr}::date
+    WHERE tur = 'oylik' AND holat = 'muddat_yetdi' AND davr < ${davr}::date
   `;
 
   const yangi = await siklniDavrBoyichaOl(davr);
@@ -245,7 +255,7 @@ export async function joriySikl(): Promise<TolovSikl> {
 export async function muddatiOtganSikllar(bugun = bugungiSana()): Promise<TolovSikl[]> {
   const rows = await sql<SiklQator[]>`
     SELECT ${siklUstunlari()} FROM tolov_sikllari
-    WHERE holat = 'ochiq' AND muddat < ${bugun}::date
+    WHERE tur = 'oylik' AND holat = 'ochiq' AND muddat < ${bugun}::date
     ORDER BY davr
   `;
   return rows.map(siklMap);
@@ -403,8 +413,13 @@ export async function tolovYuborish(
   kiritganSumma: number,
   dalilId: string,
   dalilTuri: TolovDalilTuri,
+  siklId?: number,
 ): Promise<Tolov | null> {
-  const sikl = await joriySikl();
+  // `siklId` berilsa — pul YIG'IMIGA to'lov (`bot/handlers/yigim.ts`).
+  // Berilmasa — kvartira puli, o'z oyiga tushadi. Ikkalasi bir xil
+  // yozuvdan iborat, farqi faqat qaysi siklga biriktirilishida.
+  const sikl = siklId ? await siklniOl(siklId) : await joriySikl();
+  if (!sikl) return null;
   // Bir xil chek ikkinchi marta yuborilsa yangi yozuv yaratilmaydi —
   // `tolovlar_dalil_uniq` qisman indeksi buni bazada kafolatlaydi, ya'ni
   // ikki so'rov bir vaqtda kelsa ham ikkita qarz yozuvi paydo bo'lmaydi.
@@ -426,8 +441,10 @@ export async function tolovYuborish(
 export async function avvalgiDalil(
   userId: number,
   dalilId: string,
+  siklId?: number,
 ): Promise<Tolov | null> {
-  const sikl = await joriySikl();
+  const sikl = siklId ? await siklniOl(siklId) : await joriySikl();
+  if (!sikl) return null;
   const [t] = await sql<Tolov[]>`
     SELECT * FROM tolovlar
     WHERE user_id = ${userId} AND sikl_id = ${sikl.id}
@@ -517,6 +534,10 @@ export type TolovTarix = Tolov & {
   hal_qildi_ism: string | null;
   /** Qaysi oyga tegishli (`YYYY-MM-01`). Migratsiyadan oldingi yozuvlarda `null`. */
   sikl_davr: string | null;
+  /** `oylik` yoki `yigim` — tarixda ikkalasi aralash chiqadi. */
+  sikl_tur: SiklTur | null;
+  /** Yig'imning nomi — `sikl_tur='yigim'` bo'lganda to'ladi. */
+  sikl_nom: string | null;
 };
 
 /**
@@ -530,7 +551,8 @@ export async function foydalanuvchiTolovlari(
 ): Promise<TolovTarix[]> {
   return sql<TolovTarix[]>`
     SELECT t.*, adm.ism AS hal_qildi_ism,
-           to_char(s.davr, 'YYYY-MM-DD') AS sikl_davr
+           to_char(s.davr, 'YYYY-MM-DD') AS sikl_davr,
+           s.tur AS sikl_tur, s.nom AS sikl_nom
     FROM tolovlar t
     LEFT JOIN users adm ON adm.id = t.hal_qildi
     LEFT JOIN tolov_sikllari s ON s.id = t.sikl_id
@@ -693,6 +715,10 @@ export async function muddatSuratiniYangila(
 ): Promise<MuddatNatija | null> {
   const sikl = await siklniOl(siklId);
   if (!sikl || sikl.holat === "ochiq") return null;
+  // Yig'imda "muddatda qancha yetmagan edi" degan savol yo'q — jarima ham,
+  // surat ham faqat oylik siklniki. Yig'imga to'lov ham shu funksiyadan
+  // o'tadi (bitta tasdiqlash yo'li), shuning uchun to'siq aynan shu yerda.
+  if (sikl.tur === "yigim") return null;
 
   const [q] = await muddatYigindisi(sikl, userId);
   if (!q) return null;
@@ -822,7 +848,14 @@ export type EslatmaNomzodi = {
   tasdiqlangan: number;
   qoldiq: number;
   kutilmoqdaSumma: number;
+  /** Oylik to'lov eslatmasi — KUNIGA bir marta, shuning uchun sana yetarli. */
   oxirgiEslatma: string | null;
+  /**
+   * Yig'im eslatmasi — har bir necha SOATDA, shuning uchun aniq lahza
+   * kerak. Ikkalasi bir qatorda yonma-yon: bitta (sikl, odam) juftligi
+   * ikkala turga tegishli bo'la olmaydi, demak chalkashmaydi.
+   */
+  oxirgiEslatmaTs: Date | null;
 };
 
 /**
@@ -841,6 +874,7 @@ export async function eslatmaNomzodlari(sikl: TolovSikl): Promise<EslatmaNomzodi
       tasdiqlangan: string;
       kutilmoqda_summa: string;
       oxirgi_eslatma: string | null;
+      oxirgi_eslatma_ts: Date | null;
     })[]
   >`
     SELECT u.*,
@@ -849,12 +883,13 @@ export async function eslatmaNomzodlari(sikl: TolovSikl): Promise<EslatmaNomzodi
                       WHERE tz.user_id = u.id AND tz.sikl_id = ${sikl.id}), 0)
            )::bigint AS tasdiqlangan,
            COALESCE(SUM(t.kiritgan_summa)     FILTER (WHERE t.holat = 'kutilmoqda'),   0)::bigint AS kutilmoqda_summa,
-           to_char(h.oxirgi_eslatma, 'YYYY-MM-DD') AS oxirgi_eslatma
+           to_char(h.oxirgi_eslatma, 'YYYY-MM-DD') AS oxirgi_eslatma,
+           h.oxirgi_eslatma_ts
     FROM users u
     LEFT JOIN tolovlar t ON t.user_id = u.id AND t.sikl_id = ${sikl.id}
     LEFT JOIN tolov_holat h ON h.sikl_id = ${sikl.id} AND h.user_id = u.id
     WHERE u.faol AND u.telegram_id IS NOT NULL
-    GROUP BY u.id, h.oxirgi_eslatma
+    GROUP BY u.id, h.oxirgi_eslatma, h.oxirgi_eslatma_ts
     ORDER BY u.ism
   `;
 
@@ -868,6 +903,7 @@ export async function eslatmaNomzodlari(sikl: TolovSikl): Promise<EslatmaNomzodi
       qoldiq: Math.max(0, sikl.talab - tasdiqlangan),
       kutilmoqdaSumma: Number(r.kutilmoqda_summa),
       oxirgiEslatma: r.oxirgi_eslatma,
+      oxirgiEslatmaTs: r.oxirgi_eslatma_ts,
     };
   });
 }
@@ -882,6 +918,18 @@ export async function eslatmaBelgila(
     INSERT INTO tolov_holat (sikl_id, user_id, oxirgi_eslatma)
     VALUES (${siklId}, ${userId}, ${kun}::date)
     ON CONFLICT (sikl_id, user_id) DO UPDATE SET oxirgi_eslatma = EXCLUDED.oxirgi_eslatma
+  `;
+}
+
+/**
+ * Yig'im eslatmasi yuborildi — LAHZA bilan (soatlik chastota uchun).
+ * `eslatmaBelgila` bilan bir xil naqsh, faqat ustuni boshqa.
+ */
+export async function eslatmaTsBelgila(siklId: number, userId: number): Promise<void> {
+  await sql`
+    INSERT INTO tolov_holat (sikl_id, user_id, oxirgi_eslatma_ts)
+    VALUES (${siklId}, ${userId}, now())
+    ON CONFLICT (sikl_id, user_id) DO UPDATE SET oxirgi_eslatma_ts = EXCLUDED.oxirgi_eslatma_ts
   `;
 }
 
@@ -1063,6 +1111,198 @@ export async function siklTarixi(limit = 12): Promise<SiklXulosa[]> {
   const odamSoni = odam?.soni ?? 0;
 
   return sikllar.map((sikl) => {
+    const jamiTasdiqlangan =
+      Number(yigindilar.find((y) => y.sikl_id === sikl.id)?.tasdiqlangan ?? 0) +
+      Number(tuzatishlar.find((t) => t.sikl_id === sikl.id)?.summa ?? 0);
+    const jamiTalab = sikl.talab * odamSoni;
+    return {
+      sikl,
+      jamiTalab,
+      jamiTasdiqlangan,
+      jamiQoldiq: Math.max(0, jamiTalab - jamiTasdiqlangan),
+      odamSoni,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// PUL YIG'IMI
+// ---------------------------------------------------------------------------
+
+/**
+ * Yig'im — admin istalgan paytda boshlaydigan bir martalik pul yig'imi
+ * ("internet puli", "suv", "yangi changyutgich"). Bu YANGI TIZIM EMAS:
+ * yuqoridagi butun mexanizm (chek yuborish, admin tekshiruvi, qo'lda
+ * tuzatish, dashboard, guruh e'loni) o'zgarmasdan ishlatiladi, yig'im
+ * shunchaki `tolov_sikllari`ning ikkinchi turi.
+ *
+ * Oylik sikldan uchta farqi bor, uchalasi ham ATAYLAB:
+ *
+ *  1) `davr` yo'q — kalendar oyiga bog'lanmaydi, `nom` esa bor.
+ *  2) MUDDAT SURATI OLINMAYDI (`muddatiOtganSikllar` `tur='oylik'` bilan
+ *     cheklangan). Yig'imda "muddatda yetmagan edi" degan savol yo'q:
+ *     pul yig'ilmaguncha eslatma davom etadi, jarima esa yo'q.
+ *  3) Bir vaqtda BITTA ochiq yig'im (bazadagi qisman UNIQUE indeks).
+ *     Aks holda chek qaysi yig'imga tegishli ekani noaniq bo'lardi.
+ */
+
+/** Hozir ochiq turgan yig'im — yo'q bo'lsa `null`. */
+export async function ochiqYigim(): Promise<TolovSikl | null> {
+  const [s] = await sql<SiklQator[]>`
+    SELECT ${siklUstunlari()} FROM tolov_sikllari
+    WHERE tur = 'yigim' AND holat = 'ochiq' LIMIT 1
+  `;
+  return s ? siklMap(s) : null;
+}
+
+/** Eng yangisi birinchi — admin tarixni ko'rishi uchun. */
+export async function yigimlarRoyxati(limit = 10): Promise<TolovSikl[]> {
+  const rows = await sql<SiklQator[]>`
+    SELECT ${siklUstunlari()} FROM tolov_sikllari
+    WHERE tur = 'yigim' ORDER BY id DESC LIMIT ${limit}
+  `;
+  return rows.map(siklMap);
+}
+
+/**
+ * Yangi yig'im ochadi. Allaqachon ochiq yig'im bo'lsa `null` qaytaradi —
+ * chaqiruvchi adminga tushunarli xabar beradi. Poyga holatida bazadagi
+ * qisman UNIQUE indeks ikkinchisini baribir to'sadi, shuning uchun
+ * `ON CONFLICT DO NOTHING` ham qo'yilgan: ikki admin bir vaqtda bossa
+ * ikkinchisi jimgina `null` oladi, xato tashlanmaydi.
+ *
+ * `talab` shu yerda MUZLATILADI (oylik sikldagi bilan bir xil qoida):
+ * keyin admin summani o'zgartirsa ham bu YANGI qiymat bo'ladi, eski
+ * yig'imlarning tarixi qayta hisoblanmaydi.
+ */
+export async function yigimYarat(
+  nom: string,
+  talab: number,
+  kun: number,
+): Promise<TolovSikl | null> {
+  const toza = nom.trim().slice(0, 80);
+  const muddat = kunQosh(bugungiSana(), Math.max(0, kun));
+
+  const [s] = await sql<SiklQator[]>`
+    INSERT INTO tolov_sikllari (tur, nom, talab, muddat)
+    VALUES ('yigim', ${toza}, ${talab}, ${muddat}::date)
+    ON CONFLICT DO NOTHING
+    RETURNING ${siklUstunlari()}
+  `;
+  return s ? siklMap(s) : null;
+}
+
+/**
+ * Yig'imni yopadi. Oylik sikldagi `siklniYakunla`dan ALOHIDA: u
+ * `muddat_yetdi` holatini talab qiladi (surat olingan bo'lishi shart),
+ * yig'imda esa surat degan bosqich yo'q — admin xohlagan paytda yopadi.
+ *
+ * Tarix o'chirilmaydi: to'lovlar, tuzatishlar va yig'imning o'zi joyida
+ * qoladi, faqat holat yopiladi va yangi yig'im ochish yo'li bo'shaydi.
+ */
+export async function yigimniYakunla(id: number): Promise<TolovSikl | null> {
+  const [s] = await sql<SiklQator[]>`
+    UPDATE tolov_sikllari SET holat = 'yakunlandi', yakunlandi = now()
+    WHERE id = ${id} AND tur = 'yigim' AND holat = 'ochiq'
+    RETURNING ${siklUstunlari()}
+  `;
+  return s ? siklMap(s) : null;
+}
+
+/**
+ * Ochiq yig'imning summasini o'zgartiradi — "30 ming deb boshlagan edim,
+ * 35 ming bo'lar ekan". Oylik sikldagi `tolovTalabiniOrnat`dan farqli
+ * o'laroq bu JORIY yig'imga darrov ta'sir qiladi: yig'im hali davom
+ * etayotgan bitta voqea, "o'tgan davrni qayta yozmaslik" qoidasi bu yerga
+ * tegishli emas. Yopilgan yig'im esa o'zgarmaydi (`holat = 'ochiq'` sharti).
+ */
+export async function yigimTalabiniOzgartir(
+  id: number,
+  talab: number,
+): Promise<TolovSikl | null> {
+  const [s] = await sql<SiklQator[]>`
+    UPDATE tolov_sikllari SET talab = ${talab}
+    WHERE id = ${id} AND tur = 'yigim' AND holat = 'ochiq'
+    RETURNING ${siklUstunlari()}
+  `;
+  return s ? siklMap(s) : null;
+}
+
+/** Ochiq yig'imning muddatini "bugundan N kun" qilib suradi. */
+export async function yigimMuddatiniOzgartir(
+  id: number,
+  kun: number,
+): Promise<TolovSikl | null> {
+  const muddat = kunQosh(bugungiSana(), Math.max(0, kun));
+  const [s] = await sql<SiklQator[]>`
+    UPDATE tolov_sikllari SET muddat = ${muddat}::date
+    WHERE id = ${id} AND tur = 'yigim' AND holat = 'ochiq'
+    RETURNING ${siklUstunlari()}
+  `;
+  return s ? siklMap(s) : null;
+}
+
+/** Yig'imning nomini tuzatadi (xato yozilgan bo'lsa). */
+export async function yigimNominiOzgartir(
+  id: number,
+  nom: string,
+): Promise<TolovSikl | null> {
+  const [s] = await sql<SiklQator[]>`
+    UPDATE tolov_sikllari SET nom = ${nom.trim().slice(0, 80)}
+    WHERE id = ${id} AND tur = 'yigim' AND holat = 'ochiq'
+    RETURNING ${siklUstunlari()}
+  `;
+  return s ? siklMap(s) : null;
+}
+
+/**
+ * Shu odamga hozir yig'im eslatmasi yuborilsinmi — sof funksiya,
+ * `tolovEslatmasiKerakmi` bilan bir xil naqsh (bazasiz sinaladi).
+ *
+ * Oylikdagidan farqi: u KUNGA (sana solishtiriladi), bu esa SOATGA
+ * qaraydi va muddatdan mustaqil — yig'im "har 5 soatda, to'langunicha"
+ * degan talabdan kelib chiqqan. Qarzi yo'q odam ro'yxatga umuman
+ * tushmaydi, ya'ni to'laganidan keyin eslatma O'ZIDAN to'xtaydi
+ * (alohida "o'chirish" bayrog'i yo'q — `turns.oxirgi_ping` bilan bir xil
+ * "holatdan qayta hisoblash" intizomi).
+ */
+export function yigimEslatmasiKerakmi(p: {
+  qoldiq: number;
+  hozir: number;
+  oxirgiTs: Date | null;
+  oraliqSoat: number;
+}): boolean {
+  if (p.qoldiq <= 0) return false;
+  if (!p.oxirgiTs) return true;
+  return p.hozir - new Date(p.oxirgiTs).getTime() >= p.oraliqSoat * 3_600_000;
+}
+
+/** Yig'imlarning qisqa xulosasi — admin "📜 Tarix" da ko'radi. */
+export async function yigimTarixi(limit = 10): Promise<SiklXulosa[]> {
+  const yigimlar = await yigimlarRoyxati(limit);
+  if (yigimlar.length === 0) return [];
+
+  const idlar = yigimlar.map((y) => y.id);
+
+  // Dashboard bilan bir xil ikki manba: tasdiqlangan cheklar + qo'lda
+  // tuzatishlar. Yagona joy printsipi buzilmasin uchun `siklTarixi` bilan
+  // bir xil shaklda hisoblanadi.
+  const yigindilar = await sql<{ sikl_id: number; tasdiqlangan: string }[]>`
+    SELECT sikl_id, COALESCE(SUM(tasdiqlangan_summa), 0)::bigint AS tasdiqlangan
+    FROM tolovlar WHERE holat = 'tasdiqlandi' AND sikl_id = ANY(${idlar})
+    GROUP BY sikl_id
+  `;
+  const tuzatishlar = await sql<{ sikl_id: number; summa: string }[]>`
+    SELECT sikl_id, COALESCE(SUM(summa), 0)::bigint AS summa
+    FROM tolov_tuzatish WHERE sikl_id = ANY(${idlar})
+    GROUP BY sikl_id
+  `;
+  const [odam] = await sql<{ soni: number }[]>`
+    SELECT count(*)::int AS soni FROM users WHERE faol
+  `;
+  const odamSoni = odam?.soni ?? 0;
+
+  return yigimlar.map((sikl) => {
     const jamiTasdiqlangan =
       Number(yigindilar.find((y) => y.sikl_id === sikl.id)?.tasdiqlangan ?? 0) +
       Number(tuzatishlar.find((t) => t.sikl_id === sikl.id)?.summa ?? 0);

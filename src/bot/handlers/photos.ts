@@ -1,19 +1,17 @@
 import type { Bot } from "grammy";
-import { bekorKeyboard } from "../keyboards.js";
 import { kim } from "../group.js";
-import { holatOl, holatOrnat, sorovniEslat, sorovniOchir } from "../state.js";
+import { holatOl } from "../state.js";
 import { shikoyatDalilKeldi } from "./reports.js";
 import { tolovDalilKeldi } from "./tolov.js";
 import { vazifaRasmiKeldi } from "./navbat.js";
 
 /**
- * Rasm to'rt xil maqsadda kelishi mumkin — tartib muhim, har biri holat
+ * Rasm uch xil maqsadda kelishi mumkin — tartib muhim, har biri holat
  * tekshiruvi bilan aniq ushlanadi, aks holda masalan shikoyat dalili
  * boshqa oqimga tushib qolib, butunlay boshqa joyga yozilib ketardi:
- *   1) yangi xarajat rasmi — faqat shaxsiy chatda
- *   2) shikoyat dalili — faqat shaxsiy chatda
- *   3) kvartira to'lovi dalili — faqat shaxsiy chatda
- *   4) navbat vazifasi dalili — faqat shaxsiy chatda, "Mening Navbatim"
+ *   1) shikoyat dalili — faqat shaxsiy chatda
+ *   2) to'lov cheki (kvartira puli yoki pul yig'imi) — faqat shaxsiy chatda
+ *   3) navbat vazifasi dalili — faqat shaxsiy chatda, "Mening Navbatim"
  *      panelida tugma bosilgandan keyin (`navbat_ish` holati)
  *
  * Video faqat shikoyat dalili sifatida, PDF esa faqat to'lov dalili
@@ -38,35 +36,16 @@ export function register(bot: Bot) {
 
     const holat = await holatOl(fromId);
 
-    // Xarajat oqimi faqat shaxsiy chatda. Aks holda odam botda xarajat
-    // boshlab, guruhga tozalash rasmini tashlasa — birinchi rasm xarajatga
-    // ketib qolardi.
-    if (holat?.tur === "xarajat" && holat.qadam === "rasm" && ctx.chat.type === "private") {
-      await sorovniOchir(ctx.api, holat);
-      const yangi = { tur: "xarajat", qadam: "izoh", photoId: eng.file_id } as const;
-      await holatOrnat(fromId, yangi);
-      const xabar = await ctx.reply(
-        [
-          `✍️ <b>Nima olib keldingiz?</b>`,
-          ``,
-          `<i>Bir nechta narsa bo'lsa hammasini yozing:</i>`,
-          `<code>Falga, gubka, qop-qog'oz</code>`,
-        ].join("\n"),
-        { parse_mode: "HTML", reply_markup: bekorKeyboard() },
-      );
-      await sorovniEslat(fromId, yangi, xabar.chat.id, xabar.message_id);
-      return;
-    }
-
-    // Shikoyat oqimi ham faqat shaxsiy chatda — xuddi xarajatdagi kabi,
-    // guruhga tashlangan rasm navbat topshirig'iga ketishi kerak.
+    // Shikoyat oqimi faqat shaxsiy chatda — guruhga tashlangan rasm
+    // navbat topshirig'iga ketishi kerak.
     if (holat?.tur === "shikoyat" && holat.qadam === "dalil" && ctx.chat.type === "private") {
       return shikoyatDalilKeldi(ctx, holat, eng.file_id, "rasm");
     }
 
-    // To'lov dalili ham faqat shaxsiy chatda — xuddi shikoyat/xarajatdagi kabi.
+    // To'lov dalili ham faqat shaxsiy chatda — xuddi shikoyatdagi kabi.
+    // `siklId` yig'imga to'lovni bildiradi (bo'lmasa kvartira puli).
     if (holat?.tur === "tolov" && holat.qadam === "dalil" && ctx.chat.type === "private") {
-      return tolovDalilKeldi(ctx, holat.summa, eng.file_id, "rasm");
+      return tolovDalilKeldi(ctx, holat.summa, eng.file_id, "rasm", holat.siklId);
     }
 
     // Navbat vazifasi dalili — "Mening Navbatim" panelida tugma bosilgach,
@@ -104,7 +83,7 @@ export function register(bot: Bot) {
       return;
     }
 
-    await tolovDalilKeldi(ctx, holat.summa, ctx.message.document.file_id, "hujjat");
+    await tolovDalilKeldi(ctx, holat.summa, ctx.message.document.file_id, "hujjat", holat.siklId);
   });
 }
 

@@ -66,6 +66,21 @@ export const config = {
    * darhol to'xtaydi.
    */
   tolovEslatmaKuni: 3,
+
+  /**
+   * Pul yig'imida to'lamaganlarga eslatma necha soatda bir qaytariladi.
+   *
+   * Navbatning `eslatmaOraligiSoat`idan ATAYLAB alohida sozlama, garchi
+   * ikkalasining standarti ham 5 bo'lsa-da: biri tozalash navbatiga, biri
+   * pulga tegishli va admin ularni bir-biridan mustaqil sozlay olishi
+   * kerak. Oylik kvartira to'lovi esa KUNLIK ritmda qoladi
+   * (`tolovEslatmaKuni`) — u yerda muddat oyning aniq kuni, bu yerda esa
+   * "yig'ilguncha" degan ochiq oyna.
+   */
+  yigimEslatmaSoat: 5,
+
+  /** Yangi yig'im boshlanganda standart muddat (bugundan necha kun). */
+  yigimMuddatKuni: 3,
 } as const;
 
 /**

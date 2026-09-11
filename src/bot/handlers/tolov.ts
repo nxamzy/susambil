@@ -65,6 +65,7 @@ import {
   tolovTarixi,
   tolovTasdiqXabari,
   tolovYuborildiXabari,
+  yigimToldiGuruh,
 } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
 
@@ -110,11 +111,15 @@ export async function tolovBoshla(ctx: Context): Promise<void> {
 }
 
 /** Summa yozilgach dalil so'raydi. messages.ts'dan chaqiriladi. */
-export async function tolovDalilSora(ctx: Context, summa: number): Promise<void> {
+export async function tolovDalilSora(
+  ctx: Context,
+  summa: number,
+  siklId?: number,
+): Promise<void> {
   if (!ctx.from) return;
   await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
 
-  const yangi = { tur: "tolov", qadam: "dalil", summa } as const;
+  const yangi = { tur: "tolov", qadam: "dalil", summa, siklId } as const;
   await holatOrnat(ctx.from.id, yangi);
 
   const xabar = await ctx.reply(
@@ -157,9 +162,14 @@ async function dalilXabarTahrirla(
 }
 
 /** Har bir bog'langan adminga tekshiruv uchun DM qiladi, xabar id'larini saqlaydi. */
-async function adminlargaYubor(api: Api, t: TolovToliq, joriyTasdiqlangan: number): Promise<void> {
+async function adminlargaYubor(
+  api: Api,
+  t: TolovToliq,
+  joriyTasdiqlangan: number,
+  sikl?: TolovSikl | null,
+): Promise<void> {
   const adminlar = await adminlarRoyxati();
-  const matn = tolovAdminXabari(t, joriyTasdiqlangan);
+  const matn = tolovAdminXabari(t, joriyTasdiqlangan, sikl);
   const kb = tolovAdminKeyboard(t.id);
   const yuborilganlar: { chat_id: number; message_id: number }[] = [];
 
@@ -175,8 +185,12 @@ async function adminlargaYubor(api: Api, t: TolovToliq, joriyTasdiqlangan: numbe
 }
 
 /** Barcha adminlarga yuborilgan nusxalarni yangilaydi — hal qilingandan keyin tugmalar yo'qoladi. */
-async function panelniYangila(api: Api, t: TolovToliq): Promise<void> {
-  const matn = tolovAdminXabari(t, 0);
+async function panelniYangila(
+  api: Api,
+  t: TolovToliq,
+  sikl?: TolovSikl | null,
+): Promise<void> {
+  const matn = tolovAdminXabari(t, 0, sikl);
   const kb = t.holat === "kutilmoqda" ? tolovAdminKeyboard(t.id) : new InlineKeyboard();
   for (const m of t.admin_msgs) {
     await dalilXabarTahrirla(api, m.chat_id, m.message_id, matn, { reply_markup: kb });
@@ -189,6 +203,7 @@ export async function tolovDalilKeldi(
   summa: number,
   dalilId: string,
   dalilTuri: TolovDalilTuri,
+  siklId?: number,
 ): Promise<void> {
   if (!ctx.from) return;
   const u = await kim(ctx.from.id);
@@ -197,15 +212,15 @@ export async function tolovDalilKeldi(
   await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
   await holatTozala(ctx.from.id);
 
-  // Ayni chek shu oyda allaqachon yuborilgan bo'lsa ikkinchi qarz yozuvi
+  // Ayni chek shu siklda allaqachon yuborilgan bo'lsa ikkinchi qarz yozuvi
   // yaratilmaydi — aks holda bitta pul ikki marta hisobga tushardi.
-  const avvalgi = await avvalgiDalil(u.id, dalilId);
+  const avvalgi = await avvalgiDalil(u.id, dalilId, siklId);
   if (avvalgi) {
     await ctx.reply(tolovTakrorXabari(avvalgi), { parse_mode: "HTML" });
     return;
   }
 
-  const t = await tolovYuborish(u.id, summa, dalilId, dalilTuri);
+  const t = await tolovYuborish(u.id, summa, dalilId, dalilTuri, siklId);
   if (!t) {
     // Poyga: ikkita dalil deyarli bir vaqtda kelgan, bazadagi indeks to'sdi.
     await ctx.reply("⏳ Bu chek allaqachon qabul qilingan — tekshiruvni kuting.");
@@ -220,8 +235,9 @@ export async function tolovDalilKeldi(
   // t.holat hali 'kutilmoqda' — foydalanuvchiTolovHolati faqat 'tasdiqlandi'
   // yozuvlarni sanaydi, shuning uchun bu haqiqatan ham "shu to'lovdan oldingi
   // joriy tasdiqlangan jami".
-  const holat = await foydalanuvchiTolovHolati(u.id);
-  await adminlargaYubor(ctx.api, toliq, holat.tasdiqlangan);
+  const sikl = siklId ? await siklniOl(siklId) : null;
+  const holat = await foydalanuvchiTolovHolati(u.id, sikl ?? undefined);
+  await adminlargaYubor(ctx.api, toliq, holat.tasdiqlangan, sikl);
 }
 
 /** Admin/Sorabek: "📊 Mening to'lovlarim" — hammaga o'zinikini ko'rsatadi. */
@@ -269,12 +285,14 @@ export async function tolovTasdiqlash(ctx: Context, tolovId: number, xom: string
 
   const toliq = await tolovniOl(tolovId);
   if (!toliq) return;
-  await panelniYangila(ctx.api, toliq);
 
-  // Holat TO'LOVNING O'Z OYI bo'yicha hisoblanadi, joriy oy bo'yicha emas:
+  // Holat TO'LOVNING O'Z SIKLI bo'yicha hisoblanadi, joriy oy bo'yicha emas:
   // 31-avgustda yuborilgan to'lov 1-sentabrda tasdiqlansa ham avgust
   // hisobiga tushishi kerak (`tolovlar.sikl_id` yuborilganda belgilanadi).
+  // Yig'imga to'lov ham shu yo'ldan o'tadi — sikl o'zi yig'imni ko'rsatadi.
   const siklniIshlat = toliq.sikl_id ? await siklniOl(toliq.sikl_id) : null;
+  await panelniYangila(ctx.api, toliq, siklniIshlat);
+
   const holatYangi = await foydalanuvchiTolovHolati(toliq.user_id, siklniIshlat ?? undefined);
   const qabul = await tolovQabulQiluvchi();
 
@@ -291,6 +309,16 @@ export async function tolovTasdiqlash(ctx: Context, tolovId: number, xom: string
     tolovGuruhXabari(foydalanuvchi?.ism ?? toliq.ism, holatYangi),
   );
   if (guruhXabar) await guruhXabarniSaqla(toliq.id, guruhXabar.message_id);
+
+  // Yig'im shu to'lov bilan TO'LIQ yig'ilgan bo'lsa — guruhga yakun.
+  // Ataylab shu yerda, `jobs/reminders.ts` da emas: xabar to'lov
+  // tasdiqlangan ZAHOTI chiqishi kerak, eslatma sikli esa soatlab
+  // kutishi mumkin. Faqat qoldiq aynan shu tasdiq bilan nolga tushganda
+  // yuboriladi, ya'ni takrorlanmaydi.
+  if (siklniIshlat?.tur === "yigim") {
+    const d = await tolovDashboard(siklniIshlat);
+    if (d.jamiQoldiq === 0) await guruhgaYubor(ctx.api, yigimToldiGuruh(d));
+  }
 }
 
 /** Admin rad etish sababini yozib bo'lgach — messages.ts'dan chaqiriladi. */
@@ -318,7 +346,7 @@ export async function tolovRadEtish(ctx: Context, tolovId: number, sababXom: str
 
   const toliq = await tolovniOl(tolovId);
   if (!toliq) return;
-  await panelniYangila(ctx.api, toliq);
+  await panelniYangila(ctx.api, toliq, toliq.sikl_id ? await siklniOl(toliq.sikl_id) : null);
 
   // Rad etilgan to'lov hisobga qo'shilmaydi va guruhga umuman chiqmaydi —
   // faqat foydalanuvchining o'ziga, tasdiqlanmagan to'lovni ochiq
@@ -340,14 +368,18 @@ export async function tolovDashboardKorsat(ctx: Context, sikl?: TolovSikl): Prom
 }
 
 /** Bitta ro'yxat: qarzdorlar / kechikkanlar / to'liq to'laganlar. */
-async function tolovRoyxatKorsat(ctx: Context, tur: TolovRoyxatTuri): Promise<void> {
-  const d = await tolovDashboard();
+export async function tolovRoyxatKorsat(
+  ctx: Context,
+  tur: TolovRoyxatTuri,
+  sikl?: TolovSikl,
+): Promise<void> {
+  const d = await tolovDashboard(sikl);
   const odamlar =
     tur === "qarzdor" ? d.qarzdorlar : tur === "kechikkan" ? d.kechikkanlar : d.tola;
 
   await ctx.reply(chekla(tolovRoyxatMatni(d, tur)), {
     parse_mode: "HTML",
-    reply_markup: tolovRoyxatKeyboard(odamlar),
+    reply_markup: tolovRoyxatKeyboard(odamlar, d.sikl.tur === "yigim"),
   });
 }
 
@@ -370,7 +402,7 @@ export async function kutayotganTolovlarniKorsat(ctx: Context): Promise<void> {
   for (const t of kutilmoqda) {
     const oz = t.sikl_id ? await siklniOl(t.sikl_id) : null;
     const holat = await foydalanuvchiTolovHolati(t.user_id, oz ?? undefined);
-    const matn = tolovAdminXabari(t, holat.tasdiqlangan);
+    const matn = tolovAdminXabari(t, holat.tasdiqlangan, oz);
     await dalilXabarYubor(ctx.api, ctx.chat.id, matn, t, { reply_markup: tolovAdminKeyboard(t.id) });
   }
 }
@@ -380,19 +412,26 @@ export async function kutayotganTolovlarniKorsat(ctx: Context): Promise<void> {
  * to'lovlar, muddat natijasi, jarima holati va butun to'lov tarixi
  * (talab: "Admin should be able to open each user and see ...").
  */
-export async function tolovFoydalanuvchiKorsat(ctx: Context, userId: number): Promise<void> {
-  const d = await tolovDashboard();
+export async function tolovFoydalanuvchiKorsat(
+  ctx: Context,
+  userId: number,
+  sikl?: TolovSikl,
+): Promise<void> {
+  const d = await tolovDashboard(sikl);
   const odam = d.odamlar.find((o) => o.userId === userId);
   if (!odam) {
     await ctx.reply("Bu foydalanuvchi topilmadi yoki faol emas.");
     return;
   }
 
+  // Tarix SIKLDAN QAT'I NAZAR to'liq ko'rsatiladi (`foydalanuvchiTolovlari`
+  // siklsiz chaqirilgani uchun) — admin "bu odam umuman qanday to'laydi"
+  // degan savolga javob topsin; tuzatishlar esa shu siklga tegishli.
   const tarix = await foydalanuvchiTolovlari(userId);
   const tuzatishlar = await tolovTuzatishTarixi(userId, d.sikl.id);
   await ctx.reply(chekla(tolovFoydalanuvchiMatni(d.sikl, odam, tarix, tuzatishlar)), {
     parse_mode: "HTML",
-    reply_markup: tolovFoydalanuvchiKeyboard(userId),
+    reply_markup: tolovFoydalanuvchiKeyboard(userId, d.sikl.tur === "yigim"),
   });
 }
 
@@ -461,7 +500,10 @@ export async function tolovTuzatishSababKeldi(
 
   await tolovTuzat(userId, siklId, summa, sabab, admin.id);
   await ctx.reply(`✅ ${summa > 0 ? "+" : ""}${pul(summa)} tuzatildi.`, { parse_mode: "HTML" });
-  await tolovFoydalanuvchiKorsat(ctx, userId);
+  // Kartochka O'SHA siklga qaytadi — yig'imni tuzatgach kvartira to'lovi
+  // ko'rinishi ochilib qolmasin (siklsiz chaqiruv joriy oyni olardi).
+  const sikl = await siklniOl(siklId);
+  await tolovFoydalanuvchiKorsat(ctx, userId, sikl ?? undefined);
 }
 
 export function register(bot: Bot) {

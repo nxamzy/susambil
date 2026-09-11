@@ -29,6 +29,8 @@ export type Sozlamalar = {
   tolovMuddatKuni: number;
   /** To'lov eslatmasi muddatga necha kun qolganda boshlanadi */
   tolovEslatmaKuni: number;
+  /** Pul yig'imi eslatmasi necha soatda bir qaytariladi */
+  yigimEslatmaSoat: number;
 };
 
 /**
@@ -84,6 +86,14 @@ export const SOZLAMA_TAVSIF = {
     min: 1,
     max: 10,
   },
+  yigim_eslatma_soat: {
+    maydon: "yigimEslatmaSoat",
+    nom: "Yig'im eslatmasi (soat)",
+    izoh: "Pul yig'imiga to'lamaganlarga necha soatda bir eslatiladi",
+    standart: config.yigimEslatmaSoat,
+    min: 1,
+    max: 48,
+  },
 } as const;
 
 export type SozlamaKalit = keyof typeof SOZLAMA_TAVSIF;
@@ -96,6 +106,7 @@ export const SOZLAMA_VARIANT: Record<SozlamaKalit, number[]> = {
   jarima_kunlik: [0, 5_000, 10_000, 15_000, 20_000, 30_000, 50_000],
   tolov_muddat_kuni: [5, 10, 12, 15, 18, 20, 25, 28],
   tolov_eslatma_kuni: [1, 2, 3, 4, 5, 7, 10],
+  yigim_eslatma_soat: [1, 2, 3, 4, 5, 6, 8, 12, 24, 48],
 };
 
 let kesh: Sozlamalar | undefined;

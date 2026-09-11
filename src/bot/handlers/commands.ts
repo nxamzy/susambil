@@ -13,7 +13,6 @@ import {
 import { sozlamalarOl } from "../../core/sozlamalar.js";
 import { faolVazifalar } from "../../core/vazifalar.js";
 import { reyting, orinlarniHisobla, xonaHolati, tarix } from "../../core/rating.js";
-import { jamiXarajat, oxirgiXarajatlar, xarajatReytingi } from "../../core/expenses.js";
 import { foydalanuvchiTolovHolati, tolovQabulQiluvchi } from "../../core/tolov.js";
 import { kunQismlari, oyNomi as vaqtOyNomi } from "../../core/vaqt.js";
 import { guruhgaYubor, guruhId, guruhIdOrnat, kim, korishXabar } from "../group.js";
@@ -24,14 +23,13 @@ import {
   panelgaKeyboard,
   tolovKeyboard,
   xonaTanlashKeyboard,
-  xarajatQoshishKeyboard,
 } from "../keyboards.js";
 import {
   AJRATGICH, chekla, esc, ismlar, muddatHolati, navbatXabari, pul, qisqaSana, reytingRoyxati,
   sana, tanishtirish, tolovKorinishi,
 } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat } from "../state.js";
-import { xarajatniBoshla } from "./expense.js";
+import { yigimKorinishMatni } from "./yigim.js";
 import { vazifaPaneliniKorsat } from "./navbat.js";
 
 function oyBoshi(): Date {
@@ -100,47 +98,6 @@ async function navbatMatni(): Promise<string> {
   return s.join("\n");
 }
 
-async function xarajatMatni(): Promise<string> {
-  const top = await xarajatReytingi(oyBoshi());
-  const oxirgi = await oxirgiXarajatlar(8);
-
-  const jami = await jamiXarajat(oyBoshi());
-
-  const s = [`💰 <b>UMUMIY XARAJATLAR</b>`, AJRATGICH, `<i>${oyNomi()} oyi</i>`, ``];
-
-  if (top.length === 0) {
-    s.push(`🤷 <i>Shu oyda hali hech kim hech narsa</i>`, `<i>olib kelmagan.</i>`);
-  } else {
-    for (const [i, x] of top.entries()) {
-      const medal = ["🥇", "🥈", "🥉"][i] ?? "▫️";
-      // Pul va ball ikki xil narsa: summa sarflangan pul, ball esa har bir
-      // xarajat uchun bir xil — summaga bog'liq emas.
-      s.push(
-        `${medal} ${esc(x.ism)} — <b>${x.summa > 0 ? pul(x.summa) : "—"}</b>`,
-        `   📦 ${x.soni} marta · 🏅 ${x.soni * BALLAR.xarajat} ball`,
-      );
-    }
-    s.push(``, AJRATGICH, `💵 <b>JAMI: ${pul(jami)}</b>`);
-  }
-
-  if (oxirgi.length > 0) {
-    s.push(``, `📦 <b>Oxirgi olib kelinganlar</b>`);
-    for (const x of oxirgi) {
-      const narx = x.summa ? ` — <b>${pul(Number(x.summa))}</b>` : "";
-      s.push(`• ${esc(x.izoh)}${narx}`, `   👤 ${esc(x.ism)} · 📅 ${qisqaSana(x.created_at)}`);
-    }
-  }
-
-  s.push(
-    ``,
-    AJRATGICH,
-    `🛍 <b>Nimadir sotib oldingizmi?</b>`,
-    `Pastdagi tugmani bosing — rasm va nomini`,
-    `so'rayman, <b>+${BALLAR.xarajat} ball</b> qo'shiladi.`,
-  );
-  return s.join("\n");
-}
-
 async function tolovMatni(telegramId: number | undefined): Promise<string> {
   const u = await kim(telegramId);
   if (!u) return "💳 Avval /start bosib ro'yxatdan o'ting.";
@@ -189,12 +146,12 @@ async function reytingMatni(telegramId?: number): Promise<string> {
     }
   }
 
-  // 4) Olib kelinganlar
+  // 4) Olib kelinganlar — ESKI. "Uyga narsa olib keldim" oqimi olib
+  //    tashlangan (endi pul yig'imi bor), lekin tasdiqlangan eski yozuvlar
+  //    reytingda qolaveradi: "tarix hech qachon o'chmaydi".
   const xarajatBoyicha = odamlar.filter((o) => o.xarajat > 0).sort((a, b) => b.xarajat - a.xarajat);
-  s.push(``, `🛒 <b>UYGA OLIB KELGANLAR</b>`, AJRATGICH);
-  if (xarajatBoyicha.length === 0) {
-    s.push(`🤷 <i>hali hech kim olib kelmagan</i>`);
-  } else {
+  if (xarajatBoyicha.length > 0) {
+    s.push(``, `🛒 <b>UYGA OLIB KELGANLAR (eski)</b>`, AJRATGICH);
     for (const [i, o] of xarajatBoyicha.entries()) {
       const medal = ["🥇", "🥈", "🥉"][i] ?? "▫️";
       s.push(`${medal} ${esc(o.ism)} — ${o.xarajat} marta · <b>${o.xarajatBall}</b> ball`);
@@ -264,7 +221,7 @@ export type Korinish =
   | "navbat"
   | "reyting"
   | "tarix"
-  | "xarajat"
+  | "yigim"
   | "tolov"
   | "profil"
   | "azolar"
@@ -288,13 +245,9 @@ export async function korinish(ctx: Context, nom: Korinish): Promise<void> {
       return javob(ctx, await reytingMatni(ctx.from?.id));
     case "tarix":
       return javob(ctx, await tarixMatni());
-    case "xarajat": {
-      const bot = ctx.me?.username;
-      return javob(
-        ctx,
-        await xarajatMatni(),
-        bot ? { reply_markup: xarajatQoshishKeyboard(bot) } : {},
-      );
+    case "yigim": {
+      const { matn, tugma } = await yigimKorinishMatni(ctx.from?.id);
+      return javob(ctx, matn, tugma ? { reply_markup: tugma } : {});
     }
     case "tolov":
       return javob(ctx, await tolovMatni(ctx.from?.id), { reply_markup: tolovKeyboard() });
@@ -370,7 +323,9 @@ async function profilMatni(telegramId: number | undefined): Promise<string> {
     ...(men.ishBall !== 0
       ? [`♻️ Qo'shimcha ish (eski) — ${men.ishSoni} marta · <b>${men.ishBall}</b> ball`]
       : []),
-    `🛒 Olib kelgan — ${men.xarajat} marta · <b>${men.xarajatBall}</b> ball`,
+    ...(men.xarajatBall !== 0
+      ? [`🛒 Olib kelgan (eski) — ${men.xarajat} marta · <b>${men.xarajatBall}</b> ball`]
+      : []),
     `✅ Tasdiqlagan — ${men.tasdiq} marta · <b>${men.tasdiqBall}</b> ball`,
   ];
 
@@ -402,7 +357,6 @@ export function register(bot: Bot) {
     if (ctx.chat.type !== "private" || !ctx.from) return;
 
     const mavjud = await kim(ctx.from.id);
-    if (mavjud && ctx.match === "xarajat") return xarajatniBoshla(ctx);
     if (mavjud) {
       return ctx.reply(await panelMatni(), {
         parse_mode: "HTML",
@@ -640,7 +594,7 @@ export function register(bot: Bot) {
   // menyudan to'g'ridan-to'g'ri korinish() chaqiradi (guruh paneliga
   // qo'shilmagan, chunki "To'lov qilish" oqimi shaxsiy suhbatda o'tishi
   // shart — SHIKOYAT_TUGMA bilan bir xil sabab).
-  const korishlar = "navbat|reyting|tarix|xarajat|profil|azolar|tanishtirish|panel";
+  const korishlar = "navbat|reyting|tarix|yigim|profil|azolar|tanishtirish|panel";
   bot.callbackQuery(new RegExp(`^korish:(${korishlar})$`), async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});
     await korinish(ctx, ctx.match[1] as Korinish);
@@ -654,4 +608,4 @@ export function register(bot: Bot) {
   });
 }
 
-export { navbatMatni, reytingMatni, tarixMatni, xarajatMatni };
+export { navbatMatni, reytingMatni, tarixMatni };

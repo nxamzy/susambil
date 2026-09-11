@@ -11,7 +11,6 @@ import {
   SHIKOYAT_TUGMA,
   xonaTanlashKeyboard,
 } from "../keyboards.js";
-import { summaniSora, xarajatniSaqla } from "./expense.js";
 import { korinish, panelMatni } from "./commands.js";
 import { vazifaPaneliniKorsat } from "./navbat.js";
 import { javobgarIzohiSaqlandi, shikoyatBoshla, shikoyatIzohSaqlandi, shikoyatJoySora } from "./reports.js";
@@ -31,6 +30,7 @@ import {
 } from "./adminUsers.js";
 import { vazifaNomiKeldi, vazifaYangiNomiKeldi } from "./vazifalar.js";
 import { xabarMatniKeldi } from "./xabar.js";
+import { yigimNomiKeldi, yigimSummaOzgartirishKeldi, yigimSummasiKeldi } from "./yigim.js";
 import { summaTekshir } from "../../core/topshiriq.js";
 import { joriyNavbatchimi } from "../../core/rotation.js";
 
@@ -123,26 +123,6 @@ export function register(bot: Bot) {
       return;
     }
 
-    if (holat?.tur === "xarajat" && holat.qadam === "izoh") {
-      const izoh = ctx.message.text.trim().slice(0, 300);
-      if (izoh.length < 2) return ctx.reply("Juda qisqa. Nima olib kelganingizni yozing.");
-      return summaniSora(ctx, izoh, holat.photoId);
-    }
-
-    if (holat?.tur === "xarajat" && holat.qadam === "summa") {
-      const xom = ctx.message.text.trim();
-      // "0" — pul ketmagan degani, bu to'g'ri javob
-      const summa = /^0+$/.test(xom.replace(/\D/g, "")) ? 0 : summaTekshir(xom);
-      if (summa === null) {
-        return ctx.reply("Faqat raqam yozing, masalan: 120000\nPul ketmagan bo'lsa: 0");
-      }
-      return xarajatniSaqla(ctx, holat.izoh, holat.photoId, summa || null);
-    }
-
-    if (holat?.tur === "xarajat" && holat.qadam === "rasm") {
-      return ctx.reply("📷 Avval rasmini tashlang.");
-    }
-
     if (holat?.tur === "shikoyat" && holat.qadam === "izoh") {
       const izoh = ctx.message.text.trim().slice(0, 500);
       if (izoh.length < 5) return ctx.reply("Juda qisqa. Nima bo'lganini birroz batafsil yozing.");
@@ -172,7 +152,9 @@ export function register(bot: Bot) {
     if (holat?.tur === "tolov" && holat.qadam === "summa") {
       const summa = summaTekshir(ctx.message.text.trim());
       if (summa === null) return ctx.reply("Faqat musbat raqam yozing, masalan: 400000");
-      return tolovDalilSora(ctx, summa);
+      // `siklId` bor bo'lsa — pul yig'imiga to'lov, yo'q bo'lsa kvartira
+      // puli. Oqim ikkalasiga bir xil (`handlers/tolov.ts`).
+      return tolovDalilSora(ctx, summa, holat.siklId);
     }
 
     if (holat?.tur === "tolov" && holat.qadam === "dalil") {
@@ -241,6 +223,24 @@ export function register(bot: Bot) {
 
     if (holat?.tur === "admin_xabar" && holat.qadam === "tasdiq") {
       return ctx.reply("👆 Yuqoridagi tugmalardan birini tanlang (yuborish yoki bekor qilish).");
+    }
+
+    if (holat?.tur === "yigim_yangi" && holat.qadam === "nom") {
+      const nom = ctx.message.text.trim().slice(0, 80);
+      if (nom.length < 2) return ctx.reply("Juda qisqa. Nima uchun yig'ayotganingizni yozing.");
+      return yigimNomiKeldi(ctx, nom);
+    }
+
+    if (holat?.tur === "yigim_yangi" && holat.qadam === "summa") {
+      return yigimSummasiKeldi(ctx, holat.nom, ctx.message.text.trim());
+    }
+
+    if (holat?.tur === "yigim_yangi") {
+      return ctx.reply("👆 Yuqoridagi tugmalardan birini tanlang.");
+    }
+
+    if (holat?.tur === "yigim_summa") {
+      return yigimSummaOzgartirishKeldi(ctx, holat.siklId, ctx.message.text.trim());
     }
 
     const u = await kim(ctx.from.id);

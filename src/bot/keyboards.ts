@@ -19,7 +19,7 @@ import type { FoydalanuvchiToliq } from "../core/users.js";
 /** Doimiy menyudagi ko'rinish tugmalari. */
 export const MENYU = {
   navbat: "📋 Navbat",
-  xarajat: "💰 Xarajatlar",
+  yigim: "💰 Pul yig'imi",
   tolov: "💳 Kvartira to'lovi",
   reyting: "🏆 Reyting",
   profil: "👤 Profil",
@@ -62,7 +62,7 @@ export const MENING_NAVBATIM_TUGMA = "🧹 Mening navbatim";
 export function menyuKeyboard(isAdmin = false, isDutyUser = false): Keyboard {
   const kb = new Keyboard();
   if (isDutyUser) kb.text(MENING_NAVBATIM_TUGMA).row();
-  kb.text(MENYU.navbat).text(MENYU.xarajat).row();
+  kb.text(MENYU.navbat).text(MENYU.yigim).row();
   kb.text(MENYU.tolov).row();
   kb.text(MENYU.reyting).text(MENYU.profil).row();
   kb.text(MENYU.azolar).text(MENYU.tarix).row();
@@ -90,7 +90,7 @@ export function tasdiqKeyboard(submissionId: number, soni: number, kerak: number
 export function panelKeyboard(): InlineKeyboard {
   const kb = new InlineKeyboard();
   kb.text(MENYU.navbat, "korish:navbat");
-  kb.text(MENYU.xarajat, "korish:xarajat").row();
+  kb.text(MENYU.yigim, "korish:yigim").row();
   kb.text(MENYU.reyting, "korish:reyting");
   kb.text(MENYU.profil, "korish:profil").row();
   kb.text(MENYU.azolar, "korish:azolar");
@@ -115,14 +115,6 @@ export function xonaTanlashKeyboard(raqamlar: number[]): InlineKeyboard {
   for (const r of raqamlar) kb.text(`🚪 ${r}-xona`, `yangixona:${r}`);
   kb.row().text("✖️ Bekor qilish", "bekor");
   return kb;
-}
-
-/** Guruhdan bir bosishda xarajat qo'shish uchun botga havola. */
-export function xarajatQoshishKeyboard(botUsername: string): InlineKeyboard {
-  return new InlineKeyboard().url(
-    "➕ Men ham olib keldim",
-    `https://t.me/${botUsername}?start=xarajat`,
-  );
 }
 
 /** Tanishtirishdan keyin panelga qaytish. */
@@ -262,39 +254,56 @@ export function tolovAdminKeyboard(tolovId: number): InlineKeyboard {
  * ko'rinadi — ochiq oyni yakunlash mumkin emas.
  */
 export function tolovDashboardKeyboard(d: TolovDashboard): InlineKeyboard {
+  // Yig'im ham xuddi shu dashboardni ishlatadi (bitta kod, ikki tur) —
+  // faqat callback prefiksi boshqa, shunda "orqaga" tugmasi o'z paneliga
+  // qaytadi va oylik to'lov bilan aralashib ketmaydi.
+  const p = d.sikl.tur === "yigim" ? "yigim" : "tolov";
+
   const kb = new InlineKeyboard()
-    .text(`🔴 Qarzdorlar (${d.qarzdorlar.length})`, "tolov_royxat:qarzdor")
+    .text(`🔴 Qarzdorlar (${d.qarzdorlar.length})`, `${p}_royxat:qarzdor`)
     .row();
 
   // Kechikkanlar tugmasi faqat kerak bo'lganda — muddat kelmagan oyda u
   // har doim bo'sh bo'lardi va panelni behuda uzaytirardi.
   if (d.kechikkanlar.length > 0) {
-    kb.text(`⛔️ Kechikkanlar (${d.kechikkanlar.length})`, "tolov_royxat:kechikkan").row();
+    kb.text(`⛔️ Kechikkanlar (${d.kechikkanlar.length})`, `${p}_royxat:kechikkan`).row();
   }
 
-  kb.text(`🟢 To'laganlar (${d.tola.length})`, "tolov_royxat:tolagan").row();
+  kb.text(`🟢 To'laganlar (${d.tola.length})`, `${p}_royxat:tolagan`).row();
 
   if (d.kutilmoqdaSoni > 0) {
     kb.text(`⏳ Tekshiruvdagilar (${d.kutilmoqdaSoni})`, "tolov_kutilmoqda").row();
   }
 
-  kb.text("📜 Tarix", "tolov_tarix_admin").row();
-
-  if (d.sikl.holat === "muddat_yetdi") {
-    kb.text("🔒 Oyni yakunlash", `tolov_yakunla:${d.sikl.id}`).row();
+  if (d.sikl.tur === "yigim") {
+    kb.text("✏️ Summa", `yigim_summa:${d.sikl.id}`)
+      .text("📅 Muddat", `yigim_muddat:${d.sikl.id}`)
+      .row();
+    kb.text("📣 Hammaga eslatma", `yigim_turtki:${d.sikl.id}`).row();
+    kb.text("📜 Yig'imlar tarixi", "yigim_tarix").row();
+    if (d.sikl.holat === "ochiq") {
+      kb.text("🔒 Yig'imni yakunlash", `yigim_yakunla:${d.sikl.id}`).row();
+    }
+  } else {
+    kb.text("📜 Tarix", "tolov_tarix_admin").row();
+    if (d.sikl.holat === "muddat_yetdi") {
+      kb.text("🔒 Oyni yakunlash", `tolov_yakunla:${d.sikl.id}`).row();
+    }
   }
+
   kb.text("⬅️ Admin panel", "admin_panel");
   return kb;
 }
 
 /** Bitta ro'yxat ko'rinishi: har bir odam alohida tugmada + orqaga. */
-export function tolovRoyxatKeyboard(odamlar: SiklOdam[]): InlineKeyboard {
+export function tolovRoyxatKeyboard(odamlar: SiklOdam[], yigim = false): InlineKeyboard {
+  const p = yigim ? "yigim" : "tolov";
   const kb = new InlineKeyboard();
   for (const o of odamlar) {
     const belgi = o.kechikkan ? "⛔️" : o.qoldiq === 0 ? "🟢" : o.tasdiqlangan > 0 ? "🟡" : "🔴";
-    kb.text(`${belgi} ${o.ism} — ${qisqaPul(o.qoldiq)}`, `tolov_user:${o.userId}`).row();
+    kb.text(`${belgi} ${o.ism} — ${qisqaPul(o.qoldiq)}`, `${p}_user:${o.userId}`).row();
   }
-  kb.text("⬅️ To'lovlar", "tolov_dashboard");
+  kb.text(yigim ? "⬅️ Yig'im" : "⬅️ To'lovlar", `${p}_dashboard`);
   return kb;
 }
 
@@ -307,11 +316,12 @@ function qisqaPul(n: number): string {
 }
 
 /** Bitta odamning to'lov kartochkasi: qo'lda tuzatish + orqaga qaytish. */
-export function tolovFoydalanuvchiKeyboard(userId: number): InlineKeyboard {
+export function tolovFoydalanuvchiKeyboard(userId: number, yigim = false): InlineKeyboard {
+  const p = yigim ? "yigim" : "tolov";
   return new InlineKeyboard()
-    .text("✏️ To'lovni tuzatish", `tolov_tuzat:${userId}`)
+    .text(yigim ? "✏️ To'ladi/to'lamadi" : "✏️ To'lovni tuzatish", `${p}_tuzat:${userId}`)
     .row()
-    .text("⬅️ To'lovlar ro'yxati", "tolov_dashboard");
+    .text(yigim ? "⬅️ Yig'im" : "⬅️ To'lovlar ro'yxati", `${p}_dashboard`);
 }
 
 /**
@@ -447,8 +457,10 @@ export function adminPanelKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("👥 Foydalanuvchilar", "admin_users")
     .row()
-    .text("💰 To'lovlar", "admin_link_tolovlar")
+    .text("💳 Kvartira to'lovi", "admin_link_tolovlar")
     .text("🧹 Navbat", "admin_link_navbat")
+    .row()
+    .text("💰 Pul yig'ish", "yigim_dashboard")
     .row()
     .text("🚨 Shikoyatlar", "admin_link_shikoyatlar")
     .row()
@@ -671,4 +683,63 @@ export function xabarTasdiqKeyboard(): InlineKeyboard {
     .text("📤 Ha, yubor", "xabar_yubor")
     .row()
     .text("✖️ Bekor qilish", "bekor");
+}
+
+// ---------------------------------------------------------------------------
+// PUL YIG'IMI
+// ---------------------------------------------------------------------------
+
+/** A'zoning "💰 Pul yig'imi" ko'rinishi — ochiq yig'im bor bo'lganda. */
+export function yigimKeyboard(toliqTolagan: boolean): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  if (!toliqTolagan) kb.text("💰 To'ladim — chek yuborish", "yigim_tolash").row();
+  kb.text("📊 Mening to'lovlarim tarixi", "tolov_tarix");
+  return kb;
+}
+
+/** Ochiq yig'im yo'q. Adminga "boshlash" tugmasi, a'zoga hech narsa. */
+export function yigimYoqKeyboard(admin: boolean): InlineKeyboard | undefined {
+  if (!admin) return undefined;
+  return new InlineKeyboard()
+    .text("➕ Yangi yig'im boshlash", "yigim_yangi")
+    .row()
+    .text("📜 Yig'imlar tarixi", "yigim_tarix")
+    .row()
+    .text("⬅️ Admin panel", "admin_panel");
+}
+
+/**
+ * Yig'im muddati — "bugundan necha kun". `navbatMuddatKeyboard` bilan bir
+ * xil naqsh: 0 = bugun kechgacha (muddat KUN OXIRIGACHA hisoblanadi,
+ * shuning uchun 0 "allaqachon o'tib ketgan" degani emas).
+ */
+export function yigimKunKeyboard(prefiks: string): InlineKeyboard {
+  const kb = new InlineKeyboard().text("⚡️ Bugun kechgacha", `${prefiks}:0`).row();
+  for (const [i, k] of [1, 2, 3, 4, 5, 7, 10, 14].entries()) {
+    kb.text(`${k} kun`, `${prefiks}:${k}`);
+    if (i % 4 === 3) kb.row();
+  }
+  kb.row().text("✖️ Bekor qilish", "bekor");
+  return kb;
+}
+
+/** Yuborishdan oldingi oxirgi tasdiq — e'lon ketgach ortga yo'l yo'q. */
+export function yigimBoshlashKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("🚀 Ha, boshlash", "yigim_boshla")
+    .row()
+    .text("✖️ Bekor qilish", "bekor");
+}
+
+/** Yig'imni yopishdan oldingi tasdiq. */
+export function yigimYakunlashKeyboard(siklId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("🔒 Ha, yakunlash", `yigim_yakunla_ok:${siklId}`)
+    .row()
+    .text("⬅️ Orqaga", "yigim_dashboard");
+}
+
+/** Eslatmadan to'g'ridan-to'g'ri chek yuborishga o'tish uchun. */
+export function yigimTolashKeyboard(): InlineKeyboard {
+  return new InlineKeyboard().text("💰 To'ladim — chek yuborish", "yigim_tolash");
 }

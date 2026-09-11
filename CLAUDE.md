@@ -97,7 +97,8 @@ bosmasa, navbat topshirilmaydi (panelda `🟡 3/3 — tasdiqlang` deb turadi).
 ## Umumiy sozlamalar `settings` jadvalida (`core/sozlamalar.ts`)
 
 `config.ts`dagi `kerakliTasdiq`, `eslatmaKuni`, `eslatmaOraligiSoat`,
-`jarimaKunlik`, `tolovMuddatKuni`, `tolovEslatmaKuni` endi faqat STANDART.
+`jarimaKunlik`, `tolovMuddatKuni`, `tolovEslatmaKuni`, `yigimEslatmaSoat`
+endi faqat STANDART.
 Haqiqiysi `settings` jadvalidan, `sozlamalarOl()` (KESHLI — deyarli har
 xabarda o'qiladi) orqali. Admin Panel → "⚙️ Sozlamalar".
 
@@ -136,7 +137,70 @@ ixtiyori bilan qilmasdi, hammasi navbatda bo'lardi.
 `chores.ball` yig'indisi va `confirm.ts`dagi `tur==='ish'` shoxi QOLADI —
 "tarix hech qachon o'chmaydi" qoidasi. Eski tasdiqlangan yozuvlar reyting
 totaliga qo'shilaveradi, Reyting/Profil ekranida "eski" deb belgilanadi.
-Xarajat ("uyga narsa olib keldim") — alohida, tegilmagan.
+Xarajat ("uyga narsa olib keldim") keyinroq xuddi shu yo'l bilan olib
+tashlandi — pastdagi bo'limga qarang.
+
+## "Uyga narsa olib keldim" (xarajat) oqimi — olib tashlandi
+
+`ISH_TURLARI` tugmalari bilan bir xil sabab, bir xil yo'l bilan: hech kim
+o'zidan uyga narsa olib kelmasdi, kelgani ham botga yozmasdi. Uyda pul
+BOSHQACHA yig'iladi — admin "hammadan 30 ming" deb e'lon qiladi.
+
+OLIB TASHLANDI: `bot/handlers/expense.ts`, `core/expenses.ts`,
+`state.ts`dagi `{tur:"xarajat"}` Flow, `photos.ts`dagi xarajat rasm oqimi,
+`/xarajat` buyrug'i va `?start=xarajat` havolasi, menyudagi "💰 Xarajatlar"
+(o'rniga "💰 Pul yig'imi"), `core/topshiriq.ts`dagi
+`topshiriqYarat`/`topshiriqBalli`/`Yaratish` (chaqiruvchisi qolmadi).
+
+QOLDI — "tarix hech qachon o'chmaydi": `expenses` jadvali,
+`submissions.tur='xarajat'` CHECK va `yakunla()`dagi tarmoq (tasdiq
+kutayotgan eski yozuv baribir yopilishi kerak), `BALLAR.xarajat`,
+`core/rating.ts`dagi `expenses.ball` yig'indisi. Reyting va Profilda ular
+"(eski)" deb belgilanadi va yozuv bo'lmasa umuman ko'rinmaydi.
+
+## Pul yig'imi — `tolov_sikllari`ning IKKINCHI TURI, yangi tizim emas
+
+Admin istalgan paytda yig'im boshlaydi ("Internet puli, har kishidan
+30 000"), guruhga karta bilan e'lon ketadi, odam chek tashlaydi, admin
+tasdiqlaydi, guruhda "falonchi shuncha to'ladi" chiqadi, to'lamaganlarga
+har 5 soatda DM boradi.
+
+Buning uchun ikkinchi to'lov tizimi YOZILMADI. Yig'im —
+`tolov_sikllari.tur = 'yigim'` qatori, to'lovlar esa o'sha `tolovlar`
+jadvaliga `sikl_id` bilan tushadi. Natijada chek yuborish, admin
+tekshiruvi (haqiqiy summa hal qiladi), `tolov_tuzatish` bilan qo'lda
+"to'ladi/to'lamadi", dashboard, ro'yxatlar, odam kartochkasi va guruh
+e'loni — hammasi kvartira to'lovi bilan BITTA kod (`core/tolov.ts`,
+`bot/handlers/tolov.ts`). `bot/handlers/yigim.ts` da faqat yig'imga xos
+qism: boshlash, e'lon qilish, summa/muddat, yakunlash.
+
+Ikki turning farqi ataylab uchtagina:
+
+- **`davr` yo'q, `nom` bor.** Yig'im kalendar oyiga bog'lanmaydi.
+  `siklOyi()` `davr` bo'lmasa nomni qaytaradi, `siklSarlavhasi()` esa
+  "Avgust oyi" / «Internet puli» ni beradi — umumiy ko'rinishlar "oyi"
+  so'zini o'zi yozmaydi.
+- **MUDDAT SURATI OLINMAYDI.** `muddatiOtganSikllar` `tur='oylik'` bilan
+  cheklangan va `muddatSuratiniYangila` yig'imda darrov `null` qaytaradi.
+  Yig'imda "muddatda qancha yetmagan edi" degan savol ham, jarima ham
+  yo'q — pul yig'ilmaguncha eslatma davom etadi, xolos.
+- **Bir vaqtda BITTA ochiq yig'im** — bazadagi qisman UNIQUE indeks
+  (`tolov_sikllari_ochiq_yigim_uniq`). Aks holda a'zo chek tashlaganda pul
+  qaysi yig'imga tushishi noaniq bo'lardi.
+
+`tur = 'oylik'` filtri `core/tolov.ts`dagi HAMMA "sikl qidirish"
+so'roviga qo'yilgan (`siklniDavrBoyichaOl`, `sikllarRoyxati`,
+`muddatiOtganSikllar`, `joriySikl`ning eski sikllarni yopishi). Bittasi
+tushib qolsa yig'im kvartira puli hisobiga aralashib ketardi — yangi
+so'rov yozganda shuni unutmang. Bitta id bo'yicha o'qish (`siklniOl`)
+ataylab filtrsiz: u yerda qaysi sikl kerakligi allaqachon ma'lum.
+
+Eslatma ham alohida: `jobs/reminders.ts` `yigimEslatmalari` — SOATLIK
+(`yigimEslatmaSoat`, standart 5), muddatdan MUSTAQIL, `tolov_holat`dagi
+yangi `oxirgi_eslatma_ts` ustuni bilan. Oylik to'lovniki KUNLIK va muddat
+oynasiga bog'langan (`tolovEslatmaKuni`) — shu sababli ikkita funksiya.
+To'xtashi uchun bayroq yo'q: qarzi qolmagan odam `yigimEslatmasiKerakmi`
+dan o'tmaydi, ya'ni tasdiq tushishi bilan eslatma o'zidan to'xtaydi.
 
 ## `oraliq_kun` — navbat o'rtasida bajariladigan vazifa + o'z eslatmasi
 
@@ -349,6 +413,8 @@ Concurrency is handled the same way everywhere: `FOR UPDATE` inside `sql.begin`,
 
 `navbat` (duty), `ish` (chore) and `xarajat` (purchase) are all rows in `submissions`,
 confirmed through the same `confirmations` table and the same `core/topshiriq.ts` functions.
+Only `navbat` rows are still *created*: the `ish` and `xarajat` flows were removed (see above),
+their rows and code paths kept so old history keeps working.
 Confirmation requires `config.kerakliTasdiq` people and never the submitter; the extra
 "not from the same room" rule applies to duty work only and lives in the navbat branch of
 `handlers/confirm.ts`. Points come from config server-side — the client only ever sends the
@@ -361,7 +427,9 @@ Do not add a parallel approval flow. Extend this one.
 
 ## Apartment payment (`core/tolov.ts`)
 
-The most intricate module; read its header comment before changing it.
+The most intricate module; read its header comment before changing it. It now serves **two**
+kinds of cycle — monthly rent and ad-hoc collections (`tur='yigim'`, see above); everything
+below describes the monthly one.
 
 - **Monthly cycles** (`tolov_sikllari`, one row per calendar month). A payment is bound to a
   cycle by its **submission** date, never its verification date.
@@ -409,8 +477,13 @@ database — never run write-path checks against the production Neon database.
 
 ## Privacy rules that are easy to break
 
-- Payment card numbers and receipt images go **only** to the payer and to admin DMs. The group
-  sees name, amount and status — nothing else.
+- Receipt images go **only** to the payer and to admin DMs, always. The group sees name,
+  amount and status — nothing else.
+- The card number follows the same rule for the **monthly rent** payment, but is deliberately
+  **public in the group for a collection** (`tur='yigim'`): the whole point of the announcement
+  is "here is the card, send your share". This is the house's explicit decision, not an
+  oversight — do not "fix" it by hiding the card in `yigimGuruhElon`. Receipts stay private
+  in collections too.
 - Anonymous complaints (`reports`): the *reporter* is never revealed to the group or to
   ordinary members, only to admins. The accused person *is* named in the group by design.
 - Never log `ctx` — it contains the bot token (`xatoniYoz` in `bot/index.ts` exists for this).

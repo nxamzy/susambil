@@ -729,15 +729,23 @@ export function tanishtirish(vazifalar: NavbatVazifasi[], siklKuni: number, s0: 
     `   navbatni tugatmaguningizcha to'xtamaydi.`,
     `🔴 Kechiksangiz har kun ball kamayadi.`,
     ``,
-    `<b>💰 UYGA NARSA OLIB KELISH</b>`,
+    `<b>💰 PUL YIG'IMI</b>`,
     AJRATGICH,
-    `Falga, gubka, qop-qog'oz olib kelsangiz —`,
-    `rasmga olib botga tashlang, nomini va qancha`,
-    `pul ketganini yozing.`,
-    `   <b>+${BALLAR.xarajat} ball</b>`,
+    `Uyga umumiy narsa kerak bo'lsa (internet, suv, gaz`,
+    `ballon) admin yig'im e'lon qiladi: nomi, har kishidan`,
+    `qancha va karta raqami guruhga chiqadi.`,
     ``,
-    `<i>Pul summasi ballga ta'sir qilmaydi — u alohida</i>`,
-    `<i>hisoblanadi va "Xarajatlar" bo'limida ko'rinadi.</i>`,
+    `Kartaga tashlaysiz, so'ng <b>"💰 Pul yig'imi"</b> tugmasidan`,
+    `qancha to'laganingizni yozib, chekni yuborasiz.`,
+    ``,
+    `Admin tekshirib tasdiqlagach guruhda "falonchi shuncha`,
+    `to'ladi" deb ko'rinadi va hisobingizga qo'shiladi.`,
+    ``,
+    `🔔 To'lamaganlarga har <b>${s0.yigimEslatmaSoat} soatda</b> eslatma keladi —`,
+    `to'lagach o'z-o'zidan to'xtaydi.`,
+    ``,
+    `<i>Chek rasmi guruhga hech qachon chiqmaydi — faqat</i>`,
+    `<i>ism, summa va holat.</i>`,
     ``,
     `<b>🏅 BALL QANDAY HISOBLANADI</b>`,
     AJRATGICH,
@@ -820,10 +828,22 @@ export function tolovDarajaBelgisi(daraja: TolovDaraja): { emoji: string; nom: s
   }[daraja];
 }
 
-/** Sikl oyining nomi — "Avgust". */
+/** Sikl oyining nomi — "Avgust". Yig'imda oy tushunchasi yo'q, nomi qaytadi. */
 export function siklOyi(sikl: TolovSikl): string {
+  if (!sikl.davr) return sikl.nom ?? "Yig'im";
   const nom = sanadanOyNomi(sikl.davr);
   return nom.charAt(0).toUpperCase() + nom.slice(1);
+}
+
+/**
+ * Siklning sarlavhasi — "Avgust oyi" yoki «Internet puli».
+ *
+ * Admin ko'rinishlari (dashboard, ro'yxat, odam kartochkasi) va tasdiq
+ * xabarlari ikkala tur bilan ham ishlaydi, shuning uchun ular "oyi" so'zini
+ * o'zi yozmaydi — shu funksiyadan oladi.
+ */
+export function siklSarlavhasi(sikl: TolovSikl): string {
+  return sikl.tur === "yigim" ? `«${esc(sikl.nom ?? "Yig'im")}»` : `${siklOyi(sikl)} oyi`;
 }
 
 /**
@@ -1172,11 +1192,16 @@ export function tolovYuborildiXabari(kiritganSumma: number): string {
  * holatida ko'rsatiladi, "agar to'liq tasdiqlansa qancha bo'ladi" degan
  * proyeksiya uchun).
  */
-export function tolovAdminXabari(t: TolovToliq, joriyTasdiqlangan: number): string {
+export function tolovAdminXabari(
+  t: TolovToliq,
+  joriyTasdiqlangan: number,
+  sikl?: TolovSikl | null,
+): string {
   const kiritgan = Number(t.kiritgan_summa);
   const s = [
-    `💰 <b>YANGI KVARTIRA TO'LOVI</b>`,
+    sikl?.tur === "yigim" ? `💰 <b>YIG'IMGA TO'LOV</b>` : `💰 <b>YANGI KVARTIRA TO'LOVI</b>`,
     AJRATGICH,
+    ...(sikl ? [`<i>${siklSarlavhasi(sikl)}</i>`] : []),
     ``,
     `👤 Kim: <b>${esc(t.ism)}</b>`,
     `💵 O'zi yozgan summa: <b>${pul(kiritgan)}</b>`,
@@ -1215,9 +1240,9 @@ export function tolovAdminXabari(t: TolovToliq, joriyTasdiqlangan: number): stri
 export function tolovGuruhXabari(ism: string, h: TolovHolatMalumoti): string {
   const daraja = tolovDarajaBelgisi(h.daraja);
   const s = [
-    `💰 <b>KVARTIRA TO'LOVI</b>`,
+    h.sikl.tur === "yigim" ? `💰 <b>YIG'IMGA TO'LOV</b>` : `💰 <b>KVARTIRA TO'LOVI</b>`,
     AJRATGICH,
-    `<i>${siklOyi(h.sikl)} oyi</i>`,
+    `<i>${siklSarlavhasi(h.sikl)}</i>`,
     ``,
     `👤 ${esc(ism)}`,
     `💵 To'landi: <b>${pul(h.tasdiqlangan)}</b> / ${pul(h.talab)}`,
@@ -1242,13 +1267,13 @@ export function tolovTasdiqXabari(
     ``,
     `✅ Tasdiqlangan summa: <b>${pul(tasdiqlanganSumma)}</b>`,
     ``,
-    `<i>${siklOyi(h.sikl)} oyi bo'yicha:</i>`,
+    `<i>${siklSarlavhasi(h.sikl)} bo'yicha:</i>`,
     `💵 Jami to'langan: <b>${pul(h.tasdiqlangan)}</b> / ${pul(h.talab)}`,
   ];
   if (h.daraja !== "tola") s.push(`📉 Qoldi: <b>${pul(h.qoldiq)}</b>`, muddatQatori(h.sikl));
   s.push(``, `Holat: ${daraja.emoji} <b>${daraja.nom}</b>`);
   if (h.daraja === "tola") {
-    s.push(``, `✅ ${siklOyi(h.sikl)} oyi to'lovingiz to'liq amalga oshirilgan.`);
+    s.push(``, `✅ ${siklSarlavhasi(h.sikl)} bo'yicha to'liq to'lagansiz.`);
   }
   return s.join("\n");
 }
@@ -1287,13 +1312,21 @@ export function tolovTarixi(payments: TolovTarix[]): string {
   }
 
   const s = [`📊 <b>MENING TO'LOVLARIM</b>`, AJRATGICH];
-  let oxirgiDavr: string | null | undefined;
+  let oxirgiGuruh: string | undefined;
 
   payments.forEach((p, i) => {
-    if (p.sikl_davr !== oxirgiDavr) {
-      oxirgiDavr = p.sikl_davr;
-      const nom = p.sikl_davr ? sanadanOyNomi(p.sikl_davr) : null;
-      s.push(``, `📅 <b>${nom ? nom.toUpperCase() + " OYI" : "OYI BELGILANMAGAN"}</b>`);
+    // Guruhlash kaliti — yig'imda nomi, oylik to'lovda oyi. Ikkalasi bitta
+    // ro'yxatda aralash chiqadi, chunki odam uchun bular bir xil narsa:
+    // "men qachon qancha pul tashlaganman".
+    const guruh =
+      p.sikl_tur === "yigim"
+        ? `💰 ${(p.sikl_nom ?? "YIG'IM").toUpperCase()}`
+        : p.sikl_davr
+          ? `📅 ${sanadanOyNomi(p.sikl_davr).toUpperCase()} OYI`
+          : `📅 OYI BELGILANMAGAN`;
+    if (guruh !== oxirgiGuruh) {
+      oxirgiGuruh = guruh;
+      s.push(``, `<b>${esc(guruh)}</b>`);
     }
 
     s.push(``, `<b>${i + 1}.</b> ${pul(Number(p.kiritgan_summa))}`);
@@ -1319,6 +1352,11 @@ export function siklHolatBelgisi(sikl: TolovSikl): string {
     muddat_yetdi: "🟠 MUDDAT YETDI — yakuniy holat olindi",
     yakunlandi: "⚫️ YAKUNLANDI",
   }[sikl.holat];
+}
+
+/** Tarix xulosasidagi sarlavha — oylik to'lov va yig'im uchun bir xil shakl. */
+export function tarixSarlavhasi(sikl: TolovSikl): string {
+  return sikl.tur === "yigim" ? esc(sikl.nom ?? "Yig'im") : siklOyi(sikl);
 }
 
 /** Bitta odamning dashboarddagi qatori — muddat surati bo'lsa u ham ko'rinadi. */
@@ -1347,9 +1385,9 @@ function siklOdamQatori(o: SiklOdam, talab: number): string[] {
  */
 export function tolovDashboardMatni(d: TolovDashboard): string {
   const s = [
-    `📊 <b>KVARTIRA TO'LOVLARI</b>`,
+    d.sikl.tur === "yigim" ? `💰 <b>PUL YIG'IMI</b>` : `📊 <b>KVARTIRA TO'LOVLARI</b>`,
     AJRATGICH,
-    `<i>${siklOyi(d.sikl)} oyi · ${siklHolatBelgisi(d.sikl)}</i>`,
+    `<i>${siklSarlavhasi(d.sikl)} · ${siklHolatBelgisi(d.sikl)}</i>`,
     ``,
     muddatQatori(d.sikl),
     ``,
@@ -1430,16 +1468,20 @@ export function tolovRoyxatMatni(d: TolovDashboard, tur: TolovRoyxatTuri): strin
 }
 
 /** Oxirgi oylarning qisqa xulosasi — "📜 Tarix" tugmasi. */
-export function tolovTarixXulosasi(xulosalar: SiklXulosa[]): string {
+export function tolovTarixXulosasi(
+  xulosalar: SiklXulosa[],
+  sarlavha = `📜 <b>TO'LOV TARIXI</b>`,
+  bosh = `🤷 <i>Hali oy yopilmagan.</i>`,
+): string {
   if (xulosalar.length === 0) {
-    return [`📜 <b>TO'LOV TARIXI</b>`, AJRATGICH, ``, `🤷 <i>Hali oy yopilmagan.</i>`].join("\n");
+    return [sarlavha, AJRATGICH, ``, bosh].join("\n");
   }
 
-  const s = [`📜 <b>TO'LOV TARIXI</b>`, AJRATGICH, ``];
+  const s = [sarlavha, AJRATGICH, ``];
   for (const x of xulosalar) {
     const belgi = x.jamiQoldiq === 0 ? "✅" : x.sikl.holat === "ochiq" ? "🟡" : "🔴";
     s.push(
-      `${belgi} <b>${siklOyi(x.sikl)}</b> — ${siklHolatBelgisi(x.sikl).split(" ")[0]}`,
+      `${belgi} <b>${tarixSarlavhasi(x.sikl)}</b> — ${siklHolatBelgisi(x.sikl).split(" ")[0]}`,
       `   💵 ${pul(x.jamiTasdiqlangan)} / ${pul(x.jamiTalab)}`,
     );
     if (x.jamiQoldiq > 0) s.push(`   📉 Yetmagan: <b>${pul(x.jamiQoldiq)}</b>`);
@@ -1463,7 +1505,7 @@ export function tolovFoydalanuvchiMatni(
   const s = [
     `👤 <b>${esc(o.ism).toUpperCase()}</b>`,
     AJRATGICH,
-    `<i>${siklOyi(sikl)} oyi · ${siklHolatBelgisi(sikl)}</i>`,
+    `<i>${siklSarlavhasi(sikl)} · ${siklHolatBelgisi(sikl)}</i>`,
     ``,
     muddatQatori(sikl),
     ``,
@@ -1501,7 +1543,7 @@ export function tolovFoydalanuvchiMatni(
   }
 
   if (tuzatishlar.length > 0) {
-    s.push(``, AJRATGICH, `✏️ <b>QO'LDA TUZATISHLAR</b> (${siklOyi(sikl)})`);
+    s.push(``, AJRATGICH, `✏️ <b>QO'LDA TUZATISHLAR</b> (${siklSarlavhasi(sikl)})`);
     for (const t of tuzatishlar.slice(0, 5)) {
       s.push(
         `   ${t.summa > 0 ? "+" : ""}${pul(t.summa)} — ${esc(t.sabab ?? "sababsiz")}`,
@@ -2020,5 +2062,258 @@ export function muddatOzgardiGuruhXabari(room: Room, muddat: Date, adminIsm: str
     `${muddatHolati(muddat)}`,
     ``,
     `<i>— ${esc(adminIsm)} (admin)</i>`,
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// PUL YIG'IMI
+// ---------------------------------------------------------------------------
+
+/**
+ * Yig'im matnlari ATAYLAB alohida, garchi mexanizm kvartira to'lovi bilan
+ * bitta bo'lsa ham: oylik to'lovda gap "o'z ulushingiz"da, yig'imda esa
+ * "hammadan shuncha yig'yapmiz"da. Bir xil matnni ikkalasiga cho'zish
+ * ikkalasini ham tushunarsiz qilardi.
+ *
+ * KARTA GURUHGA CHIQADI — bu ataylab va faqat yig'imda. Kvartira to'lovida
+ * karta hech qachon guruhga chiqmaydi (faqat to'lovchiga va admin DM'iga),
+ * yig'imda esa e'lonning butun ma'nosi "mana karta, tashlanglar"da. Chek
+ * RASMI esa yig'imda ham guruhga hech qachon chiqmaydi.
+ */
+
+/** Admin yig'imni boshlashdan oldin ko'radigan tasdiq ekrani. */
+export function yigimTasdiqMatni(
+  nom: string,
+  talab: number,
+  kun: number,
+  odamSoni: number,
+): string {
+  return [
+    `💰 <b>YIG'IMNI BOSHLASH</b>`,
+    AJRATGICH,
+    ``,
+    `📌 Nomi: <b>${esc(nom)}</b>`,
+    `💵 Har kishidan: <b>${pul(talab)}</b>`,
+    `👥 ${odamSoni} kishi → jami <b>${pul(talab * odamSoni)}</b>`,
+    `📅 Muddat: <b>${kun === 0 ? "bugun kechgacha" : `${kun} kun`}</b>`,
+    ``,
+    AJRATGICH,
+    `Boshlasangiz:`,
+    `   📢 guruhga karta bilan e'lon ketadi`,
+    `   👤 hammaga shaxsiy xabar boradi`,
+    `   🔔 to'lamaganlarga eslatma boshlanadi`,
+    ``,
+    `<i>Keyin ham summani, muddatni va kim qancha</i>`,
+    `<i>to'laganini o'zgartira olasiz.</i>`,
+  ].join("\n");
+}
+
+/**
+ * Guruhga e'lon — yig'im boshlanganda. Karta shu yerda ochiq turadi
+ * (yuqoridagi izohga qarang), chek rasmi esa hech qachon chiqmaydi.
+ */
+export function yigimGuruhElon(
+  sikl: TolovSikl,
+  qabul: { ism: string; karta: string },
+  odamSoni: number,
+): string {
+  return [
+    `💰 <b>PUL YIG'AMIZ</b>`,
+    AJRATGICH,
+    ``,
+    `📌 <b>${esc(sikl.nom ?? "Yig'im")}</b>`,
+    ``,
+    `💵 Har kishidan: <b>${pul(sikl.talab)}</b>`,
+    `👥 ${odamSoni} kishi → jami <b>${pul(sikl.talab * odamSoni)}</b>`,
+    muddatQatori(sikl),
+    ``,
+    AJRATGICH,
+    `💳 Karta: <code>${esc(qabul.karta)}</code>`,
+    `👤 Kimga: <b>${esc(qabul.ism)}</b>`,
+    ``,
+    AJRATGICH,
+    `To'lagach botga chekni tashlang — botdagi`,
+    `<b>«💰 Pul yig'imi»</b> tugmasidan.`,
+    ``,
+    `<i>Tasdiqlangach kim qancha to'lagani shu yerda</i>`,
+    `<i>ko'rinib boradi. To'lamaganlarga bot eslatib turadi.</i>`,
+  ].join("\n");
+}
+
+/** Yig'im boshlanganda har bir a'zoga ketadigan shaxsiy xabar. */
+export function yigimShaxsiyElon(
+  sikl: TolovSikl,
+  qabul: { ism: string; karta: string },
+): string {
+  return [
+    `💰 <b>YANGI YIG'IM</b>`,
+    AJRATGICH,
+    ``,
+    `📌 <b>${esc(sikl.nom ?? "Yig'im")}</b>`,
+    ``,
+    `💵 Sizdan: <b>${pul(sikl.talab)}</b>`,
+    muddatQatori(sikl),
+    ``,
+    `💳 Karta: <code>${esc(qabul.karta)}</code>`,
+    `👤 Kimga: <b>${esc(qabul.ism)}</b>`,
+    ``,
+    AJRATGICH,
+    `To'lagach pastdagi tugmani bosing va chekni tashlang.`,
+    `Admin tekshirib tasdiqlagach hisobingizga qo'shiladi.`,
+  ].join("\n");
+}
+
+/**
+ * A'zoning "💰 Pul yig'imi" ko'rinishi — ochiq yig'im bor bo'lganda.
+ * `tolovKorinishi` bilan bir xil shakl, lekin "oyi" o'rniga yig'im nomi va
+ * "bo'lib-bo'lib to'lasangiz ham bo'ladi" izohi yo'q (yig'im summasi kichik,
+ * bir yo'la tashlanadi).
+ */
+export function yigimKorinishi(
+  qabul: { ism: string; karta: string },
+  h: TolovHolatMalumoti,
+): string {
+  const daraja = tolovDarajaBelgisi(h.daraja);
+  const s = [
+    `💰 <b>PUL YIG'IMI</b>`,
+    AJRATGICH,
+    `<b>${esc(h.sikl.nom ?? "Yig'im")}</b>`,
+    ``,
+    muddatQatori(h.sikl),
+    ``,
+    `💵 Sizdan: <b>${pul(h.talab)}</b>`,
+    ``,
+    `💳 Karta: <code>${esc(qabul.karta)}</code>`,
+    `👤 Kimga: <b>${esc(qabul.ism)}</b>`,
+    ``,
+    AJRATGICH,
+    `✅ To'landi: <b>${pul(h.tasdiqlangan)}</b>`,
+    `📉 Qoldi: <b>${pul(h.qoldiq)}</b>`,
+    ``,
+    `Holat: ${daraja.emoji} <b>${daraja.nom}</b>`,
+  ];
+
+  if (h.kechikkan) s.push(``, `⛔️ <b>MUDDAT O'TIB KETGAN</b>`);
+  s.push(...kutilmoqdaQatorlari(h.kutilmoqdaSoni, h.kutilmoqdaSumma));
+
+  if (h.daraja === "tola") {
+    s.push(``, `✅ Bu yig'im bo'yicha to'liq to'lagansiz. Rahmat!`);
+  } else {
+    s.push(``, `<i>To'lagach pastdagi tugmani bosib chekni tashlang.</i>`);
+  }
+  return s.join("\n");
+}
+
+/** Ochiq yig'im yo'q — a'zo ham, admin ham shu matnni ko'radi. */
+export function yigimYoqMatni(oxirgilar: SiklXulosa[], admin: boolean): string {
+  const s = [`💰 <b>PUL YIG'IMI</b>`, AJRATGICH, ``, `🤷 <i>Hozir ochiq yig'im yo'q.</i>`];
+
+  if (oxirgilar.length > 0) {
+    s.push(``, AJRATGICH, `📜 <b>OXIRGI YIG'IMLAR</b>`);
+    for (const x of oxirgilar.slice(0, 5)) {
+      s.push(
+        `${x.jamiQoldiq === 0 ? "✅" : "🟡"} <b>${esc(x.sikl.nom ?? "Yig'im")}</b>`,
+        `   💵 ${pul(x.jamiTasdiqlangan)} / ${pul(x.jamiTalab)}`,
+      );
+    }
+  }
+
+  s.push(
+    ``,
+    AJRATGICH,
+    admin
+      ? `<i>Yangi yig'im boshlash uchun pastdagi tugmani bosing.</i>`
+      : `<i>Admin yig'im boshlaganda guruhga e'lon chiqadi va</i>\n<i>sizga ham xabar keladi.</i>`,
+  );
+  return s.join("\n");
+}
+
+/**
+ * To'lamaganlarga har bir necha soatda ketadigan eslatma.
+ *
+ * Oylik to'lov eslatmasidan (`tolovEslatmaXabari`) ataylab ALOHIDA va
+ * ancha qisqa: u muddatga qarab ohangini kuchaytiradi, bu esa bir xil
+ * qisqa turtki — chastotasi baland bo'lgani uchun uzun matn bezor qiladi.
+ */
+export function yigimEslatmaXabari(
+  sikl: TolovSikl,
+  n: { qoldiq: number; tasdiqlangan: number; kutilmoqdaSumma: number },
+  qabul: { ism: string; karta: string },
+): string {
+  const qolgan = kunFarqi(bugungiSana(), sikl.muddat);
+  const s = [
+    qolgan < 0 ? `⛔️ <b>YIG'IM — MUDDAT O'TDI</b>` : `🔔 <b>YIG'IM ESLATMASI</b>`,
+    AJRATGICH,
+    ``,
+    `📌 <b>${esc(sikl.nom ?? "Yig'im")}</b>`,
+    ``,
+    `📉 Sizdan qolgan: <b>${pul(n.qoldiq)}</b>`,
+  ];
+  if (n.tasdiqlangan > 0) s.push(`✅ To'langan: ${pul(n.tasdiqlangan)} / ${pul(sikl.talab)}`);
+  s.push(
+    muddatQatori(sikl),
+    ``,
+    `💳 Karta: <code>${esc(qabul.karta)}</code>`,
+    `👤 Kimga: <b>${esc(qabul.ism)}</b>`,
+  );
+
+  if (n.kutilmoqdaSumma > 0) {
+    s.push(
+      ``,
+      `⏳ <i>${pul(n.kutilmoqdaSumma)} tekshiruvda turibdi — tasdiqlangach</i>`,
+      `<i>hisobga qo'shiladi.</i>`,
+    );
+  }
+
+  s.push(``, `<i>To'lagach chekni tashlang — eslatma o'zi to'xtaydi.</i>`);
+  return s.join("\n");
+}
+
+/** Yig'im to'liq yig'ilganda guruhga — yopilishini admin o'zi hal qiladi. */
+export function yigimToldiGuruh(d: TolovDashboard): string {
+  return [
+    `🎉 <b>YIG'IM TO'LIQ YIG'ILDI</b>`,
+    AJRATGICH,
+    ``,
+    `📌 <b>${esc(d.sikl.nom ?? "Yig'im")}</b>`,
+    ``,
+    `💵 Jami: <b>${pul(d.jamiTasdiqlangan)}</b>`,
+    `👥 ${d.tola.length} kishi to'liq to'ladi`,
+    ``,
+    `<i>Rahmat — hammadan tushdi.</i>`,
+  ].join("\n");
+}
+
+/** Admin yig'imni yopganda guruhga yakuniy xabar. */
+export function yigimYopildiGuruh(d: TolovDashboard): string {
+  const s = [
+    `🔒 <b>YIG'IM YAKUNLANDI</b>`,
+    AJRATGICH,
+    ``,
+    `📌 <b>${esc(d.sikl.nom ?? "Yig'im")}</b>`,
+    ``,
+    `💵 Yig'ilgan: <b>${pul(d.jamiTasdiqlangan)}</b> / ${pul(d.jamiTalab)}`,
+  ];
+  if (d.jamiQoldiq > 0) {
+    s.push(`📉 Yetmagan: <b>${pul(d.jamiQoldiq)}</b>`, ``, `🔴 To'lamaganlar:`);
+    for (const o of d.qarzdorlar) s.push(`   • ${esc(o.ism)} — ${pul(o.qoldiq)}`);
+  } else {
+    s.push(``, `✅ Hammadan to'liq tushdi.`);
+  }
+  return s.join("\n");
+}
+
+/** Yig'im sozlamasi o'zgarganda guruhga — jimgina o'zgarish bo'lmaydi. */
+export function yigimOzgardiGuruh(sikl: TolovSikl, nima: string): string {
+  return [
+    `✏️ <b>YIG'IM O'ZGARDI</b>`,
+    AJRATGICH,
+    ``,
+    `📌 <b>${esc(sikl.nom ?? "Yig'im")}</b>`,
+    ``,
+    nima,
+    ``,
+    `💵 Har kishidan: <b>${pul(sikl.talab)}</b>`,
+    muddatQatori(sikl),
   ].join("\n");
 }

@@ -665,3 +665,52 @@ END $$;
 -- `turns.oxirgi_ping` bilan bir xil "necha marta chaqirilsa ham xavfsiz"
 -- naqsh: shart har safar DB'dagi vaqtdan qayta hisoblanadi.
 ALTER TABLE submissions ADD COLUMN IF NOT EXISTS tasdiq_eslatma TIMESTAMPTZ;
+
+-- ---------------------------------------------------------------------------
+-- PUL YIG'IMI — admin boshlaydigan bir martalik yig'im
+-- ---------------------------------------------------------------------------
+-- ILDIZ MUAMMO: "xarajat" oqimi ("uyga narsa olib keldim" → rasm → nomi →
+-- summasi → guruh tasdig'i → ball) amalda ishlamadi. Hech kim o'zidan narsa
+-- olib kelmasdi, kelgani ham botga yozmasdi. Uyda pul BOSHQACHA yig'iladi:
+-- admin "hammadan 30 ming yig'yapmiz" deb e'lon qiladi va hamma bitta
+-- kartaga tashlaydi.
+--
+-- Yechim: yig'im — `tolov_sikllari`ning IKKINCHI TURI. Yangi "to'lov"
+-- jadvali ham, ikkinchi tekshiruv oqimi ham YARATILMADI: chek yuborish,
+-- admin tekshiruvi (haqiqiy summa hal qiladi), qo'lda tuzatish, dashboard
+-- va guruh e'loni kvartira to'lovi bilan AYNAN BITTA kod. To'lovlar
+-- `tolovlar.sikl_id` orqali yig'imga biriktiriladi, hisob esa har doim
+-- sikl ichida — ya'ni yig'im pulini kvartira puli bilan aralashtirib
+-- bo'lmaydi.
+--
+-- Ikki turning farqi faqat davriylikda:
+--   oylik — kalendar oyi, `davr` bilan, muddat surati olinadi (jarima);
+--   yigim — admin istalgan paytda boshlaydi, `davr` NULL, `nom` bor,
+--           surat OLINMAYDI (yig'imda "muddatda yetmagan" tushunchasi yo'q,
+--           eslatma esa to'langunicha davom etadi).
+ALTER TABLE tolov_sikllari ADD COLUMN IF NOT EXISTS tur TEXT NOT NULL DEFAULT 'oylik';
+ALTER TABLE tolov_sikllari ADD COLUMN IF NOT EXISTS nom TEXT;
+
+DO $$ BEGIN
+  ALTER TABLE tolov_sikllari ADD CONSTRAINT tolov_sikllari_tur_chk
+    CHECK (tur IN ('oylik', 'yigim'));
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Yig'imning kalendar oyi yo'q. `davr`dagi UNIQUE saqlanadi — Postgres
+-- NULL'larni takror deb hisoblamaydi, ya'ni yig'imlar bemalol ko'p bo'ladi,
+-- oylik sikl esa hamon oyiga bitta.
+ALTER TABLE tolov_sikllari ALTER COLUMN davr DROP NOT NULL;
+
+-- Bir vaqtda FAQAT BITTA ochiq yig'im bo'ladi. Aks holda a'zo chek
+-- tashlaganda pul qaysi yig'imga tushishi noaniq bo'lardi va eslatma ham
+-- qaysi biri haqida ekanini ayta olmasdi. Qattiq kafolat bazada —
+-- `tolovlar_dalil_uniq` bilan bir xil falsafa (kod tekshiruvi foydalanuvchiga
+-- tushunarli xabar berish uchun, indeks esa poygaga qarshi).
+CREATE UNIQUE INDEX IF NOT EXISTS tolov_sikllari_ochiq_yigim_uniq
+  ON tolov_sikllari ((tur)) WHERE tur = 'yigim' AND holat = 'ochiq';
+
+-- Yig'im eslatmasi SOATLIK (har 5 soatda, to'langunicha), oylik to'lovniki
+-- esa KUNLIK — shuning uchun mavjud `oxirgi_eslatma` (DATE) yetmaydi.
+-- Ikkalasi bir qatorda yonma-yon yashaydi: bir xil (sikl, odam) juftligi
+-- ikkala turga tegishli bo'la olmaydi, demak chalkashish yo'q.
+ALTER TABLE tolov_holat ADD COLUMN IF NOT EXISTS oxirgi_eslatma_ts TIMESTAMPTZ;
