@@ -247,6 +247,12 @@ export type TolovSikl = {
   tur: SiklTur;
   /** Yig'imning nomi ("Internet puli"). Oylik siklda `null`. */
   nom: string | null;
+  /**
+   * Yig'im boshlanganda "uyga kerak" ro'yxatidan nusxalangan narsa nomlari.
+   * Havola emas, NUSXA: narsa keyin qayta tugasa ham e'lon o'z matnida
+   * qoladi (`talab` muzlatilgani bilan bir xil qoida).
+   */
+  narsalar: string[] | null;
   /** Shu sikl uchun muzlatilgan talab, har kishidan (so'm) */
   talab: number;
   /** To'lov muddati (`YYYY-MM-15`), kun oxirigacha hisoblanadi */

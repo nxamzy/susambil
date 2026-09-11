@@ -14,6 +14,7 @@ import type { ReportToliq } from "../core/reports.js";
 import type { SiklOdam, TolovDashboard } from "../core/tolov.js";
 import { bajarilganMarta, ishRasmlari, MAJBURIY_DOIM_OCHIQ, vazifaBajarildimi } from "../core/rotation.js";
 import type { NavbatVazifasi } from "../core/vazifalar.js";
+import type { NarsaToliq } from "../core/narsalar.js";
 import type { FoydalanuvchiToliq } from "../core/users.js";
 
 /** Doimiy menyudagi ko'rinish tugmalari. */
@@ -280,6 +281,7 @@ export function tolovDashboardKeyboard(d: TolovDashboard): InlineKeyboard {
       .text("📅 Muddat", `yigim_muddat:${d.sikl.id}`)
       .row();
     kb.text("📣 Hammaga eslatma", `yigim_turtki:${d.sikl.id}`).row();
+    kb.text("🛒 Uyga nima kerak", "narsalar").row();
     kb.text("📜 Yig'imlar tarixi", "yigim_tarix").row();
     if (d.sikl.holat === "ochiq") {
       kb.text("🔒 Yig'imni yakunlash", `yigim_yakunla:${d.sikl.id}`).row();
@@ -461,6 +463,7 @@ export function adminPanelKeyboard(): InlineKeyboard {
     .text("🧹 Navbat", "admin_link_navbat")
     .row()
     .text("💰 Pul yig'ish", "yigim_dashboard")
+    .text("🛒 Uyga kerak", "narsalar")
     .row()
     .text("🚨 Shikoyatlar", "admin_link_shikoyatlar")
     .row()
@@ -693,14 +696,16 @@ export function xabarTasdiqKeyboard(): InlineKeyboard {
 export function yigimKeyboard(toliqTolagan: boolean): InlineKeyboard {
   const kb = new InlineKeyboard();
   if (!toliqTolagan) kb.text("💰 To'ladim — chek yuborish", "yigim_tolash").row();
+  kb.text("🛒 Uyga nima kerak", "narsalar").row();
   kb.text("📊 Mening to'lovlarim tarixi", "tolov_tarix");
   return kb;
 }
 
 /** Ochiq yig'im yo'q. Adminga "boshlash" tugmasi, a'zoga hech narsa. */
-export function yigimYoqKeyboard(admin: boolean): InlineKeyboard | undefined {
-  if (!admin) return undefined;
-  return new InlineKeyboard()
+export function yigimYoqKeyboard(admin: boolean): InlineKeyboard {
+  const kb = new InlineKeyboard().text("🛒 Uyga nima kerak", "narsalar").row();
+  if (!admin) return kb;
+  return kb
     .text("➕ Yangi yig'im boshlash", "yigim_yangi")
     .row()
     .text("📜 Yig'imlar tarixi", "yigim_tarix")
@@ -742,4 +747,63 @@ export function yigimYakunlashKeyboard(siklId: number): InlineKeyboard {
 /** Eslatmadan to'g'ridan-to'g'ri chek yuborishga o'tish uchun. */
 export function yigimTolashKeyboard(): InlineKeyboard {
   return new InlineKeyboard().text("💰 To'ladim — chek yuborish", "yigim_tolash");
+}
+
+// ---------------------------------------------------------------------------
+// "UYGA NIMA KERAK" RO'YXATI
+// ---------------------------------------------------------------------------
+
+/**
+ * Ro'yxat tugmalari. Har narsa bitta tugma: bosilsa holati almashadi
+ * ("tugadi" ↔ "bor"). Ataylab bitta bosish — ro'yxat kalta chiqishining
+ * sababi aynan ishqalanish edi, ikki qadamli tasdiq uni yana kaltalashtirardi.
+ */
+export function narsalarKeyboard(narsalar: NarsaToliq[], admin: boolean): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const n of narsalar.filter((x) => x.faol)) {
+    const belgi = n.tugadi ? "🔴" : "🟢";
+    kb.text(`${belgi} ${n.emoji} ${n.nom}`, `narsa_belgi:${n.id}`).row();
+  }
+
+  kb.text("➕ Ro'yxatga qo'shish", "narsa_yangi").row();
+
+  if (admin) {
+    if (narsalar.some((n) => n.faol && n.tugadi)) {
+      kb.text("✅ Olindi — ro'yxatni tozalash", "narsa_olindi").row();
+    }
+    kb.text("⚙️ Ro'yxatni tahrirlash", "narsa_tahrir").row();
+  }
+  kb.text("⬅️ Pul yig'imi", "yigim_korinish");
+  return kb;
+}
+
+/** Admin: tahrir rejimi — har narsa o'z kartochkasiga olib boradi. */
+export function narsalarTahrirKeyboard(narsalar: NarsaToliq[]): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const n of narsalar) {
+    const belgi = n.faol ? (n.tugadi ? "🔴" : "🟢") : "⛔️";
+    kb.text(`${belgi} ${n.emoji} ${n.nom}`, `narsa:${n.id}`).row();
+  }
+  kb.text("➕ Yangi narsa", "narsa_yangi").row();
+  kb.text("⬅️ Ro'yxat", "narsalar");
+  return kb;
+}
+
+/** Bitta narsaning kartochkasi. */
+export function narsaDetalKeyboard(n: NarsaToliq): InlineKeyboard {
+  const kb = new InlineKeyboard()
+    .text("✏️ Nomi", `narsa_nom:${n.id}`)
+    .text(n.tugadi ? "🟢 Bor deb belgilash" : "🔴 Tugadi", `narsa_belgi:${n.id}`)
+    .row();
+  kb.text(
+    n.faol ? "⛔️ Ro'yxatdan chiqarish" : "✅ Ro'yxatga qaytarish",
+    `narsa_faol:${n.id}:${n.faol ? 0 : 1}`,
+  ).row();
+  kb.text("⬅️ Orqaga", "narsa_tahrir");
+  return kb;
+}
+
+/** Yig'im ekranidan ro'yxatga o'tish — eng ko'p kerak bo'ladigan yo'l. */
+export function narsalarTugmasi(): InlineKeyboard {
+  return new InlineKeyboard().text("🛒 Uyga nima kerak", "narsalar");
 }

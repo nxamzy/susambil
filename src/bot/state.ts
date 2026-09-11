@@ -111,6 +111,14 @@ export type Flow = (
   | { tur: "yigim_yangi"; qadam: "tasdiq"; nom: string; talab: number; kun: number }
   /** Admin ochiq yig'imning summasini o'zgartiryapti. */
   | { tur: "yigim_summa"; siklId: number }
+  /**
+   * "Uyga nima kerak" ro'yxatiga yangi narsa qo'shilyapti. Bu oqim
+   * ADMINGA CHEKLANMAGAN — ro'yxat kalta chiqishining sababi aynan
+   * hammaning yoza olmasligi edi (`core/narsalar.ts`).
+   */
+  | { tur: "narsa_yangi" }
+  /** Admin ro'yxatdagi narsaning nomini tuzatyapti. */
+  | { tur: "narsa_nom"; narsaId: number }
 ) &
   Sorov;
 

@@ -160,6 +160,7 @@ const siklUstunlari = () => sql`
   to_char(davr, 'YYYY-MM-DD') AS davr,
   tur,
   nom,
+  narsalar,
   talab,
   to_char(muddat, 'YYYY-MM-DD') AS muddat,
   holat,
@@ -1179,13 +1180,18 @@ export async function yigimYarat(
   nom: string,
   talab: number,
   kun: number,
+  narsalar: string[] = [],
 ): Promise<TolovSikl | null> {
   const toza = nom.trim().slice(0, 80);
   const muddat = kunQosh(bugungiSana(), Math.max(0, kun));
 
   const [s] = await sql<SiklQator[]>`
-    INSERT INTO tolov_sikllari (tur, nom, talab, muddat)
-    VALUES ('yigim', ${toza}, ${talab}, ${muddat}::date)
+    INSERT INTO tolov_sikllari (tur, nom, narsalar, talab, muddat)
+    VALUES (
+      'yigim', ${toza},
+      ${narsalar.length > 0 ? narsalar : null},
+      ${talab}, ${muddat}::date
+    )
     ON CONFLICT DO NOTHING
     RETURNING ${siklUstunlari()}
   `;

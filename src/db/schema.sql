@@ -714,3 +714,65 @@ CREATE UNIQUE INDEX IF NOT EXISTS tolov_sikllari_ochiq_yigim_uniq
 -- Ikkalasi bir qatorda yonma-yon yashaydi: bir xil (sikl, odam) juftligi
 -- ikkala turga tegishli bo'la olmaydi, demak chalkashish yo'q.
 ALTER TABLE tolov_holat ADD COLUMN IF NOT EXISTS oxirgi_eslatma_ts TIMESTAMPTZ;
+
+-- ---------------------------------------------------------------------------
+-- "UYGA NIMA KERAK" RO'YXATI
+-- ---------------------------------------------------------------------------
+-- ILDIZ MUAMMO: yig'im boshlanganda "nima olamiz" ro'yxati har safar KALTA
+-- chiqardi — bumaga, hammom azeliti, oshxona azeliti va tamom. Sabab
+-- ro'yxatning o'zida emas: nima tugaganini FAQAT admin eslardi. Uyda
+-- yashovchi odam bumaga tugaganini ko'radi-yu, aytishni unutadi; admin esa
+-- yig'im e'lon qilayotganda uni bilmaydi.
+--
+-- Yechim: doimiy ro'yxat. Narsalar bazada turadi (navbat vazifalari bilan
+-- bir xil naqsh), har kim tugaganini bir bosishda belgilaydi, admin esa
+-- yig'im boshlaganda tayyor ro'yxatni ko'radi. Ya'ni ro'yxat bir kishining
+-- xotirasidan emas, uyda yashayotganlardan yig'iladi.
+--
+--   tugadi     — kim tugadi deb belgilagan payt; NULL = uyda bor
+--   tugadi_kim — kim belgilagani (adminga "kim aytdi" ko'rinsin)
+--   olindi     — oxirgi marta qachon olib kelingani (tarix)
+--
+-- Narsa O'CHIRILMAYDI, `faol = false` bo'ladi — `navbat_vazifalari` va
+-- `chores`/`expenses` bilan bir xil soft-delete qoidasi.
+CREATE TABLE IF NOT EXISTS kerakli_narsalar (
+  id         SERIAL PRIMARY KEY,
+  nom        TEXT NOT NULL,
+  emoji      TEXT NOT NULL DEFAULT '🛒',
+  tartib     INT NOT NULL DEFAULT 0,
+  faol       BOOLEAN NOT NULL DEFAULT TRUE,
+  tugadi     TIMESTAMPTZ,
+  tugadi_kim INT REFERENCES users(id),
+  olindi     TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS kerakli_narsalar_faol_idx ON kerakli_narsalar (tartib) WHERE faol;
+
+-- Boshlang'ich ro'yxat BIR MARTA quyiladi (`musor_takror_seed` bilan bir xil
+-- qulflash): admin keyin narsa qo'shsa yoki ro'yxatdan chiqarsa, `db:setup`
+-- uni ortga surib yubormasligi kerak.
+--
+-- Ro'yxat uyda DOIMIY tugab turadigan narsalardan — birinchi uchtasi
+-- so'ralganining aynan o'zi, qolganlari shunga o'xshash sarflanuvchilar.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM settings WHERE kalit = 'narsalar_seed') THEN
+    INSERT INTO kerakli_narsalar (nom, emoji, tartib) VALUES
+      ('Bumaga',                 '🧻', 0),
+      ('Hammom uchun azelit',    '🚿', 1),
+      ('Oshxona uchun azelit',   '🍽', 2),
+      ('Musor paketi',           '🗑', 3),
+      ('Gubka',                  '🧽', 4),
+      ('Idish yuvish suyuqligi', '🫧', 5),
+      ('Qo''l sovuni',           '🧼', 6),
+      ('Kir yuvish kukuni',      '🧺', 7);
+    INSERT INTO settings (kalit, qiymat) VALUES ('narsalar_seed', '1')
+      ON CONFLICT (kalit) DO NOTHING;
+  END IF;
+END $$;
+
+-- Yig'im boshlanganda kerakli narsalarning NOMLARI shu yerga nusxalanadi.
+-- Ataylab massiv, `kerakli_narsalar`ga havola emas: e'londa "nima uchun pul
+-- yig'ilgani" keyin narsa qayta tugasa ham o'zgarmasligi kerak — `talab`
+-- muzlatilgani bilan bir xil qoida.
+ALTER TABLE tolov_sikllari ADD COLUMN IF NOT EXISTS narsalar TEXT[];

@@ -202,6 +202,45 @@ oynasiga bog'langan (`tolovEslatmaKuni`) — shu sababli ikkita funksiya.
 To'xtashi uchun bayroq yo'q: qarzi qolmagan odam `yigimEslatmasiKerakmi`
 dan o'tmaydi, ya'ni tasdiq tushishi bilan eslatma o'zidan to'xtaydi.
 
+## "Uyga nima kerak" ro'yxati — ro'yxat bir kishining xotirasida turmasin
+
+ILDIZ MUAMMO: yig'im e'lon qilinganda "nima olamiz" ro'yxati har safar
+KALTA chiqardi — bumaga, hammom azeliti, oshxona azeliti va tamom. Sabab
+ro'yxatning o'zida emas edi: nima tugaganini faqat admin eslardi. Uyda
+yashovchi odam bumaga tugaganini ko'radi-yu, aytishni unutadi.
+
+`kerakli_narsalar` jadvali + `core/narsalar.ts` + `bot/handlers/narsalar.ts`.
+Tuzilishi `navbat_vazifalari` bilan ataylab bir xil (tartib, faol,
+emoji nomdan ajratiladi, soft-delete), ikkita farqi bor:
+
+- **`kod` yo'q.** Navbat vazifasining kodi `turns.ishlar` JSONB kaliti
+  bo'lgani uchun o'zgarmas edi; narsaning tarixiy kaliti yo'q — yig'imga
+  uning NOMI nusxalanadi (`tolov_sikllari.narsalar TEXT[]`), ya'ni keyin
+  nomi o'zgarsa ham eski e'lon o'z matnida qoladi (`talab` muzlatilgani
+  bilan bir xil qoida).
+- **Holatni HAR KIM o'zgartiradi**, admin emas. Ro'yxatning kaltaligi
+  aynan shundan kelib chiqqan edi, shuning uchun "tugadi" belgilash va
+  ro'yxatga yangi narsa qo'shish hammaga ochiq. Ro'yxatning O'ZINI
+  tahrirlash (nom, ro'yxatdan chiqarish, "Olindi" bilan tozalash) —
+  admin qo'lida.
+
+Uchta bog'lanish:
+
+1. Kimdir "tugadi" bossa **adminlarga DM** ketadi (guruhga emas — bumaga
+   butun guruhni bezovta qiladigan xabar emas, lekin yig'imni admin
+   boshlaydi). `narsaTugadi` `tugadi IS NULL` sharti bilan yozadi, ya'ni
+   ikki kishi ketma-ket bossa ikkinchi DM ketmaydi va "kim birinchi
+   aytdi" saqlanadi.
+2. Yig'im boshlanganda kerakli narsalar **nomlari nusxalanadi** va
+   e'lon/DM/panelda ro'yxat bo'lib chiqadi (`narsalarBloki`).
+3. Yig'im yakunlanganda **faqat o'sha yig'imga biriktirilgan** narsalar
+   tozalanadi (`narsalarOlindi(nomlar)`) va guruhga "olib kelindi" yoziladi.
+   Yig'im davomida yangi tugagan narsa ro'yxatda qoladi — u hali olinmagan.
+
+Boshlang'ich ro'yxat `db/schema.sql` da BIR MARTA (`narsalar_seed`
+bayrog'i) quyiladi: bumaga, ikkala azelit, musor paketi, gubka, idish
+yuvish suyuqligi, qo'l sovuni, kir yuvish kukuni.
+
 ## `oraliq_kun` — navbat o'rtasida bajariladigan vazifa + o'z eslatmasi
 
 `navbat_vazifalari.oraliq_kun` (standart 0 = o'chiq). `> 0` bo'lsa:

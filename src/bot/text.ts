@@ -6,6 +6,7 @@ import {
 import { orinlarniHisobla, type OdamBall } from "../core/rating.js";
 import { bajarilganMarta, ishRasmlari, vazifaBajarildimi } from "../core/rotation.js";
 import type { NavbatVazifasi } from "../core/vazifalar.js";
+import type { NarsaToliq } from "../core/narsalar.js";
 import { MAJBURIY_DOIM_OCHIQ, type NavbatSozlamalari } from "../core/rotation.js";
 import type { Sozlamalar } from "../core/sozlamalar.js";
 import type { XabarKimi } from "./state.js";
@@ -743,6 +744,16 @@ export function tanishtirish(vazifalar: NavbatVazifasi[], siklKuni: number, s0: 
     ``,
     `🔔 To'lamaganlarga har <b>${s0.yigimEslatmaSoat} soatda</b> eslatma keladi —`,
     `to'lagach o'z-o'zidan to'xtaydi.`,
+    ``,
+    `<b>🛒 UYGA NIMA KERAK</b>`,
+    ``,
+    `Bumaga, azelit, musor paketi — nimadir tugasa`,
+    `<b>"🛒 Uyga nima kerak"</b> ro'yxatidan o'sha narsani`,
+    `bosib qo'yasiz (yoki ro'yxatda yo'q bo'lsa yozasiz).`,
+    ``,
+    `Adminga darrov xabar boradi va yig'im boshlanganda`,
+    `ro'yxat e'londa avtomatik chiqadi — ya'ni "nima kerak"`,
+    `bitta odamning esida qolishiga bog'liq emas.`,
     ``,
     `<i>Chek rasmi guruhga hech qachon chiqmaydi — faqat</i>`,
     `<i>ism, summa va holat.</i>`,
@@ -2081,18 +2092,31 @@ export function muddatOzgardiGuruhXabari(room: Room, muddat: Date, adminIsm: str
  * RASMI esa yig'imda ham guruhga hech qachon chiqmaydi.
  */
 
+/**
+ * Yig'im e'lonidagi "nima olinadi" bloki — `tolov_sikllari.narsalar`
+ * nusxasidan. Ro'yxat bo'sh bo'lsa butun blok chiqmaydi: "nima olinadi:
+ * (bo'sh)" degan qator faqat chalg'itardi.
+ */
+function narsalarBloki(narsalar: string[] | null | undefined): string[] {
+  if (!narsalar || narsalar.length === 0) return [];
+  return [``, `🛒 <b>Nima olinadi:</b>`, ...narsalar.map((n, i) => `   ${i + 1}. ${esc(n)}`)];
+}
+
 /** Admin yig'imni boshlashdan oldin ko'radigan tasdiq ekrani. */
 export function yigimTasdiqMatni(
   nom: string,
   talab: number,
   kun: number,
   odamSoni: number,
+  narsalar: string[] = [],
 ): string {
   return [
     `💰 <b>YIG'IMNI BOSHLASH</b>`,
     AJRATGICH,
     ``,
     `📌 Nomi: <b>${esc(nom)}</b>`,
+    ...narsalarBloki(narsalar),
+    ``,
     `💵 Har kishidan: <b>${pul(talab)}</b>`,
     `👥 ${odamSoni} kishi → jami <b>${pul(talab * odamSoni)}</b>`,
     `📅 Muddat: <b>${kun === 0 ? "bugun kechgacha" : `${kun} kun`}</b>`,
@@ -2122,6 +2146,7 @@ export function yigimGuruhElon(
     AJRATGICH,
     ``,
     `📌 <b>${esc(sikl.nom ?? "Yig'im")}</b>`,
+    ...narsalarBloki(sikl.narsalar),
     ``,
     `💵 Har kishidan: <b>${pul(sikl.talab)}</b>`,
     `👥 ${odamSoni} kishi → jami <b>${pul(sikl.talab * odamSoni)}</b>`,
@@ -2150,6 +2175,7 @@ export function yigimShaxsiyElon(
     AJRATGICH,
     ``,
     `📌 <b>${esc(sikl.nom ?? "Yig'im")}</b>`,
+    ...narsalarBloki(sikl.narsalar),
     ``,
     `💵 Sizdan: <b>${pul(sikl.talab)}</b>`,
     muddatQatori(sikl),
@@ -2178,6 +2204,7 @@ export function yigimKorinishi(
     `💰 <b>PUL YIG'IMI</b>`,
     AJRATGICH,
     `<b>${esc(h.sikl.nom ?? "Yig'im")}</b>`,
+    ...narsalarBloki(h.sikl.narsalar),
     ``,
     muddatQatori(h.sikl),
     ``,
@@ -2315,5 +2342,104 @@ export function yigimOzgardiGuruh(sikl: TolovSikl, nima: string): string {
     ``,
     `💵 Har kishidan: <b>${pul(sikl.talab)}</b>`,
     muddatQatori(sikl),
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// "UYGA NIMA KERAK" RO'YXATI
+// ---------------------------------------------------------------------------
+
+/**
+ * Ro'yxat ko'rinishi. Kerak bo'lganlar tepada — admin yig'im boshlashdan
+ * oldin aynan shu qismga qaraydi.
+ *
+ * "Kim aytdi" ataylab ko'rsatiladi: bu ayblash uchun emas, ishonch uchun —
+ * narsa haqiqatan tugaganini kimdir o'z nomi bilan aytgan bo'ladi, ya'ni
+ * tasodifan bosilgan tugma ro'yxatda anonim turib qolmaydi.
+ */
+export function narsalarMatni(narsalar: NarsaToliq[], admin: boolean): string {
+  const kerak = narsalar.filter((n) => n.faol && n.tugadi);
+  const bor = narsalar.filter((n) => n.faol && !n.tugadi);
+  const ochirilgan = narsalar.filter((n) => !n.faol);
+
+  const s = [`🛒 <b>UYGA NIMA KERAK</b>`, AJRATGICH];
+
+  if (kerak.length === 0) {
+    s.push(``, `✅ <i>Hozircha hammasi bor.</i>`);
+  } else {
+    s.push(``, `🔴 <b>TUGAGAN — ${kerak.length} ta</b>`);
+    for (const n of kerak) {
+      s.push(
+        `   ${esc(n.emoji)} <b>${esc(n.nom)}</b>`,
+        `      <i>${esc(n.tugadi_ism ?? "kimdir")} · ${n.tugadi ? qisqaSana(n.tugadi) : ""}</i>`,
+      );
+    }
+  }
+
+  if (bor.length > 0) {
+    s.push(``, `🟢 <b>BOR</b>`);
+    s.push(`   ${bor.map((n) => `${n.emoji} ${esc(n.nom)}`).join(", ")}`);
+  }
+
+  if (admin && ochirilgan.length > 0) {
+    s.push(``, `⛔️ <b>RO'YXATDAN CHIQARILGAN</b>`);
+    s.push(`   ${ochirilgan.map((n) => `${n.emoji} ${esc(n.nom)}`).join(", ")}`);
+  }
+
+  s.push(
+    ``,
+    AJRATGICH,
+    `<i>Nimadir tugasa tugmasini bosing — ro'yxatga tushadi.</i>`,
+    `<i>Admin yig'im boshlaganda shu ro'yxat e'londa chiqadi.</i>`,
+  );
+  if (admin && kerak.length > 0) {
+    s.push(``, `<i>Olib kelingan bo'lsa "✅ Olindi" bilan tozalang.</i>`);
+  }
+  return s.join("\n");
+}
+
+/** Bitta narsaning kartochkasi — admin tahriri uchun. */
+export function narsaDetalMatni(n: NarsaToliq): string {
+  const s = [
+    `${esc(n.emoji)} <b>${esc(n.nom).toUpperCase()}</b>`,
+    AJRATGICH,
+    ``,
+    n.tugadi
+      ? `🔴 <b>Tugagan</b> — ${esc(n.tugadi_ism ?? "kimdir")}, ${qisqaSana(n.tugadi)}`
+      : `🟢 <b>Uyda bor</b>`,
+  ];
+  if (n.olindi) s.push(`📦 Oxirgi marta olingan: ${qisqaSana(n.olindi)}`);
+  if (!n.faol) s.push(``, `⛔️ <i>Ro'yxatdan chiqarilgan.</i>`);
+  return s.join("\n");
+}
+
+/** Kimdir "tugadi" desa adminlarga ketadigan DM — ro'yxat jimgina o'smasin. */
+export function narsaTugadiAdminga(
+  n: { emoji: string; nom: string },
+  kim: string,
+  kerakSoni: number,
+): string {
+  return [
+    `🛒 <b>UYGA NARSA KERAK</b>`,
+    AJRATGICH,
+    ``,
+    `${esc(n.emoji)} <b>${esc(n.nom)}</b> tugadi.`,
+    `👤 ${esc(kim)} aytdi.`,
+    ``,
+    `📋 Ro'yxatda hozir <b>${kerakSoni} ta</b> narsa kutmoqda.`,
+    ``,
+    `<i>Yig'im boshlasangiz ro'yxat e'londa avtomatik chiqadi.</i>`,
+  ].join("\n");
+}
+
+/** Narsalar olingach guruhga — ro'yxat jimgina tozalanib qolmasin. */
+export function narsalarOlindiGuruh(narsalar: { emoji: string; nom: string }[]): string {
+  return [
+    `📦 <b>OLIB KELINDI</b>`,
+    AJRATGICH,
+    ``,
+    ...narsalar.map((n) => `   ${esc(n.emoji)} ${esc(n.nom)}`),
+    ``,
+    `<i>Ro'yxat tozalandi. Yana tugasa botdan belgilab qo'yasiz.</i>`,
   ].join("\n");
 }

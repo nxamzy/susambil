@@ -30,6 +30,7 @@ import {
   yigimTarixi,
   yigimYarat,
 } from "../../core/tolov.js";
+import { keraklilar, narsalarOlindi } from "../../core/narsalar.js";
 import { logla } from "../../core/adminlog.js";
 import { sql } from "../../db/index.js";
 import { guruhgaYubor, kim, shaxsiy } from "../group.js";
@@ -55,6 +56,7 @@ import {
   yigimTasdiqMatni,
   yigimYopildiGuruh,
   yigimYoqMatni,
+  narsalarOlindiGuruh,
 } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
 import { tolovDashboardKorsat, tolovFoydalanuvchiKorsat, tolovRoyxatKorsat } from "./tolov.js";
@@ -140,15 +142,28 @@ async function yigimNominiSora(ctx: Context): Promise<void> {
   const yangi = { tur: "yigim_yangi", qadam: "nom" } as const;
   await holatOrnat(ctx.from.id, yangi);
 
+  // "Uyga kerak" ro'yxatida nimadir kutayotgan bo'lsa shu yerda ko'rsatamiz:
+  // admin nomni o'ylab o'tirmasin va ro'yxat e'londa chiqishini bilsin.
+  const kerak = await keraklilar();
   const xabar = await ctx.reply(
     [
       `💰 <b>YANGI YIG'IM</b>`,
       AJRATGICH,
       ``,
+      ...(kerak.length > 0
+        ? [
+            `🛒 <b>Ro'yxatda ${kerak.length} ta narsa kutmoqda:</b>`,
+            ...kerak.map((n) => `   ${n.emoji} ${n.nom}`),
+            ``,
+            `<i>Ular e'longa avtomatik qo'shiladi.</i>`,
+            ``,
+          ]
+        : []),
       `✍️ <b>Nima uchun pul yig'yapmiz?</b>`,
       ``,
-      `<i>Masalan:</i> <code>Internet puli</code>`,
-      `<i>yoki</i> <code>Oshxonaga gaz ballon</code>`,
+      ...(kerak.length > 0
+        ? [`<i>Masalan:</i> <code>Uy uchun narsalar</code>`]
+        : [`<i>Masalan:</i> <code>Internet puli</code>`, `<i>yoki</i> <code>Oshxonaga gaz ballon</code>`]),
     ].join("\n"),
     { parse_mode: "HTML", reply_markup: bekorKeyboard() },
   );
@@ -220,7 +235,10 @@ async function yigimniOchish(ctx: Context, nom: string, talab: number, kun: numb
   await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
   await holatTozala(ctx.from.id);
 
-  const yigim = await yigimYarat(nom, talab, kun);
+  // Ro'yxat AYNAN shu paytda nusxalanadi — keyin narsa qayta tugasa ham
+  // e'lon o'z matnida qoladi (`tolov_sikllari.narsalar`).
+  const narsalar = (await keraklilar()).map((n) => n.nom);
+  const yigim = await yigimYarat(nom, talab, kun, narsalar);
   if (!yigim) {
     await ctx.reply("⚠️ Ochiq yig'im allaqachon bor — avval uni yakunlang.");
     return yigimDashboardKorsat(ctx);
@@ -325,6 +343,12 @@ export function register(bot: Bot) {
     await yigimDashboardKorsat(ctx);
   });
 
+  bot.callbackQuery("yigim_korinish", async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const { matn, tugma } = await yigimKorinishMatni(ctx.from?.id);
+    await ctx.reply(matn, { parse_mode: "HTML", reply_markup: tugma });
+  });
+
   bot.command("yigim", async (ctx) => {
     if (ctx.chat.type !== "private") return;
     if (await faqatAdmin(ctx)) return yigimDashboardKorsat(ctx);
@@ -398,10 +422,11 @@ export function register(bot: Bot) {
     await holatOrnat(ctx.from.id, yangi);
 
     const odamSoni = (await faolOdamlar()).length;
-    const xabar = await ctx.reply(yigimTasdiqMatni(holat.nom, holat.talab, kun, odamSoni), {
-      parse_mode: "HTML",
-      reply_markup: yigimBoshlashKeyboard(),
-    });
+    const narsalar = (await keraklilar()).map((n) => n.nom);
+    const xabar = await ctx.reply(
+      yigimTasdiqMatni(holat.nom, holat.talab, kun, odamSoni, narsalar),
+      { parse_mode: "HTML", reply_markup: yigimBoshlashKeyboard() },
+    );
     await sorovniEslat(ctx.from.id, yangi, xabar.chat.id, xabar.message_id);
   });
 
@@ -591,6 +616,15 @@ export function register(bot: Bot) {
 
     await logla(admin.id, "yigim_yakunlandi", "sikl", yopildi.id, null, yopildi.nom);
     if (d) await guruhgaYubor(ctx.api, yigimYopildiGuruh(d));
+
+    // Yig'im yopildi = narsalar olindi. FAQAT shu yig'imga biriktirilganlari
+    // tozalanadi: yig'im davomida yangi narsa tugagan bo'lsa u ro'yxatda
+    // qolishi kerak, u hali olinmagan.
+    if (yopildi.narsalar && yopildi.narsalar.length > 0) {
+      const olingan = await narsalarOlindi(yopildi.narsalar);
+      if (olingan.length > 0) await guruhgaYubor(ctx.api, narsalarOlindiGuruh(olingan));
+    }
+
     await yigimDashboardKorsat(ctx);
   });
 

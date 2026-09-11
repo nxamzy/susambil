@@ -31,6 +31,7 @@ import {
 import { vazifaNomiKeldi, vazifaYangiNomiKeldi } from "./vazifalar.js";
 import { xabarMatniKeldi } from "./xabar.js";
 import { yigimNomiKeldi, yigimSummaOzgartirishKeldi, yigimSummasiKeldi } from "./yigim.js";
+import { narsaNomiKeldi, narsaNomTahririKeldi } from "./narsalar.js";
 import { summaTekshir } from "../../core/topshiriq.js";
 import { joriyNavbatchimi } from "../../core/rotation.js";
 
@@ -241,6 +242,14 @@ export function register(bot: Bot) {
 
     if (holat?.tur === "yigim_summa") {
       return yigimSummaOzgartirishKeldi(ctx, holat.siklId, ctx.message.text.trim());
+    }
+
+    if (holat?.tur === "narsa_yangi") {
+      return narsaNomiKeldi(ctx, ctx.message.text.trim());
+    }
+
+    if (holat?.tur === "narsa_nom") {
+      return narsaNomTahririKeldi(ctx, holat.narsaId, ctx.message.text.trim());
     }
 
     const u = await kim(ctx.from.id);

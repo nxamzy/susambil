@@ -52,6 +52,7 @@ export function register(bot: Bot) {
       "/reyting — shu oylik reyting",
       "/tarix — oxirgi navbatlar",
       "/yigim — pul yig'imi: holati va to'lash",
+      "/kerak — uyga nima kerak: tugaganini belgilash",
       "",
       "<i>Aslida buyruq yozish shart emas — hammasi yozish",
       "maydonining ostidagi tugmalarda.</i>",
