@@ -776,3 +776,27 @@ END $$;
 -- yig'ilgani" keyin narsa qayta tugasa ham o'zgarmasligi kerak — `talab`
 -- muzlatilgani bilan bir xil qoida.
 ALTER TABLE tolov_sikllari ADD COLUMN IF NOT EXISTS narsalar TEXT[];
+
+-- Boshlang'ich ro'yxat 8 ta standart narsa bilan seed qilingan edi
+-- (bumaga, ikkala azelit + besh xil umumiy sarflanuvchi). Amalda faqat
+-- birinchi uchtasi so'ralgan edi — qolgan beshtasi bot muallifi tomonidan
+-- o'ylab topilgan taxmin bo'lib, uyning haqiqiy ehtiyojiga to'g'ri
+-- kelmasligi mumkin ("ro'yxat juda to'liq ko'rinmayabdi" — chunki hech
+-- kim ularni so'ramagan, faqat ekranni to'ldirib turishardi).
+--
+-- BIR MARTA (`narsalar_qisqartirildi` bayrog'i bilan): hali HECH QACHON
+-- ishlatilmagan ortiqcha narsalarni ro'yxatdan chiqaradi — o'chirmaydi
+-- (`faol = false`), chunki keyinroq kimdir xuddi shu nom bilan qo'shsa
+-- eski yozuv band bo'lib qolmasin. Allaqachon "tugadi" deb belgilangan
+-- yoki bir marta "olindi" bo'lgan narsaga TEGILMAYDI — u haqiqiy
+-- ishlatilgan, demak uyga kerak ekan.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM settings WHERE kalit = 'narsalar_qisqartirildi') THEN
+    UPDATE kerakli_narsalar SET faol = FALSE
+    WHERE faol AND tugadi IS NULL AND olindi IS NULL
+      AND nom IN ('Musor paketi', 'Gubka', 'Idish yuvish suyuqligi',
+                   'Qo''l sovuni', 'Kir yuvish kukuni');
+    INSERT INTO settings (kalit, qiymat) VALUES ('narsalar_qisqartirildi', '1')
+      ON CONFLICT (kalit) DO NOTHING;
+  END IF;
+END $$;

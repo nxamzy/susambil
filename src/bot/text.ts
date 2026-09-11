@@ -2364,26 +2364,30 @@ export function narsalarMatni(narsalar: NarsaToliq[], admin: boolean): string {
 
   const s = [`🛒 <b>UYGA NIMA KERAK</b>`, AJRATGICH];
 
-  if (kerak.length === 0) {
+  if (narsalar.filter((n) => n.faol).length === 0) {
+    s.push(``, `🤷 <i>Ro'yxat hali bo'sh.</i>`);
+  } else if (kerak.length === 0) {
     s.push(``, `✅ <i>Hozircha hammasi bor.</i>`);
   } else {
     s.push(``, `🔴 <b>TUGAGAN — ${kerak.length} ta</b>`);
-    for (const n of kerak) {
+    for (const [i, n] of kerak.entries()) {
       s.push(
-        `   ${esc(n.emoji)} <b>${esc(n.nom)}</b>`,
+        `${i + 1}. ${esc(n.emoji)} <b>${esc(n.nom)}</b>`,
         `      <i>${esc(n.tugadi_ism ?? "kimdir")} · ${n.tugadi ? qisqaSana(n.tugadi) : ""}</i>`,
       );
     }
   }
 
+  // Har biri O'Z qatorida — bitta uzun vergul qatoriga siqilgan bo'lsa
+  // ro'yxat "kam"/chala ko'rinardi, garchi hammasi turgan bo'lsa ham.
   if (bor.length > 0) {
-    s.push(``, `🟢 <b>BOR</b>`);
-    s.push(`   ${bor.map((n) => `${n.emoji} ${esc(n.nom)}`).join(", ")}`);
+    s.push(``, `🟢 <b>BOR — ${bor.length} ta</b>`);
+    for (const [i, n] of bor.entries()) s.push(`${i + 1}. ${esc(n.emoji)} ${esc(n.nom)}`);
   }
 
   if (admin && ochirilgan.length > 0) {
     s.push(``, `⛔️ <b>RO'YXATDAN CHIQARILGAN</b>`);
-    s.push(`   ${ochirilgan.map((n) => `${n.emoji} ${esc(n.nom)}`).join(", ")}`);
+    for (const n of ochirilgan) s.push(`   ${esc(n.emoji)} ${esc(n.nom)}`);
   }
 
   s.push(

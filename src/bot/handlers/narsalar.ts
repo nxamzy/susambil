@@ -26,9 +26,9 @@ import {
   narsaBor,
   narsaFaollikni,
   narsaNominiOzgartir,
-  narsaQosh,
   narsaTugadi,
   narsalarOlindi,
+  narsalarQosh,
   narsaniOl,
 } from "../../core/narsalar.js";
 import { adminlarRoyxati, guruhgaYubor, kim, shaxsiy } from "../group.js";
@@ -74,7 +74,14 @@ export async function narsalarKorsat(ctx: Context, tahrirla = false): Promise<vo
   await ctx.reply(matn, { parse_mode: "HTML", reply_markup: kb });
 }
 
-/** Yangi narsa nomi yozilgach — messages.ts'dan chaqiriladi. */
+/**
+ * Narsa nomi(lari) yozilgach — messages.ts'dan chaqiriladi.
+ *
+ * BIR YO'LDA bir nechtasini qabul qiladi (`qatorlarniAjrat`): admin
+ * ko'pincha "1. Bumaga / 2. Hammom uchun azelit / 3. Oshxona uchun
+ * azelit" kabi tayyor ro'yxat yozadi, bitta-bitta so'rab charchatishning
+ * hojati yo'q.
+ */
 export async function narsaNomiKeldi(ctx: Context, xom: string): Promise<void> {
   if (!ctx.from) return;
   const u = await kim(ctx.from.id);
@@ -83,23 +90,36 @@ export async function narsaNomiKeldi(ctx: Context, xom: string): Promise<void> {
   await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
   await holatTozala(ctx.from.id);
 
-  const natija = await narsaQosh(u.id, xom);
-  if (!natija.ok) {
+  const { qoshildi, borEdi, sabab } = await narsalarQosh(u.id, xom);
+
+  if (qoshildi.length === 0 && borEdi.length === 0) {
     await ctx.reply(
-      natija.sabab === "kop"
+      sabab === "kop"
         ? "Ro'yxat to'lib ketdi. Avval keraksizlarini ro'yxatdan chiqaring."
-        : natija.sabab === "bor"
-          ? "✅ Bu narsa ro'yxatda bor edi — «tugadi» deb belgiladim."
-          : "Nom juda qisqa. Qaytadan yozing.",
+        : "Nom juda qisqa. Qaytadan yozing.",
     );
     await narsalarKorsat(ctx);
     return;
   }
 
-  await ctx.reply(`✅ <b>${natija.narsa.emoji} ${natija.narsa.nom}</b> ro'yxatga qo'shildi.`, {
-    parse_mode: "HTML",
-  });
-  await adminlarniOgohlantir(ctx, natija.narsa, u);
+  const xabar: string[] = [];
+  if (qoshildi.length > 0) {
+    xabar.push(
+      `✅ <b>Qo'shildi (${qoshildi.length} ta):</b>`,
+      ...qoshildi.map((n) => `   ${n.emoji} ${n.nom}`),
+    );
+  }
+  if (borEdi.length > 0) {
+    xabar.push(
+      ...(xabar.length > 0 ? [``] : []),
+      `<i>Ro'yxatda allaqachon bor edi (endi «tugadi»):</i>`,
+      ...borEdi.map((n) => `   • ${n}`),
+    );
+  }
+  if (sabab === "kop") xabar.push(``, `⚠️ Ro'yxat to'lib qoldi, qolganlari qo'shilmadi.`);
+
+  await ctx.reply(xabar.join("\n"), { parse_mode: "HTML" });
+  for (const n of qoshildi) await adminlarniOgohlantir(ctx, n, u);
   await narsalarKorsat(ctx);
 }
 
@@ -208,10 +228,14 @@ export function register(bot: Bot) {
         `🛒 <b>NIMA KERAK?</b>`,
         AJRATGICH,
         ``,
-        `Narsaning nomini yozing:`,
+        `Narsalarni yozing — bir nechtasi bo'lsa har birini`,
+        `ALOHIDA QATORDA:`,
         ``,
-        `<i>Masalan:</i> <code>Bumaga</code>`,
-        `<i>yoki emoji bilan:</i> <code>🧴 Shampun</code>`,
+        `<code>Bumaga</code>`,
+        `<code>Hammom uchun azelit</code>`,
+        `<code>Oshxona uchun azelit</code>`,
+        ``,
+        `<i>Emoji ham qo'yish mumkin:</i> <code>🧴 Shampun</code>`,
       ].join("\n"),
       { parse_mode: "HTML", reply_markup: bekorKeyboard() },
     );

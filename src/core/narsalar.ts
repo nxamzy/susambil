@@ -156,10 +156,53 @@ export type NarsaQoshishNatija =
   | { ok: false; sabab: "kop" | "nom" | "bor" };
 
 /**
- * Yangi narsa qo'shadi. Ro'yxatni ADMIN emas, istalgan a'zo to'ldirsin
- * degan qoida ataylab: "bumaga tugadi" deyish uchun admin bo'lish shart
- * emas, aks holda ro'yxat yana bir kishining xotirasiga bog'lanib qolardi.
- * Shu sababli `adminId` — "kim qo'shdi", ruxsat tekshiruvi emas.
+ * Bir xabarda yozilgan bir nechta narsani qatorlarga ajratadi.
+ *
+ * Admin ko'pincha "1. Bumaga / 2. Hammom uchun azelit / 3. Oshxona uchun
+ * azelit" kabi tayyor ro'yxat yozadi — bitta-bitta so'rab charchatish
+ * o'rniga shu formatni ATAYLAB tushunamiz: boshidagi raqam+nuqta/qavs
+ * ("1.", "2)") yoki chiziqcha/nuqta ("-", "•") bor bo'lsa olib tashlanadi,
+ * bo'lmasa qator o'zgarishsiz qoladi.
+ */
+export function qatorlarniAjrat(xom: string): string[] {
+  return xom
+    .split("\n")
+    .map((q) => q.trim().replace(/^[\d]+[.)]\s*|^[-•*]\s*/, "").trim())
+    .filter((q) => q.length > 0);
+}
+
+/**
+ * Bir nechta narsani BIR YO'LDA qo'shadi — admin o'z ro'yxatini bitta
+ * xabarda yozib yuborishi mumkin bo'lsin uchun (`qatorlarniAjrat`).
+ * Bitta xabarga cheklanmagan, chunki oldindan nechta qator kelishi
+ * noma'lum — har biri navbat bilan `narsaQosh`dan o'tadi, natija esa
+ * qanchasi haqiqatan yangi qo'shilgani/allaqachon borligi bilan qaytadi.
+ */
+export async function narsalarQosh(
+  userId: number,
+  xomMatn: string,
+): Promise<{ qoshildi: KerakliNarsa[]; borEdi: string[]; sabab?: "kop" }> {
+  const qoshildi: KerakliNarsa[] = [];
+  const borEdi: string[] = [];
+
+  for (const qator of qatorlarniAjrat(xomMatn)) {
+    const natija = await narsaQosh(userId, qator);
+    if (natija.ok) qoshildi.push(natija.narsa);
+    else if (natija.sabab === "bor") borEdi.push(emojiAjrat(qator).nom);
+    else if (natija.sabab === "kop") return { qoshildi, borEdi, sabab: "kop" };
+    // "nom" (juda qisqa qator) — jimgina o'tkazib yuboriladi, masalan
+    // bo'sh qatorlar orasidagi tasodifiy belgi.
+  }
+
+  return { qoshildi, borEdi };
+}
+
+/**
+ * Bitta narsa qo'shadi (yoki mavjudini "kerak" deb belgilaydi). Ro'yxatni
+ * ADMIN emas, istalgan a'zo to'ldirsin degan qoida ataylab: "bumaga
+ * tugadi" deyish uchun admin bo'lish shart emas, aks holda ro'yxat yana
+ * bir kishining xotirasiga bog'lanib qolardi. Shu sababli `userId` —
+ * "kim qo'shdi", ruxsat tekshiruvi emas.
  *
  * Yangi narsa DARROV "kerak" holatida tug'iladi: odam uni yozayotgan
  * bo'lsa, demak hozir kerak.
