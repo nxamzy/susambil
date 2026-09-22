@@ -25,12 +25,23 @@ import {
   tolovQabulQiluvchi,
   yigimlarRoyxati,
   yigimMuddatiniOzgartir,
+  yigimNarsalariniOzgartir,
   yigimniYakunla,
+  yigimNominiOzgartir,
   yigimTalabiniOzgartir,
   yigimTarixi,
   yigimYarat,
 } from "../../core/tolov.js";
-import { keraklilar, narsalarOlindi } from "../../core/narsalar.js";
+import {
+  emojiAjrat,
+  faolNarsalar,
+  keraklilar,
+  narsaniOl,
+  narsalarOlindi,
+  narsalarQosh,
+  qatorlarniAjrat,
+} from "../../core/narsalar.js";
+import { adminAloqasi } from "../../core/users.js";
 import { logla } from "../../core/adminlog.js";
 import { sql } from "../../db/index.js";
 import { guruhgaYubor, kim, shaxsiy } from "../group.js";
@@ -39,6 +50,7 @@ import {
   yigimBoshlashKeyboard,
   yigimKeyboard,
   yigimKunKeyboard,
+  yigimNarsalarKeyboard,
   yigimTolashKeyboard,
   yigimYakunlashKeyboard,
   yigimYoqKeyboard,
@@ -46,12 +58,17 @@ import {
 import {
   AJRATGICH,
   chekla,
+  esc,
   pul,
   tolovTarixXulosasi,
   yigimEslatmaXabari,
   yigimGuruhElon,
   yigimKorinishi,
+  yigimNarsalarMatni,
+  yigimNarsaQoshMatni,
   yigimOzgardiGuruh,
+  yigimRoyxatOzgardiGuruh,
+  yigimRoyxatSorovi,
   yigimShaxsiyElon,
   yigimTasdiqMatni,
   yigimYopildiGuruh,
@@ -110,7 +127,7 @@ export async function yigimKorinishMatni(
   const holat = await foydalanuvchiTolovHolati(u.id, yigim);
   return {
     matn: yigimKorinishi(qabul, holat),
-    tugma: yigimKeyboard(holat.daraja === "tola"),
+    tugma: yigimKeyboard(holat.daraja === "tola", yigim.id),
   };
 }
 
@@ -155,7 +172,7 @@ async function yigimNominiSora(ctx: Context): Promise<void> {
             `🛒 <b>Ro'yxatda ${kerak.length} ta narsa kutmoqda:</b>`,
             ...kerak.map((n) => `   ${n.emoji} ${n.nom}`),
             ``,
-            `<i>Ular e'longa avtomatik qo'shiladi.</i>`,
+            `<i>Savdo ro'yxatini keyingi bosqichda tanlaysiz.</i>`,
             ``,
           ]
         : []),
@@ -170,9 +187,35 @@ async function yigimNominiSora(ctx: Context): Promise<void> {
   await sorovniEslat(ctx.from.id, yangi, xabar.chat.id, xabar.message_id);
 }
 
+/**
+ * Nom uzunligi. `core/tolov.ts` nomni shu chegarada KESADI, shuning uchun
+ * bu yerda kesilishidan OLDIN ushlaymiz: admin savdo ro'yxatini nom qilib
+ * yozganda e'lon jimgina yarmida uzilib qolardi ("Savdo ro'yxati: 1.
+ * Bumaga 2. ... 4. I") va guruh qolganini umuman ko'rmasdi.
+ */
+const NOM_MAX = 80;
+
 /** Nomi yozilgach summani so'raymiz. messages.ts'dan chaqiriladi. */
 export async function yigimNomiKeldi(ctx: Context, nom: string): Promise<void> {
   if (!ctx.from || !(await faqatAdmin(ctx))) return;
+
+  // Ko'p qatorli matn = admin savdo ro'yxatini yozyapti. Uni nom qilib
+  // qabul qilmaymiz — ro'yxat uchun alohida bosqich bor.
+  if (nom.includes("\n") || nom.length > NOM_MAX) {
+    await ctx.reply(
+      [
+        `⚠️ <b>Nom juda uzun</b>`,
+        ``,
+        `Bu yerga QISQA nom kerak, masalan:`,
+        `<code>Uy uchun narsalar</code>`,
+        ``,
+        `🛒 Nima olinishini keyingi bosqichda`,
+        `ro'yxat qilib tanlaysiz.`,
+      ].join("\n"),
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
 
   await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
   const yangi = { tur: "yigim_yangi", qadam: "summa", nom } as const;
@@ -221,6 +264,68 @@ export async function yigimSummasiKeldi(ctx: Context, nom: string, xom: string):
 }
 
 /**
+ * Savdo ro'yxati bosqichini chizadi (yoki qayta chizadi).
+ *
+ * Har toggle'dan keyin YANGI xabar yozilmaydi — o'sha bittasi
+ * tahrirlanadi (`sorovniEslat` bilan eslab qolingan xabar). Sakkizta
+ * narsani bittalab bosish sakkizta xabar tug'dirsa, ro'yxatning o'zi
+ * ekrandan chiqib ketardi — bu `handlers/photos.ts` dagi "jonli xabar"
+ * intizomining aynan o'zi.
+ */
+async function narsalarBosqichi(
+  ctx: Context,
+  holat: { nom: string; talab: number; kun: number; narsalar: string[] },
+): Promise<void> {
+  if (!ctx.from) return;
+
+  const yangi = { tur: "yigim_yangi", qadam: "narsalar", ...holat } as const;
+  await holatOrnat(ctx.from.id, yangi);
+
+  const royxat = await faolNarsalar();
+  const xabar = await ctx.reply(yigimNarsalarMatni(holat.nom, holat.narsalar.length), {
+    parse_mode: "HTML",
+    reply_markup: yigimNarsalarKeyboard(royxat, holat.narsalar),
+  });
+  await sorovniEslat(ctx.from.id, yangi, xabar.chat.id, xabar.message_id);
+}
+
+/**
+ * Qo'lda yozilgan narsalar keldi. messages.ts'dan chaqiriladi.
+ *
+ * Yozilganlar IKKI joyga ketadi: shu yig'imning ro'yxatiga va "Uyga
+ * kerak" ro'yxatiga (`narsalarQosh`) — keyingi safar admin ularni qayta
+ * yozmasin. Ro'yxat to'lib qolgan bo'lsa (`NARSA_MAX`) ham yig'im
+ * ro'yxatiga baribir qo'shiladi: e'lon to'g'ri chiqishi muhimroq.
+ */
+export async function yigimNarsalariKeldi(
+  ctx: Context,
+  holat: { nom: string; talab: number; kun: number; narsalar: string[] },
+  xom: string,
+): Promise<void> {
+  if (!ctx.from || !(await faqatAdmin(ctx))) return;
+
+  await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+
+  const yangilar = qatorlarniAjrat(xom)
+    .map((q) => emojiAjrat(q).nom)
+    .filter((n) => n.length >= 2);
+
+  if (yangilar.length === 0) {
+    await ctx.reply("Hech narsa tushunmadim. Har bir narsani yangi qatorga yozing.");
+    return narsalarBosqichi(ctx, holat);
+  }
+
+  await narsalarQosh(ctx.from.id, xom);
+
+  // Takrorlanmasin: admin ro'yxatda allaqachon bor narsani qayta yozsa
+  // e'londa ikki marta chiqib qolardi.
+  const narsalar = [...holat.narsalar];
+  for (const n of yangilar) if (!narsalar.includes(n)) narsalar.push(n);
+
+  await narsalarBosqichi(ctx, { ...holat, narsalar });
+}
+
+/**
  * Yig'imni haqiqatan ochadi va e'lon qiladi.
  *
  * E'lon IKKI JOYGA ketadi va ikkalasi ham muhim: guruhga — karta bilan
@@ -228,7 +333,13 @@ export async function yigimSummasiKeldi(ctx: Context, nom: string, xom: string):
  * tugmasi bilan. Guruhdagi xabarni hamma ham o'qimaydi, shaxsiysi esa
  * yo'qolmaydi.
  */
-async function yigimniOchish(ctx: Context, nom: string, talab: number, kun: number): Promise<void> {
+async function yigimniOchish(
+  ctx: Context,
+  nom: string,
+  talab: number,
+  kun: number,
+  narsalar: string[],
+): Promise<void> {
   const admin = await faqatAdmin(ctx);
   if (!admin || !ctx.from) return;
 
@@ -236,8 +347,9 @@ async function yigimniOchish(ctx: Context, nom: string, talab: number, kun: numb
   await holatTozala(ctx.from.id);
 
   // Ro'yxat AYNAN shu paytda nusxalanadi — keyin narsa qayta tugasa ham
-  // e'lon o'z matnida qoladi (`tolov_sikllari.narsalar`).
-  const narsalar = (await keraklilar()).map((n) => n.nom);
+  // e'lon o'z matnida qoladi (`tolov_sikllari.narsalar`). Ilgari u
+  // `keraklilar()` dan olinardi, ya'ni faqat kimdir "tugadi" deb
+  // belgilaganlari; endi adminning ro'yxat bosqichida tanlagani.
   const yigim = await yigimYarat(nom, talab, kun, narsalar);
   if (!yigim) {
     await ctx.reply("⚠️ Ochiq yig'im allaqachon bor — avval uni yakunlang.");
@@ -253,7 +365,7 @@ async function yigimniOchish(ctx: Context, nom: string, talab: number, kun: numb
 
   const shaxsiyMatn = yigimShaxsiyElon(yigim, qabul);
   const natijalar = await Promise.all(
-    odamlar.map((o) => shaxsiy(ctx.api, o, shaxsiyMatn, { reply_markup: yigimTolashKeyboard() })),
+    odamlar.map((o) => shaxsiy(ctx.api, o, shaxsiyMatn, { reply_markup: yigimTolashKeyboard(yigim.id) })),
   );
   const yetdi = natijalar.filter(Boolean).length;
 
@@ -307,6 +419,7 @@ async function qolgaTurtki(ctx: Context, yigim: TolovSikl): Promise<void> {
   const d = await tolovDashboard(yigim);
   const qabul = await tolovQabulQiluvchi();
   const odamlar = await faolOdamlar();
+  const adminAloqa = await adminAloqasi();
 
   let yetdi = 0;
   for (const o of d.qarzdorlar) {
@@ -317,10 +430,16 @@ async function qolgaTurtki(ctx: Context, yigim: TolovSikl): Promise<void> {
       u,
       yigimEslatmaXabari(
         yigim,
-        { qoldiq: o.qoldiq, tasdiqlangan: o.tasdiqlangan, kutilmoqdaSumma: o.kutilmoqdaSumma },
+        {
+          qoldiq: o.qoldiq,
+          tasdiqlangan: o.tasdiqlangan,
+          kutilmoqdaSumma: o.kutilmoqdaSumma,
+          talab: o.talab,
+        },
         qabul,
+        adminAloqa,
       ),
-      { reply_markup: yigimTolashKeyboard() },
+      { reply_markup: yigimTolashKeyboard(yigim.id) },
     );
     if (ok) yetdi++;
   }
@@ -418,13 +537,88 @@ export function register(bot: Bot) {
     const kun = Number(ctx.match[1]);
     await sorovniOchir(ctx.api, holat);
 
-    const yangi = { tur: "yigim_yangi", qadam: "tasdiq", nom: holat.nom, talab: holat.talab, kun } as const;
+    // Standart tanlov: kimdir "tugadi" deb belgilagan narsalar. Hech kim
+    // belgilamagan bo'lsa — BUTUN faol ro'yxat. Ilgari shu holatda e'lon
+    // ro'yxatsiz ketardi va uydagilar nima olishni bilmasdi.
+    const belgilangan = (await keraklilar()).map((n) => n.nom);
+    const narsalar =
+      belgilangan.length > 0 ? belgilangan : (await faolNarsalar()).map((n) => n.nom);
+
+    await narsalarBosqichi(ctx, { nom: holat.nom, talab: holat.talab, kun, narsalar });
+  });
+
+  bot.callbackQuery(/^yigim_narsa:(\d+)$/, async (ctx) => {
+    if (!ctx.from || !(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+
+    const holat = await holatOl(ctx.from.id);
+    if (holat?.tur !== "yigim_yangi" || holat.qadam !== "narsalar") {
+      await ctx.answerCallbackQuery().catch(() => {});
+      return ctx.reply("Bu jarayon eskirdi. Qaytadan boshlang.");
+    }
+
+    const narsa = await narsaniOl(Number(ctx.match[1]));
+    if (!narsa) return ctx.answerCallbackQuery({ text: "Narsa topilmadi." }).catch(() => {});
+
+    const bor = holat.narsalar.includes(narsa.nom);
+    const narsalar = bor
+      ? holat.narsalar.filter((n) => n !== narsa.nom)
+      : [...holat.narsalar, narsa.nom];
+
+    await ctx.answerCallbackQuery({ text: bor ? `⬜️ ${narsa.nom}` : `✅ ${narsa.nom}` }).catch(() => {});
+
+    // Xabarni TAHRIRLAYMIZ, yangisini yozmaymiz — sakkizta narsani
+    // bittalab bosganda ekran sakkizta xabar bilan to'lib ketardi.
+    const yangi = { ...holat, narsalar };
+    await holatOrnat(ctx.from.id, yangi);
+    await ctx
+      .editMessageText(yigimNarsalarMatni(holat.nom, narsalar.length), {
+        parse_mode: "HTML",
+        reply_markup: yigimNarsalarKeyboard(await faolNarsalar(), narsalar),
+      })
+      .catch(() => {});
+  });
+
+  bot.callbackQuery("yigim_narsa_qosh", async (ctx) => {
+    if (!ctx.from || !(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const holat = await holatOl(ctx.from.id);
+    if (holat?.tur !== "yigim_yangi" || holat.qadam !== "narsalar") {
+      return ctx.reply("Bu jarayon eskirdi. Qaytadan boshlang.");
+    }
+
+    await sorovniOchir(ctx.api, holat);
+    const yangi = { ...holat, qadam: "qosh" } as const;
+    await holatOrnat(ctx.from.id, yangi);
+    const xabar = await ctx.reply(yigimNarsaQoshMatni(), {
+      parse_mode: "HTML",
+      reply_markup: bekorKeyboard(),
+    });
+    await sorovniEslat(ctx.from.id, yangi, xabar.chat.id, xabar.message_id);
+  });
+
+  bot.callbackQuery("yigim_narsa_ok", async (ctx) => {
+    if (!ctx.from || !(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const holat = await holatOl(ctx.from.id);
+    if (holat?.tur !== "yigim_yangi" || holat.qadam !== "narsalar") {
+      return ctx.reply("Bu jarayon eskirdi. Qaytadan boshlang.");
+    }
+
+    await sorovniOchir(ctx.api, holat);
+    const yangi = { ...holat, qadam: "tasdiq" } as const;
     await holatOrnat(ctx.from.id, yangi);
 
     const odamSoni = (await faolOdamlar()).length;
-    const narsalar = (await keraklilar()).map((n) => n.nom);
     const xabar = await ctx.reply(
-      yigimTasdiqMatni(holat.nom, holat.talab, kun, odamSoni, narsalar),
+      yigimTasdiqMatni(holat.nom, holat.talab, holat.kun, odamSoni, holat.narsalar),
       { parse_mode: "HTML", reply_markup: yigimBoshlashKeyboard() },
     );
     await sorovniEslat(ctx.from.id, yangi, xabar.chat.id, xabar.message_id);
@@ -440,7 +634,7 @@ export function register(bot: Bot) {
     if (holat?.tur !== "yigim_yangi" || holat.qadam !== "tasdiq") {
       return ctx.reply("Bu jarayon eskirdi. Qaytadan boshlang.");
     }
-    await yigimniOchish(ctx, holat.nom, holat.talab, holat.kun);
+    await yigimniOchish(ctx, holat.nom, holat.talab, holat.kun, holat.narsalar);
   });
 
   // --- admin: ro'yxat / odam / tuzatish (tolov.ts bilan bitta kod) ---------
@@ -518,6 +712,48 @@ export function register(bot: Bot) {
         ``,
         `<i>Yangi summa DARROV kuchga kiradi — kim allaqachon</i>`,
         `<i>to'lagan bo'lsa, qoldig'i qayta hisoblanadi.</i>`,
+      ].join("\n"),
+      { parse_mode: "HTML", reply_markup: bekorKeyboard() },
+    );
+    await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
+  });
+
+  bot.callbackQuery(/^yigim_rtahrir:(\d+)$/, async (ctx) => {
+    if (!ctx.from || !(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const yigim = await siklniOl(Number(ctx.match[1]));
+    if (!yigim || yigim.holat !== "ochiq") return ctx.reply("Bu yig'im allaqachon yakunlangan.");
+
+    const holat = { tur: "yigim_royxat", siklId: yigim.id } as const;
+    await holatOrnat(ctx.from.id, holat);
+    const xabar = await ctx.reply(yigimRoyxatSorovi(yigim), {
+      parse_mode: "HTML",
+      reply_markup: bekorKeyboard(),
+    });
+    await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
+  });
+
+  bot.callbackQuery(/^yigim_nom:(\d+)$/, async (ctx) => {
+    if (!ctx.from || !(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const yigim = await siklniOl(Number(ctx.match[1]));
+    if (!yigim || yigim.holat !== "ochiq") return ctx.reply("Bu yig'im allaqachon yakunlangan.");
+
+    const holat = { tur: "yigim_nom", siklId: yigim.id } as const;
+    await holatOrnat(ctx.from.id, holat);
+    const xabar = await ctx.reply(
+      [
+        `📝 <b>Yig'imning yangi nomini yozing</b>`,
+        ``,
+        `Hozir: <b>${esc(yigim.nom ?? "Yig'im")}</b>`,
+        ``,
+        `<i>Masalan:</i> <code>Uy uchun narsalar</code>`,
       ].join("\n"),
       { parse_mode: "HTML", reply_markup: bekorKeyboard() },
     );
@@ -644,6 +880,111 @@ export function register(bot: Bot) {
       { parse_mode: "HTML", reply_markup: yigimYoqKeyboard(true) },
     );
   });
+}
+
+/** Bitta qatorning eng ko'p uzunligi — undan uzuni rad etiladi, KESILMAYDI. */
+const QATOR_MAX = 60;
+
+/** Ro'yxatdagi eng ko'p narsa — e'lon va eslatma o'qiladigan bo'lib qolsin. */
+const ROYXAT_MAX = 25;
+
+/**
+ * Admin ochiq yig'imning savdo ro'yxatini qayta yozdi — messages.ts'dan.
+ *
+ * Yozilgani eskisining O'RNIGA tushadi (qo'shilmaydi): admin nusxalab,
+ * tahrirlab yuboradi, ya'ni keraksiz qatorni olib tashlash ham shu yo'l.
+ * Uzun qator KESILMAYDI, rad etiladi — kesib yuborish aynan "4. I" bilan
+ * tugagan ro'yxatning sababi edi.
+ */
+export async function yigimRoyxatiKeldi(ctx: Context, siklId: number, xom: string): Promise<void> {
+  const admin = await faqatAdmin(ctx);
+  if (!admin || !ctx.from) return;
+
+  const narsalar: string[] = [];
+  if (xom.trim() !== "-") {
+    for (const q of qatorlarniAjrat(xom)) {
+      if (q.length > QATOR_MAX) {
+        await ctx.reply(`⚠️ Bu qator juda uzun (${QATOR_MAX} belgidan ko'p):\n«${q.slice(0, 40)}…»\n\nQisqaroq yozib qayta yuboring.`);
+        return;
+      }
+      if (q.length >= 2 && !narsalar.includes(q)) narsalar.push(q);
+    }
+    if (narsalar.length === 0) {
+      await ctx.reply("Hech narsa tushunmadim. Har bir narsani yangi qatorga yozing.");
+      return;
+    }
+    if (narsalar.length > ROYXAT_MAX) {
+      await ctx.reply(`⚠️ Ro'yxat juda uzun — ko'pi bilan ${ROYXAT_MAX} ta narsa.`);
+      return;
+    }
+  }
+
+  await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+  await holatTozala(ctx.from.id);
+
+  const eski = await siklniOl(siklId);
+  const yangi = await yigimNarsalariniOzgartir(siklId, narsalar);
+  if (!yangi) {
+    await ctx.reply("Bu yig'im allaqachon yakunlangan.");
+    return;
+  }
+
+  await logla(
+    admin.id,
+    "yigim_royxat",
+    "sikl",
+    yangi.id,
+    (eski?.narsalar ?? []).join(", ") || null,
+    narsalar.join(", ") || null,
+  );
+  await guruhgaYubor(ctx.api, yigimRoyxatOzgardiGuruh(yangi));
+  await ctx.reply(
+    narsalar.length > 0
+      ? `✅ Savdo ro'yxati yangilandi — <b>${narsalar.length} ta</b> narsa. Guruhga e'lon ketdi.`
+      : `✅ Savdo ro'yxati olib tashlandi.`,
+    { parse_mode: "HTML" },
+  );
+  await yigimDashboardKorsat(ctx);
+}
+
+/** Admin ochiq yig'imning yangi nomini yozdi — messages.ts'dan. */
+export async function yigimNomiOzgartirishKeldi(ctx: Context, siklId: number, xom: string): Promise<void> {
+  const admin = await faqatAdmin(ctx);
+  if (!admin || !ctx.from) return;
+
+  const nom = xom.trim();
+  // Yangi yig'imdagi bilan bir xil to'siq: ko'p qatorli matn — bu savdo
+  // ro'yxati, uning joyi "🛒 Ro'yxat".
+  if (nom.includes("\n") || nom.length > NOM_MAX || nom.length < 2) {
+    await ctx.reply(
+      [
+        `⚠️ <b>Nom ${nom.length < 2 ? "juda qisqa" : "juda uzun"}</b>`,
+        ``,
+        `Bu yerga QISQA nom kerak (${NOM_MAX} belgigacha, bitta qator).`,
+        `🛒 Savdo ro'yxati uchun yig'im panelidagi "🛒 Ro'yxat" tugmasi bor.`,
+      ].join("\n"),
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+  await holatTozala(ctx.from.id);
+
+  const eski = await siklniOl(siklId);
+  const yangi = await yigimNominiOzgartir(siklId, nom);
+  if (!yangi) {
+    await ctx.reply("Bu yig'im allaqachon yakunlangan.");
+    return;
+  }
+
+  await logla(admin.id, "yigim_nom", "sikl", yangi.id, eski?.nom ?? null, yangi.nom);
+  await guruhgaYubor(
+    ctx.api,
+    yigimOzgardiGuruh(yangi, `📝 Nomi o'zgardi: «${esc(eski?.nom?.split("\n")[0] ?? "Yig'im")}» → «${esc(nom)}»`),
+  );
+  await ctx.reply(`✅ Yangi nom: <b>${esc(nom)}</b>`, { parse_mode: "HTML" });
+  await yigimDashboardKorsat(ctx);
 }
 
 /** Admin ochiq yig'imning summasini yozib bo'lgach — messages.ts'dan. */

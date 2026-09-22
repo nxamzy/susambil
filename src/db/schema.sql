@@ -800,3 +800,297 @@ DO $$ BEGIN
       ON CONFLICT (kalit) DO NOTHING;
   END IF;
 END $$;
+
+-- Osilib qolgan "tasdiq kutilmoqda" topshiriqlari — BIR MARTA yopiladi.
+--
+-- Uchtasi bor edi va uchalasi ham guruhga har 12 soatda "TASDIQ
+-- KUTILMOQDA" deb eslatib turardi:
+--   * ikkita `tur = 'ish'` yozuvi (08-08, 08-25) — "qo'shimcha ish" oqimi
+--     olib tashlangan, ularni yopadigan tugma ham, buyruq ham qolmagan;
+--   * bitta `tur = 'navbat'` yozuvi (09-07) — navbatni admin qo'lda
+--     keyingi xonaga o'tkazgan (`turns.holat = 'admin_yopdi'`), topshiriq
+--     esa `kutilmoqda` bo'lib qolgan.
+--
+-- Ildizi ikki joyda tuzatildi: `jobs/reminders.ts` endi faqat FAOL
+-- navbatning topshirig'ini va faqat BIR MARTA eslatadi,
+-- `core/rotation.ts` `navbatniOzgartirish` esa navbatni o'tkazishda
+-- kutayotgan topshiriqni o'zi bekor qiladi. Bu migratsiya faqat
+-- ALLAQACHON osilib qolganlarini tozalaydi.
+--
+-- O'CHIRILMAYDI, `bekor = TRUE` qilinadi — rasmlar va yig'ilgan tasdiqlar
+-- tarixda qolaveradi ("tarix hech qachon o'chmaydi").
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM settings WHERE kalit = 'osilgan_tasdiq_yopildi') THEN
+    UPDATE submissions s SET bekor = TRUE
+    WHERE s.holat = 'kutilmoqda' AND NOT s.bekor
+      AND (s.tur <> 'navbat'
+           OR s.turn_id IS NULL
+           OR NOT EXISTS (SELECT 1 FROM turns t WHERE t.id = s.turn_id AND t.holat = 'faol'));
+    INSERT INTO settings (kalit, qiymat) VALUES ('osilgan_tasdiq_yopildi', '1')
+      ON CONFLICT (kalit) DO NOTHING;
+  END IF;
+END $$;
+
+-- Yuqoridagi `narsalar_qisqartirildi` ro'yxatni uchtaga tushirib qo'ygan
+-- edi (bumaga + ikkala azelit). Amalda buning teskarisi chiqdi: yig'im
+-- e'loni "nima olamiz" degan savolga javob bermay qoldi va admin savdo
+-- ro'yxatini yig'imning NOMI qilib yozishga majbur bo'ldi — nom esa 80
+-- belgidan keyin kesilib, guruh ro'yxatning faqat boshini ko'rdi.
+--
+-- Beshtasi ro'yxatga QAYTARILADI: ular uyda haqiqatan sarflanadi, ro'yxat
+-- esa endi to'liq ko'rinadi va yig'im boshlanayotganda admin keraksizini
+-- bir bosishda olib tashlaydi (`bot/handlers/yigim.ts` narsalar bosqichi).
+-- Faqat `faol = FALSE` bo'lganlari tegiladi — admin o'zi ro'yxatdan
+-- chiqargan boshqa narsa bo'lsa, u joyida qoladi.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM settings WHERE kalit = 'narsalar_qaytarildi') THEN
+    UPDATE kerakli_narsalar SET faol = TRUE
+    WHERE NOT faol
+      AND nom IN ('Musor paketi', 'Gubka', 'Idish yuvish suyuqligi',
+                  'Qo''l sovuni', 'Kir yuvish kukuni');
+    INSERT INTO settings (kalit, qiymat) VALUES ('narsalar_qaytarildi', '1')
+      ON CONFLICT (kalit) DO NOTHING;
+  END IF;
+END $$;
+
+-- Kvartira to'lovi muddati: oyning 15-kuni emas, 14-kuni. Uyda pul aynan
+-- shu kuni yig'iladi. `config.tolovMuddatKuni` standarti ham 14 ga
+-- o'zgartirildi, lekin qiymat BAZAGA ham ochiq yoziladi: standart keyin
+-- yana o'zgarib ketsa uyning haqiqiy kuni bilan birga surilib ketmasin.
+--
+-- `IF NOT EXISTS` sharti ataylab: admin keyinchalik "⚙️ Sozlamalar" dan
+-- boshqa kun qo'ysa, `db:setup` qayta ishga tushganda uni 14 ga qaytarib
+-- yozmasligi kerak.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM settings WHERE kalit = 'tolov_muddat_kuni') THEN
+    INSERT INTO settings (kalit, qiymat) VALUES ('tolov_muddat_kuni', '14')
+      ON CONFLICT (kalit) DO NOTHING;
+  END IF;
+END $$;
+
+-- Shaxsiy talab: bitta odamga bitta sikl uchun boshqacha summa.
+--
+-- NEGA KERAK: uyda hamma bir xil turmaydi. Oyning 20 kunini turib chiqib
+-- ketadigan odam to'liq 900 000 emas, kelishilgan 600 000 to'laydi — bot
+-- esa uni abadiy "qisman to'lagan" deb ko'rsatib, qarzdorlar ro'yxatida
+-- ushlab turardi va har 5 soatda eslatardi. Adminda buni tuzatishning
+-- to'g'ri yo'li yo'q edi: `tolov_tuzatish` bilan yetmagan 300 000 ni
+-- "to'ladi" deb yozish mumkin edi, lekin u ODAM TO'LAGAN PUL sifatida
+-- tarixga tushib, hisobotni yolg'onlashtirardi.
+--
+-- NULL = shu siklning umumiy talabi (`tolov_sikllari.talab`) amal qiladi.
+-- Faqat SHU sikl uchun: keyingi oy yana umumiy talabdan boshlanadi, ya'ni
+-- kelishuv jimgina abadiylashib qolmaydi.
+ALTER TABLE tolov_holat ADD COLUMN IF NOT EXISTS shaxsiy_talab BIGINT;
+
+-- ---------------------------------------------------------------------------
+-- FAOLLIK — "kim botda ko'proq harakat qilyapti"
+-- ---------------------------------------------------------------------------
+--
+-- Bu REYTING EMAS. Olib tashlangan ball tizimi "kim yaxshiroq" deb
+-- baholardi: navbatga 60, kechikkanga −10, xona a'zolari soniga bo'linardi.
+-- Bu esa faqat SANAYDI — xuddi xonaga kim ko'p kirib chiqayotganini bilish
+-- kabi, hech qanday baho bermasdan.
+--
+-- `ball` USTUNI ATAYLAB YO'Q. Bitta qator = bitta harakat, vazn qo'yadigan
+-- joy umuman yo'q. "Faqat 1, 2 yoki 3 emas" degan qoida shu bilan
+-- tuzilmaning o'ziga kirib ketdi: kimdir keyinchalik "navbatga 5 ball
+-- beraylik" desa, avval jadvalni o'zgartirishi kerak bo'ladi va bu
+-- ko'zga tashlanadi. Manfiy qiymat ham yo'q — jarima yozib bo'lmaydi.
+--
+-- `tur` faqat "bu qanday harakat edi" degan yorliq: sanashda ham,
+-- ko'rsatishda ham ISHLATILMAYDI, faqat tekshirish uchun. Shu sababli
+-- CHECK qo'yilmagan — eski tarixdan ko'chirilgan qiymatlar ('ish',
+-- 'xarajat') ham o'z nomi bilan qolaveradi.
+CREATE TABLE IF NOT EXISTS faollik (
+  id         BIGSERIAL PRIMARY KEY,
+  user_id    INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  tur        TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS faollik_user_vaqt_idx ON faollik (user_id, created_at DESC);
+
+-- Eski tarixdan BIR MARTA ko'chiramiz. `submissions`, `confirmations`,
+-- `tolovlar` va `reports` da kim/qachon allaqachon yozilgan, shuning uchun
+-- hisoblagich birinchi kunidanoq haqiqiy raqam ko'rsatadi — hamma nol
+-- bo'lib turgan bo'sh ekran chiqmaydi.
+--
+-- Bekor qilingan yoki rad etilgan yozuvlar ham sanaladi: odam o'sha
+-- harakatni HAQIQATAN qilgan, natijasi keyin nima bo'lgani boshqa savol.
+-- Oldinga qarab ham shunday ishlaydi (yozuv yaratilganda sanaladi).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM settings WHERE kalit = 'faollik_seed') THEN
+    INSERT INTO faollik (user_id, tur, created_at)
+      SELECT user_id, tur, created_at FROM submissions;
+    INSERT INTO faollik (user_id, tur, created_at)
+      SELECT user_id, 'tasdiq', created_at FROM confirmations;
+    INSERT INTO faollik (user_id, tur, created_at)
+      SELECT user_id, 'tolov', created_at FROM tolovlar;
+    INSERT INTO faollik (user_id, tur, created_at)
+      SELECT reporter_id, 'shikoyat', created_at FROM reports;
+    INSERT INTO settings (kalit, qiymat) VALUES ('faollik_seed', '1')
+      ON CONFLICT (kalit) DO NOTHING;
+  END IF;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- NAVBAT TARTIBI — AYLANMA: 4 → 3 → 2 → 1 → 4
+-- ---------------------------------------------------------------------------
+--
+-- ILDIZ MUAMMO: tartib "u yoq-bu yoq" edi (1 → 2 → 3 → 4 → 3 → 2 → 1 → 2).
+-- Uy esa amalda AYLANIB yuradi: 4 → 3 → 2 → 1 → 4. Farq chekkada chiqdi —
+-- 1-xonadan keyin bot yana 2-xonani tanladi (27-avgust va 20-sentabr).
+-- Birinchi safar admin uni bir daqiqada qo'lda 4-xonaga o'tkazgan, ikkinchi
+-- safar esa 2-xona navbatni ketma-ket olgan. "Borib qaytish" o'rtadagi
+-- xonalarga (2 va 3) navbatni chekkadagilardan ikki barobar ko'p berardi.
+--
+-- Endi `core/rotation.ts` `keyingiXona` shunchaki `tartib` bo'yicha
+-- keyingisini oladi va oxiridan boshiga qaytadi. Uyning yo'nalishi (4 dan
+-- 1 ga) shu yerda BIR MARTA `tartib`ga yoziladi; keyin admin uni
+-- "🧹 Navbat → ⚙️ Navbat sozlamalari → 🔢 Navbat tartibi" dan o'zgartiradi.
+--
+-- `tartib` UNIQUE — shuning uchun avval manfiyga surib, keyin qayta
+-- raqamlaymiz (to'g'ridan-to'g'ri almashtirish oraliqda to'qnashardi).
+-- Faqat seed tartibi (raqam bo'yicha o'suvchi) hali o'zgarmagan bo'lsa:
+-- admin boshqa tartib qo'ygan bazaga tegilmaydi.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM settings WHERE kalit = 'navbat_aylanma_seed') THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM rooms a JOIN rooms b ON a.raqam < b.raqam AND a.tartib > b.tartib
+    ) THEN
+      UPDATE rooms SET tartib = -1 - tartib;
+      UPDATE rooms r SET tartib = s.yangi
+      FROM (SELECT id, (row_number() OVER (ORDER BY raqam DESC) - 1)::int AS yangi FROM rooms) s
+      WHERE r.id = s.id;
+    END IF;
+    INSERT INTO settings (kalit, qiymat) VALUES ('navbat_aylanma_seed', '1')
+      ON CONFLICT (kalit) DO NOTHING;
+  END IF;
+END $$;
+
+-- Musor eslatmasi navbatning 3-kunidan emas, 2-kunidan. Uy talabi: "bot
+-- 2-kuni eslatsin va tashlamaguncha eslataversin". Faqat seed qiymati (3)
+-- turgan bo'lsa — admin "⚙️ Vazifalar" dan boshqa kun qo'ygan bo'lsa,
+-- `db:setup` uni qayta yozmaydi.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM settings WHERE kalit = 'musor_oraliq2_seed') THEN
+    UPDATE navbat_vazifalari SET oraliq_kun = 2 WHERE kod = 'musor' AND oraliq_kun = 3;
+    INSERT INTO settings (kalit, qiymat) VALUES ('musor_oraliq2_seed', '1')
+      ON CONFLICT (kalit) DO NOTHING;
+  END IF;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- "🗑 MUSOR TO'LDI" — istalgan a'zo navbatchiga bir bosishda xabar beradi
+-- ---------------------------------------------------------------------------
+--
+-- NEGA KERAK: musor navbat o'rtasida kutilmaganda to'ladi, avtomatik
+-- eslatma esa buni bilmaydi. Admin navbatchiga "📣 Xabar yuborish" orqali
+-- aytishi mumkin edi, lekin bu to'rt qadam va matn yozish — amalda hech
+-- kim qilmasdi. Endi uyda turgan har kim "🗑 Musor to'ldi" bosadi, navbatdagi
+-- xonaga DM ketadi va musor tashlanmaguncha takrorlanadi.
+--
+-- Bitta qator = bitta "to'ldi" xabari. Ochiq (`hal_qilindi IS NULL`) signal
+-- navbat+vazifa bo'yicha BITTA — ikkinchi odam bosganda yangisi yaralmaydi,
+-- mavjudining holati ko'rsatiladi (qisman UNIQUE indeks kafolatlaydi).
+--
+-- Yopilishi mavjud yo'ldan: navbatchi musor vazifasini "✅ Tugatdim" bilan
+-- yopganda signal ham yopiladi — ikkinchi tasdiqlash oqimi yaratilmagan.
+-- Vazifa allaqachon to'liq bajarilgan bo'lsa (ikkala marta ham) DM'dagi
+-- "🗑 Tashladim" tugmasi to'g'ridan-to'g'ri yopadi.
+--
+-- Tarix o'chmaydi: navbat yopilganda hal qilinmagan signal ham qoladi —
+-- hisobotda "hal qilinmagan" bo'lib ko'rinadi.
+CREATE TABLE IF NOT EXISTS navbat_signallari (
+  id             SERIAL PRIMARY KEY,
+  turn_id        INT NOT NULL REFERENCES turns(id),
+  vazifa_kod     TEXT NOT NULL,
+  user_id        INT NOT NULL REFERENCES users(id),
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  oxirgi_eslatma TIMESTAMPTZ,
+  hal_qilindi    TIMESTAMPTZ,
+  hal_qildi      INT REFERENCES users(id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS navbat_signallari_ochiq_uniq
+  ON navbat_signallari (turn_id, vazifa_kod) WHERE hal_qilindi IS NULL;
+
+-- ---------------------------------------------------------------------------
+-- "🙁 TO'LAY OLMAYAPMAN" — qarzdor sababini o'zi yozadi
+-- ---------------------------------------------------------------------------
+--
+-- NEGA KERAK: to'lamagan odam bot uchun faqat "qarzdor" edi — nega
+-- to'lamayotganini aytishning yo'li yo'q edi. Admin esa buni guruhdan yoki
+-- og'zaki bilib olardi (yoki umuman bilmasdi) va eslatma har 5 soatda
+-- "maoshim 25-da tushadi" degan odamni ham bezovta qilaverardi.
+--
+-- `tolov_holat` ustuni EMAS, alohida jadval: har yozilgan sabab alohida
+-- qator, yangisi eskisini bosib yozmaydi ("tarix hech qachon o'chmaydi").
+-- Admin ko'rinishlari eng oxirgisini ko'rsatadi, kartochka — hammasini.
+-- Sabab FAQAT adminlarga ko'rinadi, guruhga hech qachon chiqmaydi.
+CREATE TABLE IF NOT EXISTS tolov_uzrlari (
+  id         SERIAL PRIMARY KEY,
+  sikl_id    INT NOT NULL REFERENCES tolov_sikllari(id),
+  user_id    INT NOT NULL REFERENCES users(id),
+  sabab      TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS tolov_uzrlari_sikl_idx ON tolov_uzrlari (sikl_id, user_id, created_at DESC);
+
+-- ---------------------------------------------------------------------------
+-- ADMIN HISOBOTLARI — har navbatdan keyin va har oy boshida
+-- ---------------------------------------------------------------------------
+--
+-- `hisobot_yuborildi` — shu navbatning hisoboti adminlarga ketgan payt.
+-- Bayroq emas, lahza: `jobs/reminders.ts` "yopilgan, lekin hisoboti hali
+-- ketmagan" navbatni shundan topadi (qolgan eslatmalar bilan bir xil
+-- "holatdan qayta hisoblash" intizomi).
+--
+-- Mavjud yopilgan navbatlar BIR MARTA "yuborilgan" deb belgilanadi — aks
+-- holda deploydan keyingi birinchi chaqiruvda adminlarga o'nta eski
+-- hisobot yog'ilardi. Oylik hisobot ham xuddi shu sababdan o'tgan oydan
+-- boshlanadi: birinchi avtomatik hisobot keyingi oy boshida keladi, ungacha
+-- admin "📊 Hisobotlar" dan qo'lda ochadi.
+ALTER TABLE turns ADD COLUMN IF NOT EXISTS hisobot_yuborildi TIMESTAMPTZ;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM settings WHERE kalit = 'navbat_hisobot_seed') THEN
+    UPDATE turns SET hisobot_yuborildi = COALESCE(tasdiqlandi, now())
+    WHERE holat <> 'faol' AND hisobot_yuborildi IS NULL;
+    INSERT INTO settings (kalit, qiymat)
+    VALUES ('oylik_hisobot_davr',
+            to_char(date_trunc('month', now() AT TIME ZONE 'Asia/Tashkent') - interval '1 month', 'YYYY-MM'))
+      ON CONFLICT (kalit) DO NOTHING;
+    INSERT INTO settings (kalit, qiymat) VALUES ('navbat_hisobot_seed', '1')
+      ON CONFLICT (kalit) DO NOTHING;
+  END IF;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- Yig'im NOMIGA yozilgan savdo ro'yxatini ajratish
+-- ---------------------------------------------------------------------------
+--
+-- `NOM_MAX` tekshiruvi (`bot/handlers/yigim.ts`) YANGI yig'imlarni himoya
+-- qiladi, lekin undan oldin ochilgan yig'im bazada buzuq holda qolgan edi:
+-- nomi "Savdo ro'yxati 🛒:\n1. Bumaga\n2. ...\n4. I" (80 belgida kesilgan),
+-- `narsalar` esa bo'sh. Har e'lon va har 5 soatlik eslatma shu uzilgan
+-- matnni takrorlardi.
+--
+-- Birinchi qator NOM bo'ladi (oxiridagi ":" olinadi), qolganlari —
+-- raqami/chiziqchasi tozalanib — `narsalar`. Ikki belgidan qisqa qator
+-- (kesilgan "I") tashlanadi: u nima ekani noma'lum, admin yig'im
+-- panelidagi "🛒 Ro'yxat" tugmasidan to'g'rilaydi. O'z-o'zidan idempotent:
+-- tuzatilgan nomda yangi qator qolmaydi.
+UPDATE tolov_sikllari s SET
+  nom = COALESCE(NULLIF(regexp_replace(btrim(split_part(s.nom, E'\n', 1)), '\s*:\s*$', ''), ''), 'Yig''im'),
+  narsalar = (
+    SELECT array_agg(x.q ORDER BY x.n) FROM (
+      SELECT btrim(regexp_replace(btrim(t.qator), '^(\d+[.)]|[-•*])\s*', '')) AS q, t.n
+      FROM unnest(string_to_array(s.nom, E'\n')) WITH ORDINALITY AS t(qator, n)
+      WHERE t.n > 1
+    ) x
+    WHERE char_length(x.q) >= 2
+  )
+WHERE s.tur = 'yigim' AND s.narsalar IS NULL AND position(E'\n' in s.nom) > 0;

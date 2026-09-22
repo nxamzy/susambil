@@ -97,6 +97,18 @@ export type SiklDavri = {
  * to'lovlar shu oyning hisobiga tushadi, muddat esa oyning `muddatKuni`-kuni
  * (odatda 15-kun) — kvartira puli aynan o'sha kuni to'lanadi.
  */
+/**
+ * Shu oyning birinchi kuni, `YYYY-MM-DD`.
+ *
+ * Toshkent kalendari bo'yicha: 1-sentabr 00:00 (Toshkent) UTC'da hali
+ * 31-avgust, shuning uchun `Date` bilan hisoblash bir kunlik xato berardi.
+ * Bu fayldagi hamma kalendar javobi kabi — MATN qaytadi.
+ */
+export function oyBoshi(d: Date = new Date()): string {
+  const { yil, oy } = kunQismlari(d);
+  return sanaMatni(yil, oy, 1);
+}
+
 export function siklDavri(d: Date, muddatKuni: number): SiklDavri {
   const { yil, oy } = kunQismlari(d);
   const kun = Math.min(Math.max(1, muddatKuni), oyKunlari(yil, oy));

@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1080">
+  <title>Susambil — qo'llanma</title>
+  <!--
+    Bu sahifa botdagi "ℹ️ Qanday ishlaydi?" rasmining (qollanma.png) manbasi.
+    Tugma nomlari src/bot/keyboards.ts dagi bilan AYNAN bir xil bo'lishi shart —
+    odam rasmda ko'rgan yozuvni botdan qidiradi. O'zgartirgach PNG'ni qayta
+    chiqaring (README → "Qo'llanma rasmi") va config.ts dagi ?v= ni oshiring.
+  -->
+  <style>
+    :root {
+      --fon: #fff7ec;
+      --matn: #1f2430;
+      --xira: #5b6272;
+      --karta: #ffffff;
+      --chiziq: #efe3d2;
+      --tugma: #e8f1fb;
+      --tugma-matn: #1f5d99;
+      --yangi: #e4572e;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      width: 1080px; height: 1920px; overflow: hidden;
+      background: radial-gradient(1200px 600px at 90% -10%, #ffe2c2 0%, transparent 60%),
+                  radial-gradient(900px 500px at -10% 110%, #d9f0e6 0%, transparent 60%),
+                  var(--fon);
+      color: var(--matn);
+      font-family: -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+      padding: 48px 52px 38px;
+      display: flex; flex-direction: column;
+    }
+    header { text-align: center; margin-bottom: 26px; }
+    h1 { margin: 0 0 6px; font-size: 62px; letter-spacing: -1px; font-weight: 800; }
+    .sub { margin: 0; font-size: 31px; color: var(--xira); }
+    .sub b { color: var(--matn); }
+
+    main { display: flex; flex-direction: column; gap: 16px; flex: 1; }
+    .k {
+      background: var(--karta); border: 2px solid var(--chiziq); border-radius: 28px;
+      padding: 18px 24px; display: flex; gap: 20px; align-items: center;
+      box-shadow: 0 6px 18px rgba(120, 80, 30, .06);
+      position: relative;
+    }
+    .ic {
+      flex: none; width: 84px; height: 84px; border-radius: 24px;
+      display: grid; place-items: center; font-size: 48px;
+    }
+    .t { min-width: 0; }
+    .btn {
+      display: inline-block; background: var(--tugma); color: var(--tugma-matn);
+      border-radius: 14px; padding: 6px 16px; font-size: 30px; font-weight: 700;
+      margin: 0 6px 6px 0; white-space: nowrap;
+    }
+    .d { margin: 4px 0 0; font-size: 28px; line-height: 1.32; color: var(--xira); }
+    .d b { color: var(--matn); }
+    .yangi {
+      position: absolute; top: -14px; right: 26px; background: var(--yangi); color: #fff;
+      font-size: 22px; font-weight: 800; letter-spacing: 1px; padding: 5px 14px; border-radius: 999px;
+    }
+    .tartib { font-weight: 800; color: var(--matn); white-space: nowrap; }
+
+    footer {
+      margin-top: 18px; text-align: center; font-size: 27px; color: var(--xira); line-height: 1.4;
+    }
+    footer b { color: var(--matn); }
+    footer .btn { font-size: 26px; padding: 4px 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🏠 SUSAMBIL — uy boti</h1>
+    <p class="sub">Hammasi <b>tugmalarda</b> — buyruq yozish shart emas</p>
+  </header>
+
+  <main>
+    <div class="k">
+      <div class="ic" style="background:#e3f4ea">🧹</div>
+      <div class="t">
+        <span class="btn">🧹 Mening navbatim</span>
+        <p class="d">Navbat kelsa: vazifa → <b>rasm</b> → <b>✅ Tugatdim</b> → <b>📸 Yakuniy topshirish</b>. Tartib: <span class="tartib">4 → 3 → 2 → 1 → 4</span></p>
+      </div>
+    </div>
+
+    <div class="k">
+      <div class="ic" style="background:#e8eefc">✅</div>
+      <div class="t">
+        <span class="btn">✅ Tasdiqlayman</span>
+        <p class="d"><b>Guruhda</b>: boshqa xona topshirgan ishni ko'rib tasdiqlang — yetarli tasdiq yig'ilsa navbat <b>keyingi xonaga o'tadi</b></p>
+      </div>
+    </div>
+
+    <div class="k">
+      <span class="yangi">YANGI</span>
+      <div class="ic" style="background:#fde7df">🗑</div>
+      <div class="t">
+        <span class="btn">🗑 Musor to'ldi</span>
+        <p class="d">Musor to'lganini ko'rdingizmi? <b>Bir bosing</b> — navbatchiga darrov xabar boradi va <b>tashlamaguncha eslatib turadi</b></p>
+      </div>
+    </div>
+
+    <div class="k">
+      <div class="ic" style="background:#fff1cc">💰</div>
+      <div class="t">
+        <span class="btn">💰 Pul yig'imi</span>
+        <p class="d">Kartaga tashlang → <b>💰 To'ladim</b> → summa va <b>chek rasmi</b>. Admin tasdiqlagach hisobingizga tushadi</p>
+      </div>
+    </div>
+
+    <div class="k">
+      <span class="yangi">YANGI</span>
+      <div class="ic" style="background:#f1e6fb">🙁</div>
+      <div class="t">
+        <span class="btn">🙁 To'lay olmayapman</span>
+        <p class="d">To'lov eslatmasida. Hozir imkon yo'qmi? <b>Sababini yozing</b> — faqat admin ko'radi, eslatma bir kun to'xtaydi</p>
+      </div>
+    </div>
+
+    <div class="k">
+      <div class="ic" style="background:#e0f2f7">💳</div>
+      <div class="t">
+        <span class="btn">💳 Kvartira to'lovi</span>
+        <p class="d">Har oy muddatgacha: <b>💳 To'lov qilish</b> → summa → chek. Bo'lib-bo'lib to'lasangiz ham bo'ladi</p>
+      </div>
+    </div>
+
+    <div class="k">
+      <div class="ic" style="background:#e9f5dc">🛒</div>
+      <div class="t">
+        <span class="btn">🛒 Uyga nima kerak</span>
+        <p class="d"><b>💰 Pul yig'imi</b> ichida. Bumaga, azelit tugadimi? Bosib belgilang — adminga boradi</p>
+      </div>
+    </div>
+
+    <div class="k">
+      <div class="ic" style="background:#eceff3">🔒</div>
+      <div class="t">
+        <span class="btn">🔒 Anonim shikoyat</span>
+        <p class="d">Tozalanmagan, singan narsa? Yozing — <b>ismingizni faqat admin biladi</b></p>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <span class="btn">👤 Profil</span><span class="btn">📊 Faollik</span><span class="btn">🕘 Tarix</span><span class="btn">👥 A'zolar</span><br>
+    o'z holatingiz, oxirgi navbatlar, kim botga ulangan<br>
+    💬 Botga <b>istalgan narsa yozsangiz</b> — menyu chiqadi<br>
+    Batafsil: <b>ℹ️ Qanday ishlaydi?</b>
+  </footer>
+</body>
+</html>

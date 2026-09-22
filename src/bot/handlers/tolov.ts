@@ -34,9 +34,14 @@ import {
   tolovniRadEt,
   tolovniTasdiqla,
   tolovQabulQiluvchi,
+  ochiqYigim,
+  shaxsiyTalabOrnat,
   tolovTuzat,
   tolovTuzatishTarixi,
   tolovYuborish,
+  UZR_MAX,
+  uzrlarTarixi,
+  uzrYoz,
   type TolovToliq,
 } from "../../core/tolov.js";
 import type { TolovSikl } from "../../db/index.js";
@@ -65,6 +70,10 @@ import {
   tolovTarixi,
   tolovTasdiqXabari,
   tolovYuborildiXabari,
+  tarixSarlavhasi,
+  uzrAdminga,
+  uzrQabulQilindi,
+  uzrSorovi,
   yigimToldiGuruh,
 } from "../text.js";
 import { holatOl, holatOrnat, holatTozala, sorovniEslat, sorovniOchir } from "../state.js";
@@ -429,7 +438,8 @@ export async function tolovFoydalanuvchiKorsat(
   // degan savolga javob topsin; tuzatishlar esa shu siklga tegishli.
   const tarix = await foydalanuvchiTolovlari(userId);
   const tuzatishlar = await tolovTuzatishTarixi(userId, d.sikl.id);
-  await ctx.reply(chekla(tolovFoydalanuvchiMatni(d.sikl, odam, tarix, tuzatishlar)), {
+  const uzrlar = await uzrlarTarixi(d.sikl.id, userId);
+  await ctx.reply(chekla(tolovFoydalanuvchiMatni(d.sikl, odam, tarix, tuzatishlar, uzrlar)), {
     parse_mode: "HTML",
     reply_markup: tolovFoydalanuvchiKeyboard(userId, d.sikl.tur === "yigim"),
   });
@@ -480,6 +490,46 @@ export async function tolovTuzatishSummaKeldi(
   await sorovniEslat(ctx.from.id, yangi, xabar.chat.id, xabar.message_id);
 }
 
+/**
+ * Admin shaxsiy summani yozib bo'lgach — messages.ts'dan chaqiriladi.
+ *
+ * `0` yoki `-` = shaxsiy summani OLIB TASHLASH, ya'ni odam yana siklning
+ * umumiy talabiga qaytadi. Ataylab shunday: "chegirmani bekor qilish"
+ * uchun alohida tugma qo'shish ekranni uzaytirardi.
+ */
+export async function tolovShaxsiyTalabKeldi(
+  ctx: Context,
+  userId: number,
+  siklId: number,
+  xom: string,
+): Promise<void> {
+  if (!ctx.from) return;
+  const admin = await kim(ctx.from.id);
+  if (!admin?.admin) return;
+
+  const toza = xom.trim();
+  const olibTashlash = toza === "-" || toza === "0";
+  const raqam = olibTashlash ? null : summaTekshir(toza);
+  if (!olibTashlash && raqam === null) {
+    await ctx.reply("Faqat musbat raqam yozing, masalan: 600000\nOlib tashlash uchun: -");
+    return;
+  }
+
+  await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+  await holatTozala(ctx.from.id);
+
+  await shaxsiyTalabOrnat(siklId, userId, raqam, admin.id);
+  await ctx.reply(
+    raqam === null
+      ? "✅ Shaxsiy summa olib tashlandi — umumiy talab amal qiladi."
+      : `✅ Shaxsiy summa: <b>${pul(raqam)}</b>`,
+    { parse_mode: "HTML" },
+  );
+
+  const sikl = await siklniOl(siklId);
+  await tolovFoydalanuvchiKorsat(ctx, userId, sikl ?? undefined);
+}
+
 /** Admin sababni yozib bo'lgach (yoki "-" bilan o'tkazib yuborgach) — yozuv shu yerda yaratiladi. */
 export async function tolovTuzatishSababKeldi(
   ctx: Context,
@@ -506,7 +556,83 @@ export async function tolovTuzatishSababKeldi(
   await tolovFoydalanuvchiKorsat(ctx, userId, sikl ?? undefined);
 }
 
+/**
+ * A'zo "🙁 To'lay olmayapman" sababini yozdi — messages.ts'dan.
+ *
+ * Sabab alohida qator bo'lib saqlanadi (`tolov_uzrlari`) va FAQAT
+ * adminlarga boradi — pul masalasidagi shaxsiy holat guruhga chiqmaydi
+ * (chek rasmi bilan bir xil maxfiylik). Shu odamga eslatma bir kun
+ * to'xtab turadi (`UZR_TINIM_SOAT`, `jobs/reminders.ts`).
+ */
+export async function tolovUzrKeldi(ctx: Context, siklId: number, xom: string): Promise<void> {
+  if (!ctx.from) return;
+  const u = await kim(ctx.from.id);
+  if (!u) return;
+
+  const sabab = xom.trim();
+  if (sabab.length < 3) {
+    await ctx.reply("Juda qisqa. Sababini bir-ikki so'z bilan yozing.");
+    return;
+  }
+  if (sabab.length > UZR_MAX) {
+    await ctx.reply(`Juda uzun — ${UZR_MAX} belgigacha yozing.`);
+    return;
+  }
+
+  const sikl = await siklniOl(siklId);
+  if (!sikl) return;
+
+  await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+  await holatTozala(ctx.from.id);
+
+  await uzrYoz(sikl.id, u.id, sabab);
+  const holat = await foydalanuvchiTolovHolati(u.id, sikl);
+
+  const matn = uzrAdminga(u.ism, sikl, holat.qoldiq, sabab);
+  const p = sikl.tur === "yigim" ? "yigim" : "tolov";
+  let yetdi = 0;
+  for (const a of await adminlarRoyxati()) {
+    // Admin o'zi yozgan bo'lsa ham o'ziga boradi — kartochkaga bir bosishda
+    // o'tish uchun, va boshqa adminlar bilan bir xil xabarni ko'rsin.
+    const ok = await shaxsiy(ctx.api, a, matn, {
+      reply_markup: new InlineKeyboard().text("👤 Kartochkasi", `${p}_user:${u.id}`),
+    });
+    if (ok) yetdi++;
+  }
+
+  await ctx.reply(uzrQabulQilindi(yetdi), { parse_mode: "HTML" });
+}
+
 export function register(bot: Bot) {
+  // "🙁 To'lay olmayapman" — kvartira puli ham, yig'im ham shu bitta
+  // tugmadan (sikl id callback'da). Ikkinchi oqim yozilmadi.
+  bot.callbackQuery(/^uzr:(\d+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const u = await kim(ctx.from.id);
+    if (!u) return ctx.reply("Avval /start bosib ro'yxatdan o'ting.");
+
+    const sikl = await siklniOl(Number(ctx.match[1]));
+    if (!sikl || sikl.holat === "yakunlandi") {
+      return ctx.reply("Bu to'lov allaqachon yopilgan — sabab kerak emas.");
+    }
+
+    const holat = await foydalanuvchiTolovHolati(u.id, sikl);
+    if (holat.qoldiq <= 0) {
+      return ctx.reply(`✅ ${tarixSarlavhasi(sikl)} bo'yicha to'liq to'lagansiz — rahmat!`, {
+        parse_mode: "HTML",
+      });
+    }
+
+    await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+    const yangi = { tur: "tolov_uzr", siklId: sikl.id } as const;
+    await holatOrnat(ctx.from.id, yangi);
+    const xabar = await ctx.reply(uzrSorovi(sikl, holat.qoldiq), {
+      parse_mode: "HTML",
+      reply_markup: bekorKeyboard(),
+    });
+    await sorovniEslat(ctx.from.id, yangi, xabar.chat.id, xabar.message_id);
+  });
+
   bot.callbackQuery("tolov_boshla", async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});
     await tolovBoshla(ctx);
@@ -604,6 +730,51 @@ export function register(bot: Bot) {
         `<i>Foydalanuvchi yozgani:</i> ${pul(Number(toliq.kiritgan_summa))}`,
         ``,
         `Bank/karta tarixini tekshirib, aniq summani yozing:`,
+      ].join("\n"),
+      { parse_mode: "HTML", reply_markup: bekorKeyboard() },
+    );
+    await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
+  });
+
+  // Shaxsiy talab: "bu odamdan shu oyda shuncha" — 20 kun turib chiqib
+  // ketadigan odam uchun. `tolov_tuzat` dan alohida, chunki u to'langan
+  // pulni emas, TALABNI o'zgartiradi.
+  bot.callbackQuery(/^(?:tolov|yigim)_shaxsiy:(\d+)$/, async (ctx) => {
+    const admin = await faqatAdmin(ctx);
+    if (!admin) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const userId = Number(ctx.match[1]);
+    // Yig'im kartochkasidan bosilgan bo'lsa O'SHA yig'imga tegishli
+    // bo'lishi kerak — joriy oyni olsak chegirma boshqa siklga yozilardi.
+    // Yig'im shu orada yopilgan bo'lsa ham kvartira to'loviga o'tib
+    // ketmasligi kerak, shuning uchun bu yerda to'xtaymiz.
+    const yigimdan = ctx.callbackQuery.data?.startsWith("yigim_") ?? false;
+    const yigim = yigimdan ? await ochiqYigim() : null;
+    if (yigimdan && !yigim) return ctx.reply("Ochiq yig'im yo'q — u yopilgan bo'lsa kerak.");
+    const sikl = yigim ?? (await joriySikl());
+
+    const odam = (await tolovDashboard(sikl)).odamlar.find((o) => o.userId === userId);
+    const holat = { tur: "tolov_shaxsiy", userId, siklId: sikl.id } as const;
+    await holatOrnat(ctx.from.id, holat);
+
+    const xabar = await ctx.reply(
+      [
+        `🧾 <b>Shaxsiy summa</b> (${siklOyi(sikl)})`,
+        AJRATGICH,
+        ``,
+        `Umumiy talab: <b>${pul(sikl.talab)}</b>`,
+        ...(odam?.shaxsiy ? [`Hozirgi shaxsiy summa: <b>${pul(odam.talab)}</b>`] : []),
+        ``,
+        `Bu odamdan shu siklda qancha talab qilinsin?`,
+        `<code>600000</code>`,
+        ``,
+        `<i>Faqat SHU sikl uchun — keyingi oy yana umumiy</i>`,
+        `<i>talabdan boshlanadi.</i>`,
+        ``,
+        `<i>Olib tashlash uchun</i> <code>-</code> <i>yozing.</i>`,
       ].join("\n"),
       { parse_mode: "HTML", reply_markup: bekorKeyboard() },
     );

@@ -8,21 +8,23 @@ import {
   MENING_NAVBATIM_TUGMA,
   MENYU,
   menyuKeyboard,
+  MUSOR_TUGMA,
   SHIKOYAT_TUGMA,
   xonaTanlashKeyboard,
 } from "../keyboards.js";
 import { korinish, panelMatni } from "./commands.js";
-import { vazifaPaneliniKorsat } from "./navbat.js";
+import { musorToldi, navbatTartibKeldi, vazifaPaneliniKorsat } from "./navbat.js";
 import { javobgarIzohiSaqlandi, shikoyatBoshla, shikoyatIzohSaqlandi, shikoyatJoySora } from "./reports.js";
 import {
   tolovDalilSora,
   tolovRadEtish,
   tolovTasdiqlash,
   tolovTuzatishSababKeldi,
+  tolovShaxsiyTalabKeldi,
   tolovTuzatishSummaKeldi,
+  tolovUzrKeldi,
 } from "./tolov.js";
 import {
-  adminBallTuzatishKeldi,
   adminIsmTahrirKeldi,
   adminTgIdTahrirKeldi,
   adminPanelKorsat,
@@ -30,7 +32,14 @@ import {
 } from "./adminUsers.js";
 import { vazifaNomiKeldi, vazifaYangiNomiKeldi } from "./vazifalar.js";
 import { xabarMatniKeldi } from "./xabar.js";
-import { yigimNomiKeldi, yigimSummaOzgartirishKeldi, yigimSummasiKeldi } from "./yigim.js";
+import {
+  yigimNarsalariKeldi,
+  yigimNomiKeldi,
+  yigimNomiOzgartirishKeldi,
+  yigimRoyxatiKeldi,
+  yigimSummaOzgartirishKeldi,
+  yigimSummasiKeldi,
+} from "./yigim.js";
 import { narsaNomiKeldi, narsaNomTahririKeldi } from "./narsalar.js";
 import { summaTekshir } from "../../core/topshiriq.js";
 import { joriyNavbatchimi } from "../../core/rotation.js";
@@ -45,6 +54,11 @@ async function menyuTugmasi(ctx: Context, matn: string): Promise<boolean> {
 
   if (matn === SHIKOYAT_TUGMA) {
     await shikoyatBoshla(ctx);
+    return true;
+  }
+
+  if (matn === MUSOR_TUGMA) {
+    await musorToldi(ctx);
     return true;
   }
 
@@ -162,12 +176,20 @@ export function register(bot: Bot) {
       return ctx.reply("📎 Avval to'lov dalilini (rasm yoki PDF) tashlang.");
     }
 
+    if (holat?.tur === "tolov_uzr") {
+      return tolovUzrKeldi(ctx, holat.siklId, ctx.message.text);
+    }
+
     if (holat?.tur === "tolov_tasdiq") {
       return tolovTasdiqlash(ctx, holat.tolovId, ctx.message.text.trim());
     }
 
     if (holat?.tur === "tolov_rad") {
       return tolovRadEtish(ctx, holat.tolovId, ctx.message.text.trim());
+    }
+
+    if (holat?.tur === "tolov_shaxsiy") {
+      return tolovShaxsiyTalabKeldi(ctx, holat.userId, holat.siklId, ctx.message.text);
     }
 
     if (holat?.tur === "tolov_tuzat" && holat.qadam === "summa") {
@@ -206,8 +228,8 @@ export function register(bot: Bot) {
       return adminTgIdTahrirKeldi(ctx, holat.userId, ctx.message.text.trim());
     }
 
-    if (holat?.tur === "admin_ball") {
-      return adminBallTuzatishKeldi(ctx, holat.userId, ctx.message.text.trim());
+    if (holat?.tur === "navbat_tartib") {
+      return navbatTartibKeldi(ctx, ctx.message.text);
     }
 
     if (holat?.tur === "vazifa_yangi") {
@@ -227,7 +249,11 @@ export function register(bot: Bot) {
     }
 
     if (holat?.tur === "yigim_yangi" && holat.qadam === "nom") {
-      const nom = ctx.message.text.trim().slice(0, 80);
+      // ATAYLAB kesilmaydi: uzunligini `yigimNomiKeldi` tekshiradi va
+      // adminga aytadi. Ilgari shu yerda jimgina 80 belgiga kesilardi —
+      // admin savdo ro'yxatini nom qilib yozganda e'lon yarmida uzilib
+      // qolar, xato esa hech qayerda ko'rinmasdi.
+      const nom = ctx.message.text.trim();
       if (nom.length < 2) return ctx.reply("Juda qisqa. Nima uchun yig'ayotganingizni yozing.");
       return yigimNomiKeldi(ctx, nom);
     }
@@ -236,12 +262,24 @@ export function register(bot: Bot) {
       return yigimSummasiKeldi(ctx, holat.nom, ctx.message.text.trim());
     }
 
+    if (holat?.tur === "yigim_yangi" && holat.qadam === "qosh") {
+      return yigimNarsalariKeldi(ctx, holat, ctx.message.text);
+    }
+
     if (holat?.tur === "yigim_yangi") {
       return ctx.reply("👆 Yuqoridagi tugmalardan birini tanlang.");
     }
 
     if (holat?.tur === "yigim_summa") {
       return yigimSummaOzgartirishKeldi(ctx, holat.siklId, ctx.message.text.trim());
+    }
+
+    if (holat?.tur === "yigim_royxat") {
+      return yigimRoyxatiKeldi(ctx, holat.siklId, ctx.message.text);
+    }
+
+    if (holat?.tur === "yigim_nom") {
+      return yigimNomiOzgartirishKeldi(ctx, holat.siklId, ctx.message.text);
     }
 
     if (holat?.tur === "narsa_yangi") {

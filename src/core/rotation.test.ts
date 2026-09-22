@@ -4,6 +4,7 @@ import type { TurnIshBelgisi, TurnIshlar } from "../db/index.js";
 import type { NavbatVazifasi } from "./vazifalar.js";
 import {
   keyingiJoy,
+  tartibniOqi,
   kechikkanKun,
   barchaIshlarBajarildimi,
   qolganIshlar,
@@ -23,41 +24,33 @@ import {
 function yurish(boshJoy: number, soni: number, qadam: number): number[] {
   const yol = [boshJoy];
   let joy = boshJoy;
-  let oldingi = -1;
   for (let i = 0; i < qadam; i++) {
-    const keyingi = keyingiJoy(joy, oldingi, soni);
-    oldingi = joy;
-    joy = keyingi;
+    joy = keyingiJoy(joy, soni);
     yol.push(joy);
   }
   return yol;
 }
 
-test("tartib oxiriga yetgach boshiga sakramaydi, orqasiga qaytadi", () => {
-  // 4 xona, tartib 0..3 → xona raqamlari 1..4
-  // Boshi 1-xona (joy 0): 1 2 3 4 3 2 1 2 3 4
+// Uyning tartibi bazada: tartib 0..3 → xona raqamlari 4, 3, 2, 1.
+const UY_TARTIBI = [4, 3, 2, 1];
+
+test("tartib aylanma: 4 → 3 → 2 → 1 → 4", () => {
   assert.deepEqual(
-    yurish(0, 4, 9).map((j) => j + 1),
-    [1, 2, 3, 4, 3, 2, 1, 2, 3, 4],
+    yurish(0, 4, 8).map((j) => UY_TARTIBI[j]),
+    [4, 3, 2, 1, 4, 3, 2, 1, 4],
   );
 });
 
-test("hozirgi holat: 4-xonadan keyin 3-xona keladi", () => {
-  // Bazada faol navbat 4-xonada (joy 3), oldin tugagan navbat yo'q
-  assert.equal(keyingiJoy(3, -1, 4), 2);
+test("1-xonadan keyin 4-xona keladi, 2-xona emas", () => {
+  // 20-sentabrdagi xato: eski "u yoq-bu yoq" tartib 1 dan keyin yana
+  // 2-xonani tanlagan edi.
+  assert.equal(UY_TARTIBI[keyingiJoy(UY_TARTIBI.indexOf(1), 4)], 4);
 });
 
-test("oxirgi xonadan boshlansa ham orqaga qaytadi", () => {
-  assert.deepEqual(
-    yurish(3, 4, 6).map((j) => j + 1),
-    [4, 3, 2, 1, 2, 3, 4],
-  );
-});
-
-test("bir xil o'rin ketma-ket ikki marta kelmaydi", () => {
-  const yol = yurish(0, 4, 20);
-  for (let i = 1; i < yol.length; i++) {
-    assert.notEqual(yol[i], yol[i - 1], `${i}-qadamda xona o'zgarmadi`);
+test("har xona bir aylanishda aynan bir marta navbat oladi", () => {
+  const yol = yurish(0, 4, 11).slice(0, 12);
+  for (let joy = 0; joy < 4; joy++) {
+    assert.equal(yol.filter((j) => j === joy).length, 3, `${UY_TARTIBI[joy]}-xona`);
   }
 });
 
@@ -66,7 +59,20 @@ test("ikki xonada oddiy almashinuv bo'ladi", () => {
 });
 
 test("bitta xona bo'lsa o'zida qoladi", () => {
-  assert.equal(keyingiJoy(0, -1, 1), 0);
+  assert.equal(keyingiJoy(0, 1), 0);
+});
+
+test("tartibniOqi: har xil ajratgich bilan yozilgan to'liq tartibni qabul qiladi", () => {
+  assert.deepEqual(tartibniOqi("4 3 2 1", [1, 2, 3, 4]), [4, 3, 2, 1]);
+  assert.deepEqual(tartibniOqi("4,3,2,1", [1, 2, 3, 4]), [4, 3, 2, 1]);
+  assert.deepEqual(tartibniOqi("4 → 3 → 2 → 1", [1, 2, 3, 4]), [4, 3, 2, 1]);
+});
+
+test("tartibniOqi: tushib qolgan, takrorlangan yoki yo'q xonani rad etadi", () => {
+  assert.equal(tartibniOqi("4 3 2", [1, 2, 3, 4]), null);
+  assert.equal(tartibniOqi("4 3 3 1", [1, 2, 3, 4]), null);
+  assert.equal(tartibniOqi("4 3 2 5", [1, 2, 3, 4]), null);
+  assert.equal(tartibniOqi("", [1, 2, 3, 4]), null);
 });
 
 test("kechikkanKun muddatdan oldin nol qaytaradi", () => {

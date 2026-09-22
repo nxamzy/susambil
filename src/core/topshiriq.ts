@@ -19,6 +19,7 @@
  * chaqiruvchisi bilan birga olib tashlandi.
  */
 import { sql, type Submission, type User } from "../db/index.js";
+import { faollikYoz } from "./faollik.js";
 import { sozlamalarOl } from "./sozlamalar.js";
 
 /** Summaning yuqori chegarasi — bosh barmoq bilan yozib yuborishdan. */
@@ -70,6 +71,10 @@ export async function tasdiqla(submissionId: number, u: User): Promise<TasdiqNat
     RETURNING id
   `;
   if (qoshildi.length === 0) return { holat: "xato", sabab: "takror" };
+
+  // `ON CONFLICT DO NOTHING` tufayli bu yerga faqat YANGI tasdiq
+  // qo'shilganda yetib kelinadi — ikkinchi marta bosish sanalmaydi.
+  await faollikYoz(u.id, "tasdiq");
 
   const ismlar = await tasdiqlovchilar(submissionId);
   const { kerakliTasdiq } = await sozlamalarOl();

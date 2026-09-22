@@ -20,7 +20,6 @@ import type { Bot, Context } from "grammy";
 import { sql, type Room, type User } from "../../db/index.js";
 import {
   adminHuquqiniOzgartir,
-  ballTuzat,
   faollikniOzgartir,
   foydalanuvchiQoshish,
   foydalanuvchiTarixiBormi,
@@ -32,7 +31,6 @@ import {
   telegramIdOzgartir,
   xonaniOzgartir,
 } from "../../core/users.js";
-import { ballTuzatishTarixi } from "../../core/rating.js";
 import { foydalanuvchiLoglari, oxirgiLoglar } from "../../core/adminlog.js";
 import { foydalanuvchiTolovHolati } from "../../core/tolov.js";
 import { guruhAzosimi, kim } from "../group.js";
@@ -91,11 +89,10 @@ async function foydalanuvchiDetalKorsat(ctx: Context, userId: number): Promise<v
 
   const guruhHolat = u.telegram_id ? await guruhAzosimi(ctx.api, Number(u.telegram_id)) : null;
   const tolov = await foydalanuvchiTolovHolati(u.id);
-  const tuzatishlar = await ballTuzatishTarixi(u.id, 5);
   const loglar = await foydalanuvchiLoglari(u.id, 5);
   const tarixiBor = await foydalanuvchiTarixiBormi(u.id);
 
-  await ctx.reply(foydalanuvchiDetalMatni(u, guruhHolat, tolov, tuzatishlar, loglar), {
+  await ctx.reply(foydalanuvchiDetalMatni(u, guruhHolat, tolov, loglar), {
     parse_mode: "HTML",
     reply_markup: foydalanuvchiDetalKeyboard(u, !tarixiBor),
   });
@@ -412,26 +409,6 @@ export function register(bot: Bot) {
     await foydalanuvchiDetalKorsat(ctx, Number(ctx.match[1]));
   });
 
-  // --- Ball tuzatish ---
-  bot.callbackQuery(/^admin_ball:(\d+)$/, async (ctx) => {
-    if (!(await faqatAdmin(ctx))) return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q." });
-    const userId = Number(ctx.match[1]);
-    await ctx.answerCallbackQuery().catch(() => {});
-
-    const holat = { tur: "admin_ball", userId } as const;
-    await holatOrnat(ctx.from.id, holat);
-    const xabar = await ctx.reply(
-      [
-        `⭐ <b>Ball tuzatish</b>`,
-        ``,
-        `Miqdorni va sababini yozing, masalan:`,
-        `<code>+15 boshqa ish uchun</code>`,
-        `<code>-10 xato yozilgan edi</code>`,
-      ].join("\n"),
-      { parse_mode: "HTML", reply_markup: bekorKeyboard() },
-    );
-    await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
-  });
 }
 
 /** Matn qadamlari — messages.ts'dan chaqiriladi. */
@@ -493,29 +470,4 @@ export async function adminTgIdTahrirKeldi(ctx: Context, userId: number, xom: st
     parse_mode: "HTML",
     reply_markup: telegramIdTasdiqKeyboard(userId, yangi),
   });
-}
-
-export async function adminBallTuzatishKeldi(ctx: Context, userId: number, xom: string): Promise<void> {
-  if (!ctx.from) return;
-  const admin = await kim(ctx.from.id);
-  if (!admin?.admin) return;
-
-  const mos = xom.trim().match(/^([+-]?\d+)\s*(.*)$/);
-  if (!mos) {
-    await ctx.reply("Format: +15 sabab yoki -10 sabab");
-    return;
-  }
-  const ball = Number(mos[1]);
-  const sabab = (mos[2] ?? "").trim();
-  if (ball === 0) {
-    await ctx.reply("Ball 0 bo'lishi mumkin emas.");
-    return;
-  }
-
-  await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
-  await holatTozala(ctx.from.id);
-
-  await ballTuzat(userId, ball, sabab, admin.id);
-  await ctx.reply(`✅ ${ball > 0 ? "+" : ""}${ball} ball qo'shildi.`);
-  await foydalanuvchiDetalKorsat(ctx, userId);
 }

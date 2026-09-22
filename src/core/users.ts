@@ -15,8 +15,30 @@ import { logla } from "./adminlog.js";
 
 export type FoydalanuvchiToliq = User & {
   xona_raqami: number | null;
-  jami_ball: number;
 };
+
+/**
+ * Eslatmalarda "kimga yozish kerak" — botga ulangan birinchi admin.
+ *
+ * NEGA KERAK: naqd pul bergan odamda chek yo'q, demak u botga hech narsa
+ * yubora olmaydi va admin tasdiqlamaguncha qarzdor bo'lib turadi —
+ * eslatma esa har 5 soatda kelaveradi. Endi eslatmaning o'zi kimga
+ * yozish kerakligini AYTADI.
+ *
+ * `@username` bo'lsa o'shani qaytaradi: Telegram uni bosiladigan havola
+ * qiladi, ya'ni odam qidirib o'tirmaydi. Bo'lmasa ism qaytadi, umuman
+ * admin topilmasa `null` — chaqiruvchi u holda qatorni tushirib qoldiradi.
+ */
+export async function adminAloqasi(): Promise<string | null> {
+  const [a] = await sql<{ ism: string; username: string | null }[]>`
+    SELECT ism, username FROM users
+    WHERE admin AND faol AND telegram_id IS NOT NULL
+    ORDER BY (username IS NULL), id
+    LIMIT 1
+  `;
+  if (!a) return null;
+  return a.username ? `@${a.username}` : a.ism;
+}
 
 /** Hammasi — faol va nofaol, xona bo'yicha guruhlangan. */
 export async function foydalanuvchilarRoyxati(): Promise<(User & { xona_raqami: number | null })[]> {
@@ -27,25 +49,6 @@ export async function foydalanuvchilarRoyxati(): Promise<(User & { xona_raqami: 
   `;
 }
 
-/**
- * Bitta odamning butun tarixidagi jami balli — `core/rating.ts`dagi
- * `reyting()` bilan bir xil manbalarni yig'adi (faqat u faol foydalanuvchi
- * uchun joriy oy kesimida ishlaydi; bu yerda esa nofaol bo'lsa ham,
- * BUTUN tarix bo'yicha — admin ko'rinishida shu kerak).
- */
-export async function foydalanuvchiBalliOl(userId: number): Promise<number> {
-  const [r] = await sql<{ jami: number }[]>`
-    SELECT (
-      COALESCE((SELECT sum(ball) FROM chores WHERE user_id = ${userId}), 0) +
-      COALESCE((SELECT sum(ball) FROM expenses WHERE user_id = ${userId}), 0) +
-      COALESCE((SELECT count(*) FROM confirmations WHERE user_id = ${userId}), 0) +
-      COALESCE((SELECT sum(rp.ball) FROM reports rp
-                WHERE rp.reported_id = ${userId} AND rp.holat = 'jarima') * -1, 0) +
-      COALESCE((SELECT sum(ball) FROM ball_tuzatish WHERE user_id = ${userId}), 0)
-    )::int AS jami
-  `;
-  return r?.jami ?? 0;
-}
 
 export async function foydalanuvchiToliqOl(id: number): Promise<FoydalanuvchiToliq | null> {
   const [u] = await sql<(User & { xona_raqami: number | null })[]>`
@@ -54,8 +57,7 @@ export async function foydalanuvchiToliqOl(id: number): Promise<FoydalanuvchiTol
     WHERE u.id = ${id}
   `;
   if (!u) return null;
-  const ball = await foydalanuvchiBalliOl(id);
-  return { ...u, jami_ball: ball };
+  return u;
 }
 
 /** Yangi foydalanuvchi — telegram_id har doim NULL boshlanadi ("ULANMAGAN"), /qosh bilan bir xil naqsh. */
@@ -222,6 +224,10 @@ export async function foydalanuvchiTarixiBormi(userId: number): Promise<boolean>
       SELECT 1 FROM ball_tuzatish WHERE user_id = ${userId} OR admin_id = ${userId}
       UNION ALL
       SELECT 1 FROM tolov_tuzatish WHERE user_id = ${userId} OR admin_id = ${userId}
+      UNION ALL
+      SELECT 1 FROM tolov_uzrlari WHERE user_id = ${userId}
+      UNION ALL
+      SELECT 1 FROM navbat_signallari WHERE user_id = ${userId} OR hal_qildi = ${userId}
     ) AS bor
   `;
   return r?.bor ?? false;
@@ -256,16 +262,3 @@ export async function takrorlanganFaolIsmlar(): Promise<{ ism: string; soni: num
   return r;
 }
 
-/** Ball qo'lda tuzatiladi — mavjud reyting hisobiga qo'shimcha manba sifatida (core/rating.ts). */
-export async function ballTuzat(
-  userId: number,
-  ball: number,
-  sabab: string,
-  adminId: number,
-): Promise<void> {
-  await sql`
-    INSERT INTO ball_tuzatish (user_id, ball, sabab, admin_id)
-    VALUES (${userId}, ${ball}, ${sabab.trim().slice(0, 300) || null}, ${adminId})
-  `;
-  await logla(adminId, "ball_tuzatildi", "user", userId, null, `${ball > 0 ? "+" : ""}${ball}: ${sabab}`);
-}

@@ -28,10 +28,6 @@ export const config = {
   /** Ishni qabul qilish uchun kerak bo'lgan tasdiqlar soni */
   kerakliTasdiq: 3,
 
-  /** Kechikkan har bir kun uchun jarima (so'm). Faqat reytingda ko'rsatiladi —
-   *  bot pul hisobini yuritmaydi. */
-  jarimaKunlik: 10_000,
-
   /**
    * Navbatdagi MAJBURIY xona tozalash vazifalari ("🧹 Mening navbatim" ichida)
    * muddat tugashiga necha kun qolganda ochiladi. Shu paytgacha xona a'zosi
@@ -44,16 +40,16 @@ export const config = {
    * Kvartira puli oyning shu kunigacha to'liq yig'ilgan bo'lishi kerak —
    * uy egasiga aynan shu kuni to'lanadi.
    *
-   * Muddat KUN OXIRIGACHA hisoblanadi: 15-kuni kelgan pul ham vaqtida
-   * qabul qilinadi, holat esa 16-kuniga o'tganda yakuniy suratga olinadi.
-   * Ataylab shunday — "15-gacha to'lang" deyilgan bo'lsa, 15-kuni ertalab
+   * Muddat KUN OXIRIGACHA hisoblanadi: 14-kuni kelgan pul ham vaqtida
+   * qabul qilinadi, holat esa 15-kuniga o'tganda yakuniy suratga olinadi.
+   * Ataylab shunday — "14-gacha to'lang" deyilgan bo'lsa, 14-kuni ertalab
    * to'lagan odamni kechikkan deb belgilash noto'g'ri bo'lardi.
    */
-  tolovMuddatKuni: 15,
+  tolovMuddatKuni: 14,
 
   /**
    * To'lov ogohlantirishi muddatga shuncha kun qolganda boshlanadi — ya'ni
-   * 15-kun muddati uchun oyning 12-kunidan.
+   * 14-kun muddati uchun oyning 11-kunidan.
    *
    * Kuniga BIR MARTA yuboriladi (navbat eslatmasidagi 5 soatlik chastota bu
    * yerga to'g'ri kelmaydi — pul masalasi kunlik ritmda bo'ladi), lekin
@@ -66,6 +62,19 @@ export const config = {
    * darhol to'xtaydi.
    */
   tolovEslatmaKuni: 3,
+
+  /**
+   * Oyna ochilgach kvartira to'lovi eslatmasi necha soatda bir qaytariladi.
+   *
+   * Ilgari KUNIGA BIR MARTA edi va qarzdorlar shunchaki e'tibor bermasdi.
+   * Endi pul yig'imidagi bilan bir xil chastota (`yigimEslatmaSoat`) —
+   * farqi shundaki, bu OYNA ichida ishlaydi (muddatga `tolovEslatmaKuni`
+   * kun qolganda boshlanadi), yig'imniki esa muddatdan mustaqil.
+   *
+   * To'lagan odam ro'yxatga umuman tushmaydi, ya'ni eslatma o'zidan
+   * to'xtaydi — alohida "o'chirish" bayrog'i yo'q.
+   */
+  tolovEslatmaSoat: 5,
 
   /**
    * Pul yig'imida to'lamaganlarga eslatma necha soatda bir qaytariladi.
@@ -81,6 +90,13 @@ export const config = {
 
   /** Yangi yig'im boshlanganda standart muddat (bugundan necha kun). */
   yigimMuddatKuni: 3,
+
+  /**
+   * "ℹ️ Qanday ishlaydi?" rasmi — `public/qollanma.png`, Vercel uni statik
+   * fayl qilib beradi, Telegram esa URL bo'yicha o'zi yuklab oladi.
+   * Rasm o'zgarsa `?v=` ni oshiring: Telegram bir URL'ni keshlab qoladi.
+   */
+  qollanmaRasm: process.env.QOLLANMA_URL ?? "https://uy-navbat-bot.vercel.app/qollanma.png?v=1",
 } as const;
 
 /**
@@ -187,37 +203,6 @@ export const SEKIN_ISHLAR = (Object.keys(ISH_TURLARI) as IshTuri[]).filter(
 );
 
 /**
- * Ball tizimi. O'lchov: taxminan 2 daqiqa ish = 1 ball.
- *
- *   musor tashlash   ~5 daqiqa   →  3 ball
- *   oshxona/hammom   ~30 daqiqa  → 15 ball
- *   butun kvartira   ~2 soat     → 60 ball (XONAGA beriladi)
- *
- * Navbat balli xona a'zolari soniga bo'linadi: 2 kishilik xona bir xil
- * ishni kam odam bilan bajaradi, demak har biriga ko'proq tegadi.
- *   2 kishilik xona → 30 ball, 3 kishilik → 20, 4 kishilik → 15
- *
- * Xarajat balli tozalashdan biroz yuqori — chunki pul ham ketadi.
- */
-export const BALLAR = {
-  /** Bitta navbat uchun xonaga beriladigan umumiy ball */
-  navbatXona: 60,
-  /** Muddatdan oldin tugatgan har bir a'zoga qo'shimcha */
-  vaqtidaBonus: 10,
-  /** Kechikkan har kun uchun har bir a'zodan ayiriladi */
-  kechikishJarima: 10,
-  /** Uyga narsa olib kelgani uchun */
-  xarajat: 10,
-  /** Boshqa xonaning ishini tasdiqlagani uchun */
-  tasdiq: 1,
-  /**
-   * Sababchi tuzatish uchun berilgan imkoniyatdan foydalanmasa (admin
-   * "Tuzatilmadi" deb belgilasa) ayiriladigan ball.
-   */
-  shikoyatJarima: 20,
-} as const;
-
-/**
  * Anonim shikoyat yozilganda kim sabab bo'lgani qanchalik aniqligi.
  * Reporter o'zi qanchalik ishonchli ekanini belgilaydi, admin esa buni
  * ko'rib chiqib kerak bo'lsa o'zgartiradi.
@@ -252,19 +237,4 @@ export const TOLOV_STD = {
   talab: 900_000,
   qabulQiluvchi: "Sorabek",
   karta: "9860350143875127",
-
-  /**
-   * Muddatda yig'ilmay qolgan summadan olinadigan jarima foizi.
-   *
-   * STANDART 0 — ya'ni jarima O'CHIQ. Bu ataylab: uyning mavjud jarima
-   * qoidalari faqat TOZALASH NAVBATI kechikishini belgilaydi
-   * (`jarimaKunlik`), kvartira to'lovi uchun esa hech qanday kelishilgan
-   * qoida yo'q. Bot o'zicha moliyaviy qoida o'ylab chiqarmaydi — buning
-   * o'rniga muddatda qancha yetmagani adminga ochiq ko'rsatiladi, foizni
-   * esa admin `/tolovjarima` bilan o'zi belgilaydi.
-   *
-   * `jarimaKunlik` bilan bir xil falsafa: bot kassa yuritmaydi, summa
-   * faqat ma'lumot uchun ko'rsatiladi.
-   */
-  jarimaFoiz: 0,
 } as const;

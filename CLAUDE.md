@@ -7,8 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Everything in this codebase is in Uzbek (Latin script)** — identifiers, function names,
 comments, DB table/column names, commit messages, and user-facing strings. Match it. Do not
 introduce English identifiers or comments; `tolov` (payment), `navbat` (duty rotation),
-`xarajat` (expense), `topshiriq` (submission), `tasdiq` (confirmation), `jarima` (penalty),
-`muddat` (deadline), `holat` (state), `sikl` (cycle), `ball` (points) are the core vocabulary.
+`xarajat` (expense), `topshiriq` (submission), `tasdiq` (confirmation),
+`muddat` (deadline), `holat` (state), `sikl` (cycle), `narsalar` (things to buy) are the core
+vocabulary. `ball` (points) and `jarima` (money penalty) were **removed** — see below; the word
+`jarima` survives only as a `reports.holat` value meaning "not corrected".
 
 Comments explain *why*, often naming the root cause of a past bug. Keep that density and style.
 
@@ -97,7 +99,7 @@ bosmasa, navbat topshirilmaydi (panelda `🟡 3/3 — tasdiqlang` deb turadi).
 ## Umumiy sozlamalar `settings` jadvalida (`core/sozlamalar.ts`)
 
 `config.ts`dagi `kerakliTasdiq`, `eslatmaKuni`, `eslatmaOraligiSoat`,
-`jarimaKunlik`, `tolovMuddatKuni`, `tolovEslatmaKuni`, `yigimEslatmaSoat`
+`tolovMuddatKuni`, `tolovEslatmaKuni`, `tolovEslatmaSoat`, `yigimEslatmaSoat`
 endi faqat STANDART.
 Haqiqiysi `settings` jadvalidan, `sozlamalarOl()` (KESHLI — deyarli har
 xabarda o'qiladi) orqali. Admin Panel → "⚙️ Sozlamalar".
@@ -133,10 +135,9 @@ shartga tushmaydi.
 ish-rasm oqimi va tanishtirishdagi bo'lim OLIB TASHLANDI — hech kim o'z
 ixtiyori bilan qilmasdi, hammasi navbatda bo'lardi.
 
-`chores` jadvali, `submissions.tur='ish'` CHECK, `core/rating.ts`dagi
-`chores.ball` yig'indisi va `confirm.ts`dagi `tur==='ish'` shoxi QOLADI —
-"tarix hech qachon o'chmaydi" qoidasi. Eski tasdiqlangan yozuvlar reyting
-totaliga qo'shilaveradi, Reyting/Profil ekranida "eski" deb belgilanadi.
+`chores` jadvali, `submissions.tur='ish'` CHECK va `confirm.ts`dagi
+`tur==='ish'` shoxi QOLADI — "tarix hech qachon o'chmaydi" qoidasi.
+(Reyting ekrani ham keyinchalik olib tashlandi — pastdagi bo'limga qarang.)
 Xarajat ("uyga narsa olib keldim") keyinroq xuddi shu yo'l bilan olib
 tashlandi — pastdagi bo'limga qarang.
 
@@ -154,9 +155,7 @@ OLIB TASHLANDI: `bot/handlers/expense.ts`, `core/expenses.ts`,
 
 QOLDI — "tarix hech qachon o'chmaydi": `expenses` jadvali,
 `submissions.tur='xarajat'` CHECK va `yakunla()`dagi tarmoq (tasdiq
-kutayotgan eski yozuv baribir yopilishi kerak), `BALLAR.xarajat`,
-`core/rating.ts`dagi `expenses.ball` yig'indisi. Reyting va Profilda ular
-"(eski)" deb belgilanadi va yozuv bo'lmasa umuman ko'rinmaydi.
+kutayotgan eski yozuv baribir yopilishi kerak).
 
 ## Pul yig'imi — `tolov_sikllari`ning IKKINCHI TURI, yangi tizim emas
 
@@ -182,8 +181,8 @@ Ikki turning farqi ataylab uchtagina:
   so'zini o'zi yozmaydi.
 - **MUDDAT SURATI OLINMAYDI.** `muddatiOtganSikllar` `tur='oylik'` bilan
   cheklangan va `muddatSuratiniYangila` yig'imda darrov `null` qaytaradi.
-  Yig'imda "muddatda qancha yetmagan edi" degan savol ham, jarima ham
-  yo'q — pul yig'ilmaguncha eslatma davom etadi, xolos.
+  Yig'imda "muddatda qancha yetmagan edi" degan savol yo'q — pul
+  yig'ilmaguncha eslatma davom etadi, xolos.
 - **Bir vaqtda BITTA ochiq yig'im** — bazadagi qisman UNIQUE indeks
   (`tolov_sikllari_ochiq_yigim_uniq`). Aks holda a'zo chek tashlaganda pul
   qaysi yig'imga tushishi noaniq bo'lardi.
@@ -263,7 +262,8 @@ hisoblash" intizomi). Har vazifaning oxirgi eslatma vaqti
 `turns.oraliq_eslatma` JSONB da `{ "<kod>": "<ISO ts>" }`.
 
 Musor: `db/schema.sql` `musor_oraliq_seed` bayrog'i bilan BIR MARTA
-`oraliq_kun = 3` qo'yadi.
+`oraliq_kun = 3` qo'ygan, keyin `musor_oraliq2_seed` uni 2 ga tushirgan
+(faqat hali 3 turgan bo'lsa) — uy talabi "2-kuni eslatsin".
 
 ## `takror_soni` — bir navbatda bir necha marta bajariladigan vazifa
 
@@ -363,8 +363,7 @@ parametr sifatida beriladi, xuddi `bot/text.ts`ga vazifalar ro'yxati
 berilgani kabi. `MAJBURIY_DOIM_OCHIQ` (999) — "hech qachon qulflanmasin".
 
 Muddat o'zgarishi JIMGINA bo'lmaydi: guruhga e'lon chiqadi va navbatdagi
-xona a'zolariga DM ketadi — muddat jarima soatining boshlanishi, uni
-bildirmasdan surish adolatsiz bo'lardi.
+xona a'zolariga DM ketadi — muddatni bildirmasdan surish adolatsiz bo'lardi.
 
 ## Admin xabari — e'lon, ikkinchi tasdiqlash tizimi emas
 
@@ -373,7 +372,7 @@ hammaga / bitta xonaga / bitta odamga / guruhga yuboradi. Avtomatik
 eslatmalar qat'iy matnli, uydagi kutilmagan holatni ("musor navbatdan
 oldin to'lib ketdi") ayta olmaydi — shuning uchun bor.
 
-ATAYLAB hech qanday "bajarildi" holati, ball yoki tasdiq yo'q. Ish
+ATAYLAB hech qanday "bajarildi" holati yoki tasdiq yo'q. Ish
 qilinganini ko'rsatish yo'li o'zgarmagan: a'zo mavjud ish tugmasini bosadi
 ("♻️ Musor tashladim"), u `submissions`ga tushadi va guruh tasdiqlaydi.
 Yangi topshiriq turi qo'shishdan oldin shu yo'lni kengaytirish mumkinmi
@@ -382,6 +381,104 @@ degan savolga javob bering — parallel oqim yaratmang.
 Yetmagan odamlar hisobotda ISM bilan ko'rsatiladi: `shaxsiy()` bloklangan
 hisobni ham `false` qaytaradi, "yuborildi" deb qo'yish adminni
 chalg'itardi.
+
+## Navbat tartibi — aylanma, `rooms.tartib` da ochiq
+
+`keyingiXona` = `tartib` bo'yicha keyingisi, oxiridan boshiga (`keyingiJoy`
+sof funksiya). Uyda 4 → 3 → 2 → 1 → 4.
+
+Ilgari "u yoq-bu yoq" edi (1 → 2 → 3 → 4 → 3 → 2 → 1 → 2) va yo'nalish
+oldingi navbatdan TAXMIN qilinardi. Uy amalda aylanib yurardi; farq
+chekkada chiqdi: 1-xonadan keyin bot yana 2-xonani tanladi (27-avgustda
+admin bir daqiqada qo'lda 4-xonaga o'tkazgan, 20-sentabrda 2-xona ketma-ket
+olgan). O'rtadagi xonalar navbatni ikki barobar ko'p olardi.
+
+Uyning yo'nalishi `db/schema.sql` `navbat_aylanma_seed` da BIR MARTA
+`tartib`ga yozilgan (faqat seed tartibi o'zgarmagan bo'lsa). `tartib` UNIQUE
+— qayta raqamlash har doim avval manfiyga surib, keyin bajariladi
+(`tartibniOrnat` ham xuddi shunday). Admin **⚙️ Navbat sozlamalari → 🔢
+Navbat tartibi** dan "4 3 2 1" deb yozadi (`tartibniOqi`: har xona aynan bir
+marta), o'zgarish guruhga e'lon qilinadi.
+
+`tartib` endi navbat YO'NALISHI, ro'yxat tartibi emas: a'zolar ro'yxati
+(`azolarMatni`) va xona tanlash `raqam` bo'yicha. Tarixga qaralmaydi — admin
+qo'lda o'tkazsa keyingisi o'sha xonadan hisoblanadi.
+
+## "🗑 Musor to'ldi" — signal, ikkinchi tasdiqlash oqimi EMAS
+
+`core/signal.ts` + `navbat_signallari`. Istalgan a'zo (pastki menyu, guruh
+paneli, admin navbat paneli) bosadi → navbatdagi xonaga DM, guruhga bitta
+qator, xabar berganga javob. Admin "📣 Xabar yuborish" bu ishni to'rt qadam
+va matn bilan qilardi — amalda hech kim qilmasdi.
+
+Signal faqat "hozir kerak" degan turtki: musor vazifasini (`oraliq_kun`
+qulfidan qat'i nazar) OCHADI (`panelniYubor`, `navbat_ish`), javob esa
+mavjud yo'l — rasm + "✅ Tugatdim". `navbat_tugat` handleri `martaniYop`
+dan keyin `signalniYop` qiladi; DM'dagi "🗑 Tashladim" mavjud rasm oqimini
+(`vazifaRasminiBoshla`) ochadi. Faqat vazifa to'liq bajarilgan (2/2) yoki
+navbat topshirilgan bo'lsa "Tashladim" rasmsiz yopadi — rasm yozadigan joy
+yo'q.
+
+Ochiq signal navbat+vazifa bo'yicha BITTA (qisman UNIQUE +
+`ON CONFLICT … WHERE hal_qilindi IS NULL DO NOTHING`). Eslatma
+`jobs/reminders.ts` `signalEslatmalari`: `oxirgi_eslatma` lahzasidan
+`eslatmaOraligiSoat`, faqat joriy navbatning signali; ochiq signal bor
+vazifaga `oraliqVazifaEslatmalari` yubormaydi (bir soatda ikkita DM
+kelmasin). Kod `MUSOR_KOD = "musor"` — `kod` o'zgarmas.
+
+## "🙁 To'lay olmayapman" — `tolov_uzrlari`, faqat adminlarga
+
+Kvartira puli ham, yig'im ham bitta tugma (`uzr:<siklId>` — sikl id
+callback'da, eslatma bilan bosish orasida oy almashsa ham to'g'ri siklga
+yoziladi). Sabab alohida QATOR (eskisi bosib yozilmaydi), adminlarga DM
+(kartochka tugmasi bilan), guruhga HECH QACHON — chek rasmi bilan bir xil
+maxfiylik.
+
+Yozilgach shu odamga eslatma `UZR_TINIM_SOAT` (24) to'xtaydi:
+`eslatmaNomzodlari` `oxirgiUzrTs` ni qaytaradi, `tolovEslatmasiKerakmi` /
+`yigimEslatmasiKerakmi` `uzrTinimidami` dan o'tadi. To'liq to'xtatilmaydi —
+qarz o'z-o'zidan yo'qolmaydi. `SiklOdam.uzr` — oxirgi sabab, dashboard
+qatorida `💬`, kartochkada hammasi (`uzrlarTarixi`).
+
+## Admin hisobotlari — `core/hisobot.ts`, baho emas
+
+Har navbat yopilgach va har oy boshida adminlarga DM. Hech narsa YOZILMAYDI
+va yangidan HISOBLANMAYDI — mavjud yozuvlar bir joyga to'planadi. Reyting
+bilan chalkashtirmang: ball, o'rin, medal yo'q (`hisobotText.test.ts`
+tekshiradi).
+
+- **Navbat hisoboti**: navbat to'rt yo'l bilan yopiladi (tasdiq, admin
+  yakunlashi, o'tkazish, /navbatber) — har biriga qo'shish o'rniga
+  `navbatHisobotlari` "yopilgan, hisoboti ketmagan" navbatni qidiradi
+  (`turns.hisobot_yuborildi IS NULL`). Webhook eslatma tekshiruvini javobdan
+  KEYIN ishlatadi, ya'ni hisobot yopgan bosishning o'zidayoq ketadi.
+- **Oylik**: `settings.oylik_hisobot_davr` — oxirgi yuborilgan `YYYY-MM`;
+  bir necha oy o'tib ketsa ham faqat eng oxirgisi (`oylikHisobotKerakmi`).
+  `QISQA_NAVBAT_SOAT` (1) dan qisqa navbat — darrov o'tkazilgan, sanalmaydi;
+  topshiriqsiz yopilgani alohida sanaladi ("vaqtida" deb ko'rsatilmaydi).
+
+Ikkalasi ham EGALLAB yuboriladi (`hisobotniEgalla`, `oylikHisobotniEgalla`):
+`eslatmalarniTekshir` bir vaqtda bir necha joydan chaqiriladi, egallamasdan
+adminlar bitta hisobotni ikki marta olardi. Hech bir adminga yetmasa —
+bo'shatiladi, keyingi chaqiruvda qayta urinadi. Migratsiya mavjud yopilgan
+navbatlarni "yuborilgan" deb belgilagan va oylik davrni o'tgan oyga
+qo'ygan — deploydan keyin eski hisobotlar yog'ilmasin. Qo'lda: **📊
+Hisobotlar** (`handlers/hisobot.ts`).
+
+## Qo'llanma rasmi — `public/qollanma.png`
+
+Uzun matnli `tanishtirish` ni deyarli hech kim o'qimasdi — uydagilar botda
+nima borligini bilmay adminga so'rab kelardi. "ℹ️ Qanday ishlaydi?" endi
+avval RASM yuboradi (`korishRasm`, `config.qollanmaRasm` URL — Vercel
+`public/` ni statik beradi), matn "📖 Batafsil" da. Rasm yuborilmasa (lokal,
+deploydan oldin) matnga qaytadi. Yangi a'zoga ham rasm. Admin guruhda
+`/qollanma` — joylab pin qiladi.
+
+Manba `public/qollanma.html`: tugma nomlari `keyboards.ts` bilan AYNAN bir
+xil bo'lishi shart. O'zgartirgach PNG qayta chiqariladi (README) va URL'dagi
+`?v=` oshiriladi — Telegram URL'ni keshlaydi. `tanishtirish` dagi navbat
+tartibi qatori ham endi bazadan (`navbatTartibi`), qattiq yozilgan
+"1 → 2 → 3 → 4" emas.
 
 ## Vercel: never `sql.end()` inside a request handler
 
@@ -434,16 +531,203 @@ delivery actually succeeded, otherwise a blocked account burns the whole day's s
 **Do not add a second scheduler.** New periodic work goes inside `eslatmalarniTekshir`. Guard
 expensive queries behind a cheap date check first — this function runs on every Telegram update.
 
+## Ball/reyting va pul jarimasi — olib tashlandi
+
+Uy ikkalasiga ham qaramasdi, kod esa ularni hamma joyga tarqatib yuborgan edi.
+OLIB TASHLANDI: `core/rating.ts`, `jobs/monthly.ts` (oylik reyting e'loni),
+`config.BALLAR`, `config.jarimaKunlik`, `TOLOV_STD.jarimaFoiz`, `settings`dagi
+`jarima_kunlik` va `tolov_jarima_foiz`, `/reyting` va `/tolovjarima` buyruqlari,
+menyudagi 🏆 Reyting, admin "⭐ Ball tuzatish" oqimi, `core/users.ts`dagi
+`foydalanuvchiBalliOl`/`ballTuzat` va `core/tolov.ts`dagi butun jarima hisobi.
+
+QOLDI — "tarix hech qachon o'chmaydi": `ball_tuzatish` jadvali, `chores.ball`,
+`expenses.ball`, `reports.ball`, `submissions.ball`, `tolov_holat.muddat_jarima`
+ustunlari. Ular endi na yoziladi, na o'qiladi.
+
+`core/rating.ts`dagi `tarix()` esa reyting emas edi — u "oxirgi navbatlar kim
+tomonidan topshirilgan" degan oddiy yozuv. Shu sababli `core/tarix.ts` ga
+ko'chirildi va `/tarix` ishlayveradi.
+
+`reports.holat = 'jarima'` NOMI qoldi, lekin ma'nosi o'zgardi: endi u ball
+ayirishni emas, shunchaki "tuzatilmadi deb yopildi" ni bildiradi. Bazadagi
+CHECK qiymati bo'lgani uchun qayta nomlanmadi.
+
+## Tasdiq eslatmasi: faqat navbat, faqat faol, faqat BIR MARTA
+
+`jobs/reminders.ts` `tasdiqEslatmalari` uchta qattiq shart bilan ishlaydi va
+uchalasi ham amaliyotdagi xatodan kelib chiqqan:
+
+1. **`tasdiq_eslatma IS NULL`** — bir marta. Ilgari har 12 soatda qaytarilardi.
+2. **`tur = 'navbat'`** — `ish`/`xarajat` oqimlari olib tashlangan, lekin
+   ularning eski `kutilmoqda` yozuvlarini yopadigan yo'l qolmagan edi; ular
+   guruhga oylab "Qo'shimcha ish tasdiqlanmadi" deb eslatib turardi.
+3. **`turns.holat = 'faol'`** — admin navbatni qo'lda o'tkazgan bo'lsa
+   tasdiqlashning ma'nosi yo'q.
+
+Ildizi `core/rotation.ts` `navbatniOzgartirish` da ham yopildi: navbatni
+o'tkazishda eski navbatning kutayotgan topshirig'i `bekor = TRUE` bo'ladi.
+Tartib muhim — `submissions` AVVAL yangilanadi, chunki uni topish sharti
+navbatning hali `faol` ekaniga tayanadi.
+
+## Savdo ro'yxati yig'im boshlanishining bir qadami
+
+Ilgari e'longa faqat kimdir "tugadi" deb belgilagan narsalar tushardi
+(`keraklilar()`). Hech kim belgilamagan bo'lsa ro'yxat BO'SH ketardi va uy nima
+olishni bilmasdi — admin butun savdo ro'yxatini yig'imning NOMI qilib yozishga
+majbur bo'lgan, nom esa `core/tolov.ts` da 80 belgida JIMGINA kesilardi.
+
+Endi `nom → summa → kun → NARSALAR → tasdiq`. Narsalar qadamida HAMMA faol
+narsa tugma bo'lib chiqadi (standart tanlov: belgilanganlari, hech biri
+belgilanmagan bo'lsa hammasi), admin keraksizini bir bosishda oladi va
+"✏️ Qo'lda qo'shish" bilan ro'yxatda yo'g'ini yozadi — yozilgani "Uyga kerak"
+ro'yxatiga ham tushadi. Toggle xabarni TAHRIRLAYDI, yangisini yozmaydi.
+
+Nom endi kesilmaydi: uzun yoki ko'p qatorli matn rad etiladi va admin ro'yxat
+qadamiga yo'naltiriladi (`bot/handlers/yigim.ts` `NOM_MAX`).
+
+Bu faqat YANGI yig'imlarni himoya qilardi: tuzatishdan oldin ochilgan yig'im
+(#3) bazada nomi "Savdo ro'yxati 🛒:\n1. Bumaga … 4. I" bo'lib qolgan va har
+5 soatlik eslatma shu uzilgan matnni takrorlagan. Ikki tuzatish:
+
+- `db/schema.sql` oxiridagi idempotent UPDATE — ko'p qatorli nomning birinchi
+  qatori nom, qolganlari (raqami tozalanib) `narsalar` bo'ladi; ikki belgidan
+  qisqa qator (kesilgan "I") tashlanadi.
+- Ochiq yig'im panelida **🛒 Ro'yxat** va **📝 Nomi** (`yigimNarsalariniOzgartir`,
+  `yigimNominiOzgartir`). Ro'yxat toggle emas, MATN: e'londagi nomlar "Uyga
+  kerak" ro'yxatidagidan farq qiladi ("Hammom uchun azelit"), tugma bilan
+  ko'rsatib bo'lmasdi. Joriy ro'yxat `<code>` da ko'rsatiladi (nusxalash
+  uchun), yozilgani eskisining O'RNIGA tushadi, uzun qator KESILMAYDI —
+  rad etiladi. Guruhga to'liq ro'yxat chiqadi. Yig'im eslatmasi ham endi
+  ro'yxatni to'liq ko'rsatadi (`narsalarBloki`).
+
+## Shaxsiy talab: `tolov_holat.shaxsiy_talab`
+
+Uyda hamma bir xil turmaydi. Oyning 20 kunini turib chiqib ketadigan odam
+kelishuv bo'yicha 900 000 emas, 600 000 to'laydi — bot esa uni abadiy
+"qisman to'lagan" deb ko'rsatar, qarzdorlar ro'yxatidan tushmas va har 5
+soatda eslatardi.
+
+`NULL` = siklning umumiy talabi. HAR JOYDA `amaldagiTalab(sikl.talab,
+shaxsiy)` dan o'tiladi — `qoldiq`, `daraja`, `kechikkan`, muddat surati va
+eslatma ro'yxati bir xil raqamga tayanishi SHART, aks holda odam bir
+ekranda "to'lagan", boshqasida "qarzdor" bo'lib ko'rinardi. Yangi so'rov
+yozganda `tolov_holat` ni `LEFT JOIN` qilib `shaxsiy_talab` ni oling.
+
+`TolovDashboard.jamiTalab` ham endi `talab × odam soni` EMAS, har kimning
+o'z talabidan yig'iladi.
+
+**`tolov_tuzatish` bilan chalkashtirmang.** U odam TO'LAGAN pulni yozadi,
+`shaxsiy_talab` esa undan TALAB qilinadigan summani. Yetmagan 300 000 ni
+"to'ladi" deb yozish osonroq ko'rinadi, lekin u odam to'lamagan pulni
+tarixga kiritib, hisobotni yolg'onlashtiradi. Shuning uchun admin
+kartochkasida ikkita alohida tugma: "✏️ To'lovni tuzatish" va
+"🧾 Shaxsiy summa".
+
+Faqat SHU sikl uchun — keyingi oy yana umumiy talabdan boshlanadi, ya'ni
+bir marta kelishilgan chegirma jimgina abadiylashib qolmaydi (`talab`
+`tolov_sikllari` da muzlatilgani bilan bir xil falsafa). `shaxsiyTalabOrnat`
+o'zgartirgach `muddatSuratiniYangila` ni chaqiradi — aks holda dashboardda
+eski "muddatda yetmagan" raqami qolib ketardi.
+
+## Kvartira to'lovi eslatmasi ham SOATLIK
+
+`tolovEslatmasiKerakmi` ilgari KUNIGA BIR MARTA edi (sana solishtirardi) va
+qarzdorlar shunchaki e'tibor bermasdi. Endi `yigimEslatmasiKerakmi` bilan
+bir xil: `tolov_holat.oxirgi_eslatma_ts` (LAHZA) va `tolovEslatmaSoat`
+(standart 5).
+
+Ikkalasining farqi BITTA bo'lib qoldi va u ataylab: oylik eslatma OYNAGA
+bog'liq (`kunFarqi(bugun, muddat) <= tolovEslatmaKuni`), yig'imniki esa
+muddatdan mustaqil. Oylikni ham oynasiz qilsak oyning 1-kunidan har 5
+soatda DM ketib, oyiga yetmishta xabar bo'lardi.
+
+`eslatmaBelgila` (kunlik, DATE) olib tashlandi; `tolov_holat.oxirgi_eslatma`
+ustuni bazada qoldi. Ikkala tur `oxirgi_eslatma_ts` ni baham ko'radi —
+bitta (sikl, odam) juftligi faqat bitta turga tegishli bo'lgani uchun
+chalkashmaydi.
+
+## Naqd to'lovchi — eslatmaning o'zi kimga yozishni aytadi
+
+Naqd bergan odamda CHEK YO'Q: u botga hech narsa yubora olmaydi va admin
+qo'lda belgilamaguncha qarzdor bo'lib turadi. Eslatma esa endi har 5
+soatda keladi, ya'ni jim turish "bot meni unutdi" emas, "bot meni qarzdor
+deb turibdi" degani.
+
+`bot/text.ts` `naqdQatori` — ikkala eslatmaga ham (oylik va yig'im)
+qo'shiladi va `core/users.ts` `adminAloqasi()` bergan `@username` ni
+ko'rsatadi. Telegram uni bosiladigan havola qiladi, ya'ni odam adminni
+qidirib o'tirmaydi. Admin `@username` siz bo'lsa ismi, umuman admin
+topilmasa qator TUSHIB QOLADI — "yozing" deb kimga ekanini aytmaslik
+foydasiz.
+
+Admin tomonda hech narsa yozilmagan: mavjud "✏️ To'lovni tuzatish"
+oqimining o'zi aynan shu uchun bor (`sabab` misoli koddagidek — "naqd
+qo'lma-qo'l oldim").
+
+## Anonim shikoyat eslatmasi — DM haftada bir, guruhga bitta qator
+
+`jobs/reminders.ts` `shikoyatEslatmalari`: har faol a'zoga haftada bir marta
+shaxsiy eslatma. GURUHGA emas — guruhdagi "shikoyat yozsangiz bo'ladi" xabari
+kimdir yozmoqchi ekanini oshkor qiladi. Idempotent, `settings.shikoyat_eslatma_ts`
+dan qayta hisoblanadi, arzon tekshiruv birinchi turadi.
+
+Undan mustaqil ravishda har navbat e'loniga bitta qator qo'shiladi
+(`bot/text.ts` `SHIKOYAT_QATORI`) — hech kimni ko'rsatmaydi, lekin allaqachon
+o'qiladigan xabar ichida turadi.
+
+## Faollik hisoblagichi — REYTING EMAS
+
+`core/faollik.ts` + `faollik` jadvali: "kim botda ko'proq harakat qilyapti".
+Olib tashlangan ball tizimi bilan chalkashtirmang — u BAHO qo'yardi
+(navbatga 60, kechikkanga −10, xona a'zolariga bo'linardi, medallar bilan
+chiqardi). Bu esa faqat SANAYDI, xuddi xonaga kim ko'p kirib chiqayotganini
+bilish kabi.
+
+**Jadvalda `ball` ustuni ATAYLAB yo'q.** Bitta qator = bitta harakat, vazn
+qo'yadigan joy umuman mavjud emas. "Har harakat uchun aynan 1" degan qoida
+shu bilan kelishuvdan TUZILMAGA ko'chdi: kimdir "navbatga 5 beraylik" desa,
+avval jadvalni o'zgartirishi kerak va bu ko'zga tashlanadi. Manfiy qiymat
+ham yo'q, ya'ni jarima yozib bo'lmaydi.
+
+Sanaladigan harakatlar `FaollikTuri` da: `navbat`, `tasdiq`, `vazifa`,
+`tolov`, `narsa`, `narsa_qosh`, `shikoyat`, `signal` (faqat YANGI "🗑 Musor
+to'ldi" — mavjud ochiq signalga qayta bosish sanalmaydi). Menyu ko'rish, ro'yxat ochish,
+panelga qaytish ATAYLAB yo'q — bo'lmasa bekorga tugma bosib o'tirgan odam
+birinchi o'ringa chiqardi.
+
+`faollikYoz` CORE'da, harakat haqiqatan yozilgan joyda chaqiriladi (`logla`
+bilan bir xil naqsh) — UI yo'llaridan biri unutilib qolmasin. Uch joyda
+shart bor va uchalasi ham muhim:
+
+- `tasdiqla` — `ON CONFLICT DO NOTHING` dan keyin, ya'ni faqat YANGI tasdiq;
+- `martaniYop` — `yopildi` bayrog'i bilan, tranzaksiyadan KEYIN: "allaqachon
+  to'liq" shoxi ham natija qaytaradi, lekin ikkinchi marta bosilgan tugma
+  harakat emas;
+- `narsaQosh` — faqat haqiqatan yangi narsa uchun; ro'yxatda bor nom
+  yozilgan bo'lsa `narsaTugadi` allaqachon sanagan, ikki marta yozilmasin.
+
+`faollikYoz` HECH QACHON XATO TASHLAMAYDI (ichkarida `try/catch`):
+hisoblagich yordamchi ma'lumot, uning tufayli navbat topshirish yoki to'lov
+tasdiqlash yiqilmasligi kerak.
+
+Jadval seed qilinganda `submissions`/`confirmations`/`tolovlar`/`reports`
+dan BIR MARTA ko'chiriladi (`faollik_seed`) — hisoblagich birinchi
+kunidanoq haqiqiy raqam ko'rsatadi. Bekor/rad etilgan yozuvlar ham
+sanaladi: odam o'sha harakatni haqiqatan qilgan.
+
+Ko'rsatishda ham reytingga o'xshamasligi kerak: `faollikMatni` da medal
+(🥇🥈🥉), "ball" so'zi va yetakchiga nisbatan chiziq YO'Q — `faollik.test.ts`
+buni alohida tekshiradi.
+
 ## Ledger philosophy: no aggregate columns
 
-There is no `users.ball` and no `tolovlar.jami_tolangan`. Totals are always recomputed from
-historical rows (`core/rating.ts` sums `chores`/`expenses`/`turns`/`reports`/`ball_tuzatish`;
-`core/tolov.ts` sums `tolovlar` within one cycle). Double-counting is therefore structurally
-impossible.
+There is no `tolovlar.jami_tolangan`. Totals are always recomputed from historical rows
+(`core/tolov.ts` sums `tolovlar` within one cycle; `bot/handlers/commands.ts` `profilMatni`
+counts `turns`/`confirmations`). Double-counting is therefore structurally impossible.
 
-The complement: **points are frozen onto the ledger row when it is confirmed**
-(`chores.ball`, `expenses.ball`), so editing `BALLAR` in config never rewrites past results.
-Same idea for `tolov_sikllari.talab` — each month copies the requirement at creation time.
+The complement: **a requirement is frozen onto the row when it is created** —
+`tolov_sikllari.talab` copies the monthly requirement, `tolov_sikllari.narsalar` copies the
+shopping list by NAME. Editing the current setting never rewrites past cycles.
 
 Concurrency is handled the same way everywhere: `FOR UPDATE` inside `sql.begin`, plus a
 `UNIQUE` index and `ON CONFLICT DO NOTHING` so a replayed write is a no-op.
@@ -474,14 +758,18 @@ below describes the monthly one.
   cycle by its **submission** date, never its verification date.
 - **Claim vs verified**: `kiritgan_summa` is what the user typed and never counts;
   `tasdiqlangan_summa` is what the admin verified and is the only thing summed.
-- **Deadline** is the 15th, evaluated at *end of day*; the snapshot runs on the 16th and is
+- **Deadline** is the **14th**, evaluated at *end of day*; the snapshot runs on the 15th and is
   stored per (cycle, user) in `tolov_holat`, so later payments do not rewrite what was
-  actually missing at the deadline.
+  actually missing at the deadline. The house collects the money on the 14th; the value lives
+  in `settings.tolov_muddat_kuni` (seeded by `schema.sql`) with `config.tolovMuddatKuni` as
+  the fallback default.
 - **Verification delay is never the user's fault**: someone who submitted before the deadline
-  but is still awaiting review gets `tekshiruvKutilmoqda` and no penalty; confirming or
-  rejecting recomputes their snapshot.
-- **Penalty defaults to 0% (off)** — the house rules never defined one, so the bot exposes the
-  shortfall to the admin instead of inventing a financial rule. Admin sets it with `/tolovjarima`.
+  but is still awaiting review gets `tekshiruvKutilmoqda`, and every view says the result is
+  not final; confirming or rejecting recomputes their snapshot.
+- **There is no money penalty.** The percentage was never set to anything but 0 in two years,
+  so `jarimaHisobla`/`tolovJarimaFoizi`/`/tolovjarima` were removed. The bot shows the
+  shortfall and stops there — it does not invent a financial rule. `tolov_holat.muddat_jarima`
+  still exists as a column (history is never deleted) but is no longer written or read.
 
 ## Time is always Asia/Tashkent
 

@@ -65,8 +65,19 @@ export type Flow = (
    * o'qilsa summa xato bo'lib qolar edi (masalan "+400 000 izoh" ->
    * "+400" deb noto'g'ri o'qilardi).
    */
+  /**
+   * Admin bitta odamdan talab qilinadigan summani o'zgartiryapti.
+   * `tolov_tuzat` dan ATAYLAB alohida oqim: u to'langan pulni yozadi, bu
+   * esa talabni — ikkisi bir xil raqam emas.
+   */
+  | { tur: "tolov_shaxsiy"; userId: number; siklId: number }
   | { tur: "tolov_tuzat"; qadam: "summa"; userId: number; siklId: number }
   | { tur: "tolov_tuzat"; qadam: "sabab"; userId: number; siklId: number; summa: number }
+  /**
+   * A'zo "🙁 To'lay olmayapman" bosdi — sababini yozyapti. Admin emas,
+   * oddiy a'zo oqimi; sabab faqat adminlarga boradi.
+   */
+  | { tur: "tolov_uzr"; siklId: number }
   /**
    * Navbat: "Mening Navbatim" panelida bitta vazifa tugmasi bosildi —
    * o'sha vazifaning rasm(lar)i kutilyapti. `kod` — `navbat_vazifalari.kod`
@@ -84,7 +95,6 @@ export type Flow = (
   /** Admin: Telegram ID'ni qo'lda o'zgartirish — yozgach tasdiq so'raladi. */
   | { tur: "admin_tahrir_tgid"; userId: number }
   /** Admin: ball qo'lda tuzatiladi — "+10 sabab" yoki "-5 sabab" shaklida. */
-  | { tur: "admin_ball"; userId: number }
   /**
    * Admin: navbat vazifasini qo'shish/nomini o'zgartirish. Rasm soni
    * alohida qadam EMAS — u tugma bilan tanlanadi (matn qadami faqat nom
@@ -92,6 +102,8 @@ export type Flow = (
    */
   | { tur: "vazifa_yangi" }
   | { tur: "vazifa_nom"; vazifaId: number }
+  /** Admin: navbat tartibini yozyapti ("4 3 2 1"). */
+  | { tur: "navbat_tartib" }
   /**
    * Admin: a'zolarga erkin xabar/topshiriq yuborish. Kim olishini avval
    * tugma bilan tanlaydi, keyin matnini yozadi, so'ng ko'rib tasdiqlaydi —
@@ -101,16 +113,29 @@ export type Flow = (
   | { tur: "admin_xabar"; qadam: "tasdiq"; kim: XabarKimi; matn: string }
   /**
    * Admin yangi pul yig'imini boshlayapti: nomi → har kishidan qancha →
-   * muddati (tugma) → tasdiq. Tasdiq qadami ATAYLAB bor: "boshlash" bitta
-   * bosishda guruhga e'lon va hammaga xabar yuboradi, ortga qaytarib
-   * bo'lmaydi (`admin_xabar` bilan bir xil sabab).
+   * muddati (tugma) → SAVDO RO'YXATI → tasdiq. Tasdiq qadami ATAYLAB bor:
+   * "boshlash" bitta bosishda guruhga e'lon va hammaga xabar yuboradi,
+   * ortga qaytarib bo'lmaydi (`admin_xabar` bilan bir xil sabab).
+   *
+   * `narsalar` — e'longa tushadigan NOMLAR, "Uyga kerak" ro'yxatiga
+   * havola emas. Ro'yxat qadami ham ataylab qo'shildi: ilgari e'longa
+   * faqat kimdir "tugadi" deb belgilagan narsalar tushardi, hech kim
+   * belgilamagan bo'lsa esa e'lon "nima olamiz" degan savolga umuman
+   * javob bermasdi — admin butun savdo ro'yxatini yig'imning NOMI qilib
+   * yozishga majbur bo'lgan, nom esa 80 belgida kesilib qolgan.
    */
   | { tur: "yigim_yangi"; qadam: "nom" }
   | { tur: "yigim_yangi"; qadam: "summa"; nom: string }
   | { tur: "yigim_yangi"; qadam: "kun"; nom: string; talab: number }
-  | { tur: "yigim_yangi"; qadam: "tasdiq"; nom: string; talab: number; kun: number }
+  | { tur: "yigim_yangi"; qadam: "narsalar"; nom: string; talab: number; kun: number; narsalar: string[] }
+  | { tur: "yigim_yangi"; qadam: "qosh"; nom: string; talab: number; kun: number; narsalar: string[] }
+  | { tur: "yigim_yangi"; qadam: "tasdiq"; nom: string; talab: number; kun: number; narsalar: string[] }
   /** Admin ochiq yig'imning summasini o'zgartiryapti. */
   | { tur: "yigim_summa"; siklId: number }
+  /** Admin ochiq yig'imning savdo ro'yxatini qaytadan yozyapti (har qatorda bitta). */
+  | { tur: "yigim_royxat"; siklId: number }
+  /** Admin ochiq yig'imning nomini tuzatyapti. */
+  | { tur: "yigim_nom"; siklId: number }
   /**
    * "Uyga nima kerak" ro'yxatiga yangi narsa qo'shilyapti. Bu oqim
    * ADMINGA CHEKLANMAGAN — ro'yxat kalta chiqishining sababi aynan

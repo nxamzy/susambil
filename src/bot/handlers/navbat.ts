@@ -35,7 +35,12 @@ import {
   navbatniQaytaBoshla,
   navbatniYopish,
   navbatSozlamalari,
+  navbatTartibi,
   navbatTopshir,
+  vazifaBajarildimi,
+  kelgusiTartib,
+  tartibniOqi,
+  tartibniOrnat,
   ishRasmlari,
   majburiyKuniniOrnat,
   muddatniOzgartir,
@@ -44,9 +49,20 @@ import {
   type NavbatSozlamalari,
 } from "../../core/rotation.js";
 import { faolVazifaKodBoyicha, faolVazifalar, type NavbatVazifasi } from "../../core/vazifalar.js";
+import {
+  MUSOR_KOD,
+  ochiqSignal,
+  ochiqSignalKodlari,
+  signalEslatildi,
+  signalniOl,
+  signalniYop,
+  signalYarat,
+  type SignalToliq,
+} from "../../core/signal.js";
 import { tasdiqlovchilar } from "../../core/topshiriq.js";
 import { albomYubor, guruhgaYubor, guruhId, kim, shaxsiy } from "../group.js";
 import {
+  bekorKeyboard,
   menyuKeyboard,
   navbatAdminKeyboard,
   navbatBoshlashKeyboard,
@@ -60,13 +76,24 @@ import {
 } from "../keyboards.js";
 import {
   boshqaXonaMatni,
+  davomiylik,
   esc,
   majburiyQulfMatni,
   muddatOzgardiGuruhXabari,
+  musorNavbatSizda,
+  musorSignalGuruh,
+  musorSignalMavjud,
+  musorSignalNavbatchiga,
+  musorSignalQabul,
+  musorTashlandiGuruh,
+  musorTashlandiXabarchiga,
   navbatAdminPaneli,
   navbatMuddatMatni,
   navbatSozlamalariMatni,
+  navbatTartibiOzgardiXabari,
+  navbatTartibSorovi,
   navbatXabari,
+  tartibQatori,
   tasdiqXabari,
   vazifaPaneli,
   vazifaRasmMatni,
@@ -123,6 +150,38 @@ function rasmKlaviaturasi(
   return kb;
 }
 
+/**
+ * Bitta vazifaning rasm oqimini boshlaydi: holat + jonli xabar. Vazifa
+ * tugmasi (`navbat_ish`) va "🗑 Musor to'ldi" DM'idagi "Tashladim" tugmasi
+ * bir xil yo'ldan o'tadi — ikkinchi rasm oqimi yozilmadi. Tekshiruvlar
+ * (kimning navbati, vazifa ochiqmi) chaqiruvchida.
+ */
+async function vazifaRasminiBoshla(
+  ctx: Context,
+  turn: Turn,
+  vazifa: NavbatVazifasi,
+  vazifalar: NavbatVazifasi[],
+): Promise<void> {
+  if (!ctx.from) return;
+  const holat = { tur: "navbat_ish", kod: vazifa.kod, turnId: turn.id } as const;
+  await holatOrnat(ctx.from.id, holat);
+
+  // Shu vazifada/martada allaqachon rasm bo'lishi mumkin (odam qaytib
+  // kelgan) — "0 dan boshlaymiz" deb emas, joriy sanoqdan boshlaymiz.
+  const belgi = turn.ishlar[vazifa.kod];
+  const soni = ishRasmlari(belgi).length;
+  const bajarilgan = bajarilganMarta(belgi);
+
+  // Bu xabar keyin har kelgan rasmda TAHRIRLANADI, qayta yuborilmaydi —
+  // shuning uchun unga vazifa tugmalari ham qo'yiladi: odam bir vazifani
+  // tugatgach keyingisiga shu yerdan o'tadi, panel qayta chizilmaydi.
+  const xabar = await ctx.reply(vazifaRasmMatni(vazifa, soni, bajarilgan), {
+    parse_mode: "HTML",
+    reply_markup: rasmKlaviaturasi(turn.id, turn.ishlar, vazifalar, vazifa.kod, soni, vazifa.rasm_soni),
+  });
+  await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
+}
+
 /** Joriy navbat uchun ko'rinish holati — kutilmoqda/rad/faol. */
 async function vazifaHolatiniAniqla(turn: Turn): Promise<VazifaHolati> {
   const faolSub = await navbatFaolTopshirigi(turn.id);
@@ -157,9 +216,14 @@ async function panelniYubor(
   const { vazifalar, sozlamalar } = kontekst ?? (await konteksOl());
 
   // Har vazifa alohida: `oraliq_kun` vazifasi (musor) navbat o'rtasida
-  // ochiladi, qolganlari "oxirgi kun" qulfi bilan.
+  // ochiladi, qolganlari "oxirgi kun" qulfi bilan. "🗑 Musor to'ldi"
+  // signali ochiq bo'lsa vazifa qulfdan qat'i nazar ochiq — kimdir "hozir
+  // kerak" dedi, navbatchi 2-kunni kutib o'tirmasin.
+  const signalKodlari = await ochiqSignalKodlari(turn.id);
   const ochiqKodlar = new Set(
-    vazifalar.filter((v) => vazifaOchiqmi(turn, v, sozlamalar.majburiyKuni)).map((v) => v.kod),
+    vazifalar
+      .filter((v) => signalKodlari.has(v.kod) || vazifaOchiqmi(turn, v, sozlamalar.majburiyKuni))
+      .map((v) => v.kod),
   );
 
   // Birorta vazifa ham ochilmagan bo'lsa — faqat qulf xabari.
@@ -296,6 +360,43 @@ async function faqatAdmin(ctx: Context): Promise<User | null> {
   return admin?.admin ? admin : null;
 }
 
+/**
+ * Admin yangi navbat tartibini yozdi — messages.ts'dan chaqiriladi.
+ *
+ * O'zgarish JIMGINA bo'lmaydi (muddat o'zgarishi bilan bir xil qoida):
+ * tartib kimning navbati qachon kelishini belgilaydi, shuning uchun guruh
+ * yangi tartibni va keyingi xonalarni ko'radi.
+ */
+export async function navbatTartibKeldi(ctx: Context, xom: string): Promise<void> {
+  const admin = await faqatAdmin(ctx);
+  if (!admin || !ctx.from) return;
+
+  const raqamlar = (await navbatTartibi()).slice().sort((a, b) => a - b);
+  const yangi = tartibniOqi(xom, raqamlar);
+  if (!yangi) {
+    await ctx.reply(
+      `Har bir xonani AYNAN BIR MARTA yozing (${raqamlar.join(", ")}), masalan: <code>${raqamlar
+        .slice()
+        .reverse()
+        .join(" ")}</code>`,
+      { parse_mode: "HTML" },
+    );
+    return;
+  }
+
+  await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
+  await holatTozala(ctx.from.id);
+  await tartibniOrnat(admin.id, yangi);
+
+  const kelgusi = await kelgusiTartib(3);
+  await guruhgaYubor(ctx.api, navbatTartibiOzgardiXabari(yangi, kelgusi.map((k) => k.room.raqam), admin.ism));
+  await ctx.reply(`✅ Yangi tartib: <b>${tartibQatori(yangi)}</b>`, { parse_mode: "HTML" });
+  await ctx.reply(navbatSozlamalariMatni(await navbatSozlamalari(), yangi), {
+    parse_mode: "HTML",
+    reply_markup: navbatSozlamaKeyboard(),
+  });
+}
+
 /** /joriynavbat admin buyrug'i va Admin Panel → Navbat havolasi uchun. */
 export async function navbatAdminDashboard(ctx: Context): Promise<void> {
   const n = await faolNavbat();
@@ -327,6 +428,7 @@ export async function navbatAdminDashboard(ctx: Context): Promise<void> {
  */
 export async function navbatKelganiniXabarQil(api: Api, room: Room, azolar: User[]): Promise<void> {
   const { majburiyKuni } = await navbatSozlamalari();
+  const { eslatmaOraligiSoat } = await sozlamalarOl();
   const oraliq = (await faolVazifalar()).filter((v) => v.oraliq_kun > 0);
 
   const qatorlar = [
@@ -344,8 +446,14 @@ export async function navbatKelganiniXabarQil(api: Api, room: Room, azolar: User
     qatorlar.push(
       ``,
       `<i>${esc(v.emoji)} ${esc(v.nom)} navbatning ${v.oraliq_kun}-kunidan ochiladi —</i>`,
-      `<i>bajarilmasa har 5 soatda eslatib turaman.</i>`,
+      `<i>bajarilmasa har ${eslatmaOraligiSoat} soatda eslatib turaman.</i>`,
     );
+    if (v.kod === MUSOR_KOD) {
+      qatorlar.push(
+        `<i>Undan oldin to'lib qolsa, uydagilar "🗑 Musor to'ldi" bosadi —</i>`,
+        `<i>sizga darrov xabar keladi va vazifa o'sha zahoti ochiladi.</i>`,
+      );
+    }
   }
   const matn = qatorlar.join("\n");
 
@@ -354,7 +462,143 @@ export async function navbatKelganiniXabarQil(api: Api, room: Room, azolar: User
   }
 }
 
+// ---------------------------------------------------------------------------
+// "🗑 MUSOR TO'LDI" SIGNALI
+// ---------------------------------------------------------------------------
+
+/**
+ * Javobni qayerda ko'rsatish: shaxsiy chatda — oddiy xabar; guruh
+ * panelidagi tugmada esa alert (guruh har bosishda yangi xabar bilan
+ * to'lib ketmasin — e'lonning o'zi `guruhgaYubor` bilan alohida chiqadi).
+ */
+async function signalJavobi(ctx: Context, html: string, alert: string, kb?: InlineKeyboard): Promise<void> {
+  if (ctx.callbackQuery && ctx.chat?.type !== "private") {
+    await ctx.answerCallbackQuery({ text: alert, show_alert: true }).catch(() => {});
+    return;
+  }
+  if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => {});
+  await ctx.reply(html, { parse_mode: "HTML", reply_markup: kb });
+}
+
+/**
+ * "🗑 Musor to'ldi" — pastki menyudan, guruh panelidan yoki admin
+ * navbat panelidan. Navbatdagi xonaga DM, guruhga bitta qator, xabar
+ * bergan odamga javob; keyingi eslatmalar `jobs/reminders.ts` da.
+ */
+export async function musorToldi(ctx: Context): Promise<void> {
+  if (!ctx.from) return;
+  const u = await kim(ctx.from.id);
+  if (!u) {
+    return signalJavobi(ctx, "Avval /start bosib ro'yxatdan o'ting.", "Avval botga /start bosing.");
+  }
+
+  const n = await faolNavbat();
+  if (!n) return signalJavobi(ctx, "🧹 Hozir navbat yo'q.", "Hozir navbat yo'q.");
+
+  const vazifa = await faolVazifaKodBoyicha(MUSOR_KOD);
+  if (!vazifa) {
+    return signalJavobi(ctx, "Musor vazifasi ro'yxatda yo'q.", "Musor vazifasi ro'yxatda yo'q.");
+  }
+
+  // Navbatdagi xonaning o'zi — xabar berishning keragi yo'q, o'zi tashlaydi.
+  if (u.room_id === n.room.id) {
+    return signalJavobi(
+      ctx,
+      musorNavbatSizda(vazifa),
+      "Navbat sizning xonangizda — musorni tashlab, botda belgilang.",
+      new InlineKeyboard().text("👤 Mening Navbatim", "navbat_panel"),
+    );
+  }
+
+  const { eslatmaOraligiSoat } = await sozlamalarOl();
+  const yangi = await signalYarat(n.turn.id, vazifa.kod, u.id);
+  if (!yangi) {
+    const mavjud = await ochiqSignal(n.turn.id, vazifa.kod);
+    return signalJavobi(
+      ctx,
+      mavjud ? musorSignalMavjud(vazifa, n.room.raqam, mavjud, eslatmaOraligiSoat) : "🗑 Allaqachon xabar berilgan.",
+      `Allaqachon xabar berilgan${mavjud ? ` (${mavjud.ism})` : ""} — ${n.room.raqam}-xonaga eslatib turibman.`,
+    );
+  }
+
+  const matn = musorSignalNavbatchiga(vazifa, u.ism);
+  const kb = new InlineKeyboard().text("🗑 Tashladim — rasm yuborish", `musor_tashla:${yangi.id}`);
+  const natijalar = await Promise.all(n.azolar.map((a) => shaxsiy(ctx.api, a, matn, { reply_markup: kb })));
+  const yetdi = natijalar.filter(Boolean).length;
+  // Birinchi DM ham eslatma — yetgan bo'lsagina belgilaymiz, aks holda
+  // navbatdagi eslatma sikli uni darrov qayta urinadi.
+  if (yetdi > 0) await signalEslatildi(yangi.id);
+
+  await guruhgaYubor(ctx.api, musorSignalGuruh(vazifa, n.room.raqam, u.ism));
+  await signalJavobi(
+    ctx,
+    musorSignalQabul(n.room.raqam, yetdi, n.azolar.length, eslatmaOraligiSoat),
+    `✅ ${n.room.raqam}-xona navbatchilariga xabar berildi (${yetdi}/${n.azolar.length}). Tashlanmaguncha eslatib turaman.`,
+  );
+}
+
+/** Signal yopilgach: guruhga bitta qator, xabar bergan odamga DM. */
+async function signalYopildiXabarQil(
+  api: Api,
+  signal: SignalToliq,
+  vazifa: NavbatVazifasi,
+  room: Room,
+): Promise<void> {
+  const kim_ = signal.hal_ism ?? "navbatchi";
+  await guruhgaYubor(
+    api,
+    musorTashlandiGuruh(vazifa, room.raqam, kim_, davomiylik(signal.created_at, signal.hal_qilindi ?? new Date())),
+  );
+  const [xabarchi] = await sql<User[]>`SELECT * FROM users WHERE id = ${signal.user_id}`;
+  if (xabarchi) await shaxsiy(api, xabarchi, musorTashlandiXabarchiga(vazifa, kim_));
+}
+
 export function register(bot: Bot) {
+  bot.callbackQuery("musor_toldi", async (ctx) => {
+    await musorToldi(ctx);
+  });
+
+  /**
+   * Navbatchining DM'idagi "🗑 Tashladim". Vazifa hali rasm qabul qila
+   * olsa — o'sha mavjud rasm oqimi ochiladi va signal "✅ Tugatdim" da
+   * yopiladi. Qabul qila olmasa (hamma martasi bajarilgan yoki navbat
+   * topshirilgan) — rasm yozadigan joy yo'q, shuning uchun shu yerda yopiladi.
+   */
+  bot.callbackQuery(/^musor_tashla:(\d+)$/, async (ctx) => {
+    const u = await kim(ctx.from.id);
+    if (!u) return ctx.answerCallbackQuery({ text: "Siz ro'yxatda yo'qsiz." });
+
+    const signal = await signalniOl(Number(ctx.match[1]));
+    if (!signal || signal.hal_qilindi) {
+      return ctx.answerCallbackQuery({ text: "✅ Bu allaqachon hal qilingan.", show_alert: true });
+    }
+
+    const n = await faolNavbat();
+    if (!n || n.turn.id !== signal.turn_id) {
+      return ctx.answerCallbackQuery({ text: "Bu navbat allaqachon yopilgan.", show_alert: true });
+    }
+    if (u.room_id !== n.room.id) {
+      return ctx.answerCallbackQuery({ text: "Bu sizning navbatingiz emas.", show_alert: true });
+    }
+
+    const { vazifalar } = await konteksOl();
+    const vazifa = vazifalar.find((v) => v.kod === signal.vazifa_kod);
+    const rasmOlaOladi =
+      vazifa !== undefined &&
+      !vazifaBajarildimi(n.turn.ishlar[vazifa.kod], vazifa) &&
+      !(await navbatFaolTopshirigi(n.turn.id));
+
+    if (vazifa && rasmOlaOladi) {
+      await ctx.answerCallbackQuery({ text: "📷 Rasmni shu yerga tashlang." }).catch(() => {});
+      return vazifaRasminiBoshla(ctx, n.turn, vazifa, vazifalar);
+    }
+
+    const yopilgan = await signalniYop(n.turn.id, signal.vazifa_kod, u.id);
+    await ctx.answerCallbackQuery({ text: "✅ Rahmat!" }).catch(() => {});
+    if (yopilgan && vazifa) await signalYopildiXabarQil(ctx.api, yopilgan, vazifa, n.room);
+    await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard() }).catch(() => {});
+  });
+
   bot.callbackQuery("navbat_panel", async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});
     await vazifaPaneliniKorsat(ctx);
@@ -386,8 +630,10 @@ export function register(bot: Bot) {
 
     // Backend tomonda ham tekshiramiz — eski (keshlangan) tugma hali
     // ko'rinib tursa ham. `oraliq_kun` vazifasi navbat o'rtasida,
-    // qolganlari "oxirgi kun" qulfi bilan ochiladi.
-    if (!vazifaOchiqmi(n.turn, vazifa, sozlamalar.majburiyKuni)) {
+    // qolganlari "oxirgi kun" qulfi bilan ochiladi; ochiq signal esa
+    // qulfni chetlab o'tadi (`panelniYubor` bilan bir xil qoida).
+    const signalBor = (await ochiqSignalKodlari(n.turn.id)).has(kod);
+    if (!signalBor && !vazifaOchiqmi(n.turn, vazifa, sozlamalar.majburiyKuni)) {
       return ctx.answerCallbackQuery({
         text:
           vazifa.oraliq_kun > 0
@@ -398,24 +644,7 @@ export function register(bot: Bot) {
     }
 
     await ctx.answerCallbackQuery({ text: "📷 Rasmni shu yerga tashlang." }).catch(() => {});
-
-    const holat = { tur: "navbat_ish", kod, turnId } as const;
-    await holatOrnat(ctx.from.id, holat);
-
-    // Shu vazifada/martada allaqachon rasm bo'lishi mumkin (odam qaytib
-    // kelgan) — "0 dan boshlaymiz" deb emas, joriy sanoqdan boshlaymiz.
-    const belgi = n.turn.ishlar[kod];
-    const soni = ishRasmlari(belgi).length;
-    const bajarilgan = bajarilganMarta(belgi);
-
-    // Bu xabar keyin har kelgan rasmda TAHRIRLANADI, qayta yuborilmaydi —
-    // shuning uchun unga vazifa tugmalari ham qo'yiladi: odam bir vazifani
-    // tugatgach keyingisiga shu yerdan o'tadi, panel qayta chizilmaydi.
-    const xabar = await ctx.reply(vazifaRasmMatni(vazifa, soni, bajarilgan), {
-      parse_mode: "HTML",
-      reply_markup: rasmKlaviaturasi(turnId, n.turn.ishlar, vazifalar, kod, soni, vazifa.rasm_soni),
-    });
-    await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
+    await vazifaRasminiBoshla(ctx, n.turn, vazifa, vazifalar);
   });
 
   // -------------------------------------------------------------------------
@@ -462,6 +691,11 @@ export function register(bot: Bot) {
     // Jarayon tugadi — jonli "rasm tashlang" xabarini o'chiramiz.
     await sorovniOchir(ctx.api, await holatOl(ctx.from.id));
     await holatTozala(ctx.from.id);
+
+    // "🗑 Musor to'ldi" signali shu vazifaga ochiq bo'lsa — javob aynan shu
+    // edi. Alohida "bajarildi" tugmasi yo'q: mavjud Tugatdim yopadi.
+    const yopilgan = await signalniYop(turnId, kod, u.id);
+    if (yopilgan) await signalYopildiXabarQil(ctx.api, yopilgan, vazifa, n.room);
 
     const kontekst = await konteksOl();
     await panelniYubor(ctx, natija.turn, n.room, kontekst);
@@ -725,10 +959,28 @@ export function register(bot: Bot) {
       return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
     }
     await ctx.answerCallbackQuery().catch(() => {});
-    await ctx.reply(navbatSozlamalariMatni(await navbatSozlamalari()), {
+    await ctx.reply(navbatSozlamalariMatni(await navbatSozlamalari(), await navbatTartibi()), {
       parse_mode: "HTML",
       reply_markup: navbatSozlamaKeyboard(),
     });
+  });
+
+  // Navbat tartibi bazada ochiq turadi (`rooms.tartib`) — ilgari kodda
+  // yashiringan "u yoq-bu yoq" qoida edi va uy uni faqat xato chiqqanda
+  // payqardi. Endi admin tartibni ko'radi va kod tahrirlamasdan o'zgartiradi.
+  bot.callbackQuery("navbat_tartib", async (ctx) => {
+    if (!(await faqatAdmin(ctx))) {
+      return ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    }
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    const holat = { tur: "navbat_tartib" } as const;
+    await holatOrnat(ctx.from.id, holat);
+    const xabar = await ctx.reply(navbatTartibSorovi(await navbatTartibi()), {
+      parse_mode: "HTML",
+      reply_markup: bekorKeyboard(),
+    });
+    await sorovniEslat(ctx.from.id, holat, xabar.chat.id, xabar.message_id);
   });
 
   bot.callbackQuery("navbat_sikl", async (ctx) => {
@@ -759,7 +1011,7 @@ export function register(bot: Bot) {
     }
     const kun = await siklKuniniOrnat(admin.id, Number(ctx.match[1]));
     await ctx.answerCallbackQuery({ text: `✅ ${kun} kun` }).catch(() => {});
-    await ctx.reply(navbatSozlamalariMatni(await navbatSozlamalari()), {
+    await ctx.reply(navbatSozlamalariMatni(await navbatSozlamalari(), await navbatTartibi()), {
       parse_mode: "HTML",
       reply_markup: navbatSozlamaKeyboard(),
     });
@@ -795,7 +1047,7 @@ export function register(bot: Bot) {
     await ctx
       .answerCallbackQuery({ text: kun >= MAJBURIY_DOIM_OCHIQ ? "✅ Har doim ochiq" : `✅ ${kun} kun` })
       .catch(() => {});
-    await ctx.reply(navbatSozlamalariMatni(await navbatSozlamalari()), {
+    await ctx.reply(navbatSozlamalariMatni(await navbatSozlamalari(), await navbatTartibi()), {
       parse_mode: "HTML",
       reply_markup: navbatSozlamaKeyboard(),
     });

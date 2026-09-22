@@ -202,7 +202,7 @@ async function navbatniTasdiqla(ctx: Context, u: User, sub: Submission) {
 
   await xabarniYangila(
     ctx,
-    yopilganXabar(room, yuklagan.ism, ismlar, natija.kechikkanKun, natija.ballHar),
+    yopilganXabar(room, yuklagan.ism, ismlar, natija.kechikkanKun),
   );
 
   const chatId = await guruhId();

@@ -10,40 +10,61 @@ import {
   oraliqKunOtdi,
 } from "../core/rotation.js";
 import { faolVazifalar } from "../core/vazifalar.js";
+import {
+  navbatSignallari,
+  ochiqSignalKodlari,
+  signalEslatildi,
+  signalEslatmasiKerakmi,
+} from "../core/signal.js";
 import { sozlamalarOl } from "../core/sozlamalar.js";
 import { tasdiqlovchilar } from "../core/topshiriq.js";
 import type { Submission } from "../db/index.js";
 import {
-  eslatmaBelgila,
   eslatmaNomzodlari,
   eslatmaTsBelgila,
   guruhEslatmasiniBelgila,
-  jarimaHisobla,
   joriySikl,
   muddatiOtganSikllar,
   ochiqYigim,
   siklMuddatiniHisobla,
   tolovDashboard,
   tolovEslatmasiKerakmi,
-  tolovJarimaFoizi,
   tolovQabulQiluvchi,
   yigimEslatmasiKerakmi,
   type MuddatSurati,
 } from "../core/tolov.js";
 import { bugungiSana, kunFarqi, kunOxirigachaSoat } from "../core/vaqt.js";
-import { guruhgaYubor, shaxsiy } from "../bot/group.js";
+import { adminAloqasi } from "../core/users.js";
+import { adminlarRoyxati, guruhgaYubor, shaxsiy } from "../bot/group.js";
 import {
+  hisobotiKutayotganNavbat,
+  hisobotniEgalla,
+  hisobotniQaytar,
+  navbatHisoboti,
+  oylikHisobot,
+  oylikHisobotDavri,
+  oylikHisobotKerakmi,
+  oylikHisobotniEgalla,
+  oylikHisobotniQaytar,
+} from "../core/hisobot.js";
+import {
+  chekla,
+  davomiylik,
   esc,
   ismlar,
+  navbatHisobotiMatni,
+  oylikHisobotMatni,
+  musorSignalEslatmasi,
   oraliqVazifaMatni,
-  pul,
+  shikoyatEslatmaXabari,
+  tasdiqEslatmaXabari,
   tolovEslatmaXabari,
   tolovGuruhEslatmasi,
   tolovMuddatGuruhXabari,
   tolovMuddatXabari,
   yigimEslatmaXabari,
 } from "../bot/text.js";
-import { yigimTolashKeyboard } from "../bot/keyboards.js";
+import { UZR_TUGMA, yigimTolashKeyboard } from "../bot/keyboards.js";
 
 const SOAT_MS = 60 * 60_000;
 const KUN_MS = 24 * SOAT_MS;
@@ -56,9 +77,15 @@ function panelTugmasi(): InlineKeyboard {
   return new InlineKeyboard().text("👤 Mening Navbatim", "navbat_panel");
 }
 
-/** To'lov eslatmasidan to'g'ridan-to'g'ri to'lov oqimiga o'tish uchun. */
-function tolovTugmasi(): InlineKeyboard {
-  return new InlineKeyboard().text("💳 To'lov qilish", "tolov_boshla");
+/**
+ * To'lov eslatmasidan to'g'ridan-to'g'ri to'lov oqimiga o'tish uchun —
+ * va to'lay olmayotgan odam uchun sababini yozish yo'li.
+ */
+function tolovTugmasi(siklId: number): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("💳 To'lov qilish", "tolov_boshla")
+    .row()
+    .text(UZR_TUGMA, `uzr:${siklId}`);
 }
 
 /**
@@ -88,9 +115,120 @@ function tolovTugmasi(): InlineKeyboard {
 export async function eslatmalarniTekshir(api: Api): Promise<void> {
   await navbatEslatmalari(api).catch((e) => console.error("[eslatma] navbat xatosi:", e));
   await oraliqVazifaEslatmalari(api).catch((e) => console.error("[eslatma] oraliq vazifa xatosi:", e));
+  await signalEslatmalari(api).catch((e) => console.error("[eslatma] musor signali xatosi:", e));
   await tasdiqEslatmalari(api).catch((e) => console.error("[eslatma] tasdiq xatosi:", e));
   await tolovEslatmalari(api).catch((e) => console.error("[eslatma] to'lov xatosi:", e));
   await yigimEslatmalari(api).catch((e) => console.error("[eslatma] yig'im xatosi:", e));
+  await shikoyatEslatmalari(api).catch((e) => console.error("[eslatma] shikoyat xatosi:", e));
+  await navbatHisobotlari(api).catch((e) => console.error("[eslatma] navbat hisoboti xatosi:", e));
+  await oylikHisobotlar(api).catch((e) => console.error("[eslatma] oylik hisobot xatosi:", e));
+}
+
+// ---------------------------------------------------------------------------
+// ADMIN HISOBOTLARI
+// ---------------------------------------------------------------------------
+
+/** Barcha adminlarga bir xil matn; nechtasiga yetganini qaytaradi. */
+async function adminlargaYubor(api: Api, matn: string): Promise<number> {
+  const natijalar = await Promise.all((await adminlarRoyxati()).map((a) => shaxsiy(api, a, matn)));
+  return natijalar.filter(Boolean).length;
+}
+
+/**
+ * Har yopilgan navbatning hisoboti adminlarga — BIR MARTA.
+ *
+ * Navbat to'rt xil yo'l bilan yopiladi (guruh tasdig'i, admin "yakunlandi",
+ * admin boshqa xonaga o'tkazishi, /navbatber) — hisobotni har biriga
+ * alohida qo'shish o'rniga shu yerda "yopilgan, lekin hisoboti ketmagan"
+ * navbat qidiriladi (`turns.hisobot_yuborildi IS NULL`). Webhook eslatma
+ * tekshiruvini javobdan KEYIN ishga tushiradi (`api/webhook.ts`), ya'ni
+ * navbatni yopgan bosishning o'zidayoq hisobot ketadi.
+ *
+ * Bir chaqiruvda eng ko'pi uchta — tarmoq uzilib, bir nechtasi to'planib
+ * qolgan bo'lsa ham bitta chaqiruv cho'zilib ketmasin.
+ */
+async function navbatHisobotlari(api: Api): Promise<void> {
+  for (let i = 0; i < 3; i++) {
+    const turnId = await hisobotiKutayotganNavbat();
+    if (!turnId) return;
+    if (!(await hisobotniEgalla(turnId))) continue; // boshqa chaqiruv oldi
+
+    const h = await navbatHisoboti(turnId);
+    const yetdi = h ? await adminlargaYubor(api, chekla(navbatHisobotiMatni(h))) : 1;
+    // Hech bir adminga yetmasa — bo'shatamiz, keyingi chaqiruvda qayta
+    // urinadi. Aks holda hisobot jimgina yo'qolardi.
+    if (yetdi === 0) {
+      await hisobotniQaytar(turnId);
+      return;
+    }
+  }
+}
+
+/**
+ * Oy boshida o'tgan oyning hisoboti adminlarga — BIR MARTA. Qaysi oy
+ * yuborilgani `settings.oylik_hisobot_davr` da; arzon tekshiruv (bitta
+ * kichik so'rov) birinchi turadi, chunki bu funksiya har Telegram
+ * yangilanishida chaqiriladi.
+ */
+async function oylikHisobotlar(api: Api): Promise<void> {
+  const eski = await oylikHisobotDavri();
+  const davr = oylikHisobotKerakmi(eski, bugungiSana().slice(0, 7));
+  if (!davr) return;
+  if (!(await oylikHisobotniEgalla(davr, eski))) return;
+
+  const yetdi = await adminlargaYubor(api, chekla(oylikHisobotMatni(await oylikHisobot(davr))));
+  if (yetdi === 0) await oylikHisobotniQaytar(eski);
+}
+
+// ---------------------------------------------------------------------------
+// ANONIM SHIKOYAT — haftalik shaxsiy eslatma
+// ---------------------------------------------------------------------------
+
+/** Shikoyat eslatmasi necha kunda bir takrorlanadi. */
+const SHIKOYAT_ESLATMA_KUN = 7;
+
+/**
+ * Har bir a'zoga haftada bir marta "anonim shikoyat bor" deb eslatadi.
+ *
+ * NEGA KERAK: shikoyat yozish yo'li faqat pastki menyudagi tugmada edi.
+ * Uni bosgan odam ham, umuman borligini bilmagan odam ham bor — natijada
+ * uydagi norozilik botga emas, oshxonada gapga aylanardi.
+ *
+ * NEGA DM: guruhga tashlangan "shikoyat yozsangiz bo'ladi" xabari kimdir
+ * yozmoqchi ekanini oshkor qiladi. Navbat e'lonidagi bitta qator
+ * (`SHIKOYAT_QATORI`) esa hech kimni ko'rsatmaydi — ikkalasi bir-birini
+ * to'ldiradi.
+ *
+ * Idempotent, qolgan eslatmalar bilan bir xil intizomda: "hozir kerakmi"
+ * `settings.shikoyat_eslatma_ts` dan qayta hisoblanadi, bayroq yo'q.
+ * Arzon tekshiruv birinchi turadi — bu funksiya har Telegram
+ * yangilanishida chaqiriladi (`api/webhook.ts` `waitUntil`).
+ */
+async function shikoyatEslatmalari(api: Api): Promise<void> {
+  const [oxirgi] = await sql<{ qiymat: string }[]>`
+    SELECT qiymat FROM settings WHERE kalit = 'shikoyat_eslatma_ts'
+  `;
+  if (oxirgi?.qiymat) {
+    const otgan = Date.now() - new Date(oxirgi.qiymat).getTime();
+    if (otgan < SHIKOYAT_ESLATMA_KUN * KUN_MS) return;
+  }
+
+  const odamlar = await sql<User[]>`SELECT * FROM users WHERE faol`;
+  if (odamlar.length === 0) return;
+
+  const matn = shikoyatEslatmaXabari();
+  const natijalar = await Promise.all(odamlar.map((o) => shaxsiy(api, o, matn)));
+
+  // Hech kimga yetmagan bo'lsa (bot bloklangan, tarmoq uzilgan) belgilamaymiz —
+  // butun hafta o'tkazib yuborilmasin. "Yetkazilgandan keyin belgilash"
+  // qoidasi bu faylning hamma eslatmasida bir xil.
+  if (!natijalar.some(Boolean)) return;
+
+  await sql`
+    INSERT INTO settings (kalit, qiymat)
+    VALUES ('shikoyat_eslatma_ts', ${new Date().toISOString()})
+    ON CONFLICT (kalit) DO UPDATE SET qiymat = EXCLUDED.qiymat
+  `;
 }
 
 // ---------------------------------------------------------------------------
@@ -101,53 +239,55 @@ export async function eslatmalarniTekshir(api: Api): Promise<void> {
 const TASDIQ_ESLATMA_SOAT = 12;
 
 /**
- * Guruhga tasdiqsiz qolgan topshiriqlar haqida eslatma.
+ * Guruhga tasdiqsiz qolgan navbat topshirig'i haqida eslatma — BIR MARTA.
  *
  * ILDIZ MUAMMO: navbat topshirilgan, lekin boshqa xonalar "✅ Tasdiqlash"
- * bosmasa — navbat yopilmay kunlab osilib qolardi va hech kim hech kimga
- * eslatmasdi. Endi topshiriq `TASDIQ_ESLATMA_SOAT` soatdan ortiq
- * kutilmoqda holatida tursa, guruhga qisqa eslatma boradi (yetarli
- * tasdiq yig'ilguncha yoki rad etilguncha, har `TASDIQ_ESLATMA_SOAT` soatda).
+ * bosmasa, navbat yopilmay kunlab osilib qolardi va hech kim hech kimga
+ * eslatmasdi.
  *
- * `oxirgi_ping` bilan bir xil intizom: "hozir kerakmi" har safar
- * `submissions.tasdiq_eslatma` vaqtidan qayta hisoblanadi — necha marta
- * chaqirilsa ham xavfsiz. Yopilgan (tasdiqlandi/rad) topshiriq shartga
- * tushmaydi, demak eslatma o'zidan to'xtaydi.
+ * Uchta qattiq shart bor, uchalasi ham amaliyotdagi xatodan kelib chiqqan:
+ *
+ *  1) FAQAT BIR MARTA (`tasdiq_eslatma IS NULL`). Ilgari har
+ *     `TASDIQ_ESLATMA_SOAT` soatda QAYTARILARDI va guruh haftalab bir xil
+ *     xabarni ko'rardi — eslatma emas, spam edi. Bir marta aytilgach,
+ *     tasdiqlash yoki navbatni qo'lda o'tkazish odamning ishi.
+ *
+ *  2) FAQAT `tur = 'navbat'`. `ish` va `xarajat` oqimlari olib tashlangan,
+ *     lekin ularning eski `kutilmoqda` yozuvlarini yopadigan tugma ham,
+ *     buyruq ham qolmagan — ular guruhga abadiy "Qo'shimcha ish
+ *     tasdiqlanmadi" deb eslatib turardi.
+ *
+ *  3) FAQAT navbat HALI FAOL bo'lsa. Admin navbatni qo'lda keyingi xonaga
+ *     o'tkazgan bo'lsa (`navbatniBer` → `admin_yopdi`) tasdiqlashning
+ *     ma'nosi yo'q. O'sha topshiriqni `navbatniBer` ning o'zi bekor
+ *     qiladi; bu shart — ikkinchi himoya.
  */
 async function tasdiqEslatmalari(api: Api): Promise<void> {
-  const kutayotgan = await sql<Submission[]>`
-    SELECT * FROM submissions
-    WHERE holat = 'kutilmoqda' AND NOT bekor
-      AND guruh_msg_id IS NOT NULL
-      AND created_at < now() - (${TASDIQ_ESLATMA_SOAT} || ' hours')::interval
-      AND (tasdiq_eslatma IS NULL
-           OR tasdiq_eslatma < now() - (${TASDIQ_ESLATMA_SOAT} || ' hours')::interval)
-    ORDER BY id
+  const kutayotgan = await sql<(Submission & { xona: number })[]>`
+    SELECT s.*, r.raqam AS xona
+    FROM submissions s
+    JOIN turns t ON t.id = s.turn_id
+    JOIN rooms r ON r.id = t.room_id
+    WHERE s.holat = 'kutilmoqda' AND NOT s.bekor
+      AND s.tur = 'navbat'
+      AND t.holat = 'faol'
+      AND s.guruh_msg_id IS NOT NULL
+      AND s.tasdiq_eslatma IS NULL
+      AND s.created_at < now() - (${TASDIQ_ESLATMA_SOAT} || ' hours')::interval
+    ORDER BY s.id
   `;
   if (kutayotgan.length === 0) return;
 
   const { kerakliTasdiq } = await sozlamalarOl();
 
   for (const sub of kutayotgan) {
-    const ismlar = await tasdiqlovchilar(sub.id);
-    if (ismlar.length >= kerakliTasdiq) continue; // yetib bo'lgan — yakunla o'zi hal qiladi
+    const tasdiqlaganlar = await tasdiqlovchilar(sub.id);
+    if (tasdiqlaganlar.length >= kerakliTasdiq) continue; // yetib bo'lgan — yakunla o'zi hal qiladi
 
-    const kim =
-      sub.tur === "navbat"
-        ? "Navbatdagi xona"
-        : sub.tur === "xarajat"
-          ? "Xarajat"
-          : "Qo'shimcha ish";
-
-    const yetdi = await guruhgaYubor(api, [
-      `⏳ <b>TASDIQ KUTILMOQDA</b>`,
-      ``,
-      `${esc(kim)} topshirgan ish hali tasdiqlanmadi —`,
-      `<b>${ismlar.length}/${kerakliTasdiq}</b> tasdiq.`,
-      ``,
-      `Yuqoridagi xabardan <b>✅ Tasdiqlash</b> bosing —`,
-      `navbat shu bilan keyingi xonaga o'tadi.`,
-    ].join("\n"));
+    const yetdi = await guruhgaYubor(
+      api,
+      tasdiqEslatmaXabari(sub.xona, tasdiqlaganlar.length, kerakliTasdiq),
+    );
 
     if (yetdi) {
       await sql`UPDATE submissions SET tasdiq_eslatma = now() WHERE id = ${sub.id}`;
@@ -192,7 +332,13 @@ async function oraliqVazifaEslatmalari(api: Api): Promise<void> {
   const oxirgiMap = turn.oraliq_eslatma ?? {};
   const { eslatmaOraligiSoat } = await sozlamalarOl();
 
+  // "🗑 Musor to'ldi" signali ochiq vazifaga o'z eslatmasi boradi
+  // (`signalEslatmalari`) — bu yerdan ham yuborilsa bir soatda ikkita DM
+  // kelardi.
+  const signalKodlari = await ochiqSignalKodlari(turn.id);
+
   for (const v of vazifalar) {
+    if (signalKodlari.has(v.kod)) continue;
     // 1-marta bajarilgan bo'lsa — bu vazifa uchun eslatma tugadi.
     if (bajarilganMarta(turn.ishlar[v.kod]) >= 1) continue;
     // Oraliq oynasi hali ochilmagan (navbat boshlanganiga oraliq_kun kun yo'q).
@@ -221,6 +367,50 @@ async function oraliqVazifaEslatmalari(api: Api): Promise<void> {
       )
       WHERE id = ${turn.id}
     `;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// "🗑 MUSOR TO'LDI" SIGNALI
+// ---------------------------------------------------------------------------
+
+/**
+ * Ochiq signal bo'yicha navbatdagi xonaga har `eslatmaOraligiSoat` soatda
+ * DM — musor tashlanib, signal yopilguncha ("tashlamaguncha eslataversin").
+ *
+ * To'xtashi uchun bayroq yo'q: navbatchi "✅ Tugatdim" (yoki vazifa to'liq
+ * bo'lsa "🗑 Tashladim") bossa `hal_qilindi` yoziladi va signal bu
+ * so'rovga umuman tushmaydi. Faqat JORIY navbatning signali — navbat
+ * boshqa xonaga o'tsa eski signal eslatilmaydi (hisobotda "hal qilinmagan"
+ * bo'lib qoladi).
+ */
+async function signalEslatmalari(api: Api): Promise<void> {
+  const n = await faolNavbat();
+  if (!n) return;
+
+  const ochiqlar = (await navbatSignallari(n.turn.id)).filter((s) => !s.hal_qilindi);
+  if (ochiqlar.length === 0) return;
+
+  const { eslatmaOraligiSoat } = await sozlamalarOl();
+  const hozir = Date.now();
+  const vazifalar = await faolVazifalar();
+
+  for (const s of ochiqlar) {
+    const kerak = signalEslatmasiKerakmi({
+      yaratildi: s.created_at,
+      oxirgiEslatma: s.oxirgi_eslatma,
+      hozir,
+      oraliqSoat: eslatmaOraligiSoat,
+    });
+    if (!kerak) continue;
+
+    const v = vazifalar.find((x) => x.kod === s.vazifa_kod);
+    if (!v) continue; // vazifa ro'yxatdan chiqarilgan — eslatadigan narsa yo'q
+
+    const matn = musorSignalEslatmasi(v, davomiylik(s.created_at, new Date(hozir)), s.ism);
+    const kb = new InlineKeyboard().text("🗑 Tashladim — rasm yuborish", `musor_tashla:${s.id}`);
+    const natijalar = await Promise.all(n.azolar.map((a) => shaxsiy(api, a, matn, { reply_markup: kb })));
+    if (natijalar.some(Boolean)) await signalEslatildi(s.id);
   }
 }
 
@@ -258,7 +448,7 @@ async function navbatEslatmalari(api: Api): Promise<void> {
   await beshSoatlikEslatma(api, turn.id, room, azolar, muddat, hozir, turn.oxirgi_eslatma);
 
   if (hozir > muddat.getTime()) {
-    await kunlikOgohlantirish(api, turn.id, room, azolar, muddat, hozir, turn.oxirgi_ping);
+    await kunlikOgohlantirish(api, turn.id, room, azolar, muddat, turn.oxirgi_ping);
   }
 }
 
@@ -319,22 +509,18 @@ async function kunlikOgohlantirish(
   room: Room,
   azolar: User[],
   muddat: Date,
-  hozir: number,
   oxirgiPing: Date | null,
 ): Promise<void> {
   const kun = bugungiSana();
   const oxirgi = oxirgiPing ? bugungiSana(new Date(oxirgiPing)) : null;
   if (oxirgi === kun) return;
 
-  const { jarimaKunlik } = await sozlamalarOl();
   const kechikdi = kechikkanKun(muddat);
   const matn = [
     `🔴 <b>${room.raqam}-xona kechikdi — ${kechikdi} kun</b>`,
     ``,
     `👤 ${esc(ismlar(azolar))}`,
-    `💸 Hozircha jarima: <b>${pul(kechikdi * jarimaKunlik)}</b>`,
     ``,
-    `Har o'tgan kun uchun yana ${pul(jarimaKunlik)} qo'shiladi.`,
     `Navbat siz tugatmaguningizcha keyingi xonaga o'tmaydi.`,
   ].join("\n");
 
@@ -396,7 +582,7 @@ async function muddatNatijasiniElonQil(
     const u = odamlar.find((o) => o.id === n.userId);
     if (!u) continue;
     await shaxsiy(api, u, tolovMuddatXabari(sikl, n), {
-      reply_markup: n.qoldiq > 0 ? tolovTugmasi() : undefined,
+      reply_markup: n.qoldiq > 0 ? tolovTugmasi(sikl.id) : undefined,
     });
   }
 
@@ -404,9 +590,17 @@ async function muddatNatijasiniElonQil(
 }
 
 /**
- * Qarzi borlarga kuniga bir marta shaxsiy eslatma. To'liq to'lagan odam
- * ro'yxatga umuman tushmaydi — talab: "Fully paid user stops receiving
- * reminders".
+ * Qarzi borlarga HAR `tolovEslatmaSoat` SOATDA shaxsiy eslatma.
+ *
+ * Ilgari KUNIGA BIR MARTA edi va qarzdorlar shunchaki e'tibor bermasdi —
+ * endi pul yig'imidagi bilan bir xil chastota. To'liq to'lagan odam
+ * ro'yxatga umuman tushmaydi (talab: "Fully paid user stops receiving
+ * reminders"), va "to'liq" endi SHAXSIY talabdan hisoblanadi: kelishilgan
+ * kam summani to'lagan odam ham eslatma olmaydi.
+ *
+ * Belgilash `oxirgi_eslatma_ts` (LAHZA) bilan — yig'im bilan bir xil
+ * ustun. Bitta (sikl, odam) juftligi faqat bitta turga tegishli bo'lgani
+ * uchun ular chalkashmaydi.
  */
 async function shaxsiyTolovEslatmalari(
   api: Api,
@@ -417,13 +611,16 @@ async function shaxsiyTolovEslatmalari(
   // ataylab so'rovdan OLDIN: bu funksiya har bir Telegram yangilanishida
   // chaqiriladi, oyning ko'p kunida esa hech narsa qilmasligi kerak.
   const qolganKun = kunFarqi(bugun, sikl.muddat);
-  const { tolovEslatmaKuni } = await sozlamalarOl();
+  const { tolovEslatmaKuni, tolovEslatmaSoat } = await sozlamalarOl();
   if (qolganKun > tolovEslatmaKuni) return;
 
-  // Jarima faqat muddat o'tgandan keyingi xabarda kerak. Foiz standart
-  // holatda 0 — u holda xabarda jarima qatori umuman chiqmaydi.
-  const jarimaFoiz = qolganKun < 0 ? await tolovJarimaFoizi() : 0;
   const qolganSoat = qolganKun === 0 ? kunOxirigachaSoat() : undefined;
+  const hozir = Date.now();
+
+  // Naqd bergan odamda chek yo'q — u botga hech narsa yubora olmaydi va
+  // admin tasdiqlamaguncha qarzdor bo'lib turadi. Eslatma kimga yozish
+  // kerakligini o'zi aytadi.
+  const adminAloqa = await adminAloqasi();
 
   const nomzodlar = await eslatmaNomzodlari(sikl);
 
@@ -432,24 +629,24 @@ async function shaxsiyTolovEslatmalari(
       qoldiq: n.qoldiq,
       bugun,
       muddat: sikl.muddat,
-      oxirgiEslatma: n.oxirgiEslatma,
+      oxirgiTs: n.oxirgiEslatmaTs,
       eslatmaKuni: tolovEslatmaKuni,
+      oraliqSoat: tolovEslatmaSoat,
+      hozir,
+      uzrTs: n.oxirgiUzrTs,
     });
     if (!kerak) continue;
 
     const yetdi = await shaxsiy(
       api,
       n.user,
-      tolovEslatmaXabari(sikl, n, qolganKun, {
-        jarima: jarimaHisobla(n.qoldiq, jarimaFoiz),
-        qolganSoat,
-      }),
-      { reply_markup: tolovTugmasi() },
+      tolovEslatmaXabari(sikl, n, qolganKun, { qolganSoat, adminAloqa }),
+      { reply_markup: tolovTugmasi(sikl.id) },
     );
     // Faqat yetkazilganda belgilaymiz — aks holda bloklangan/o'chirilgan
-    // hisob tufayli kun "eslatilgan" bo'lib qolib, tuzatilgach ham qayta
+    // hisob tufayli oraliq "eslatilgan" bo'lib qolar, tuzatilgach ham qayta
     // urinilmasdi (navbat eslatmasidagi bilan bir xil ehtiyot chorasi).
-    if (yetdi) await eslatmaBelgila(sikl.id, n.userId, bugun);
+    if (yetdi) await eslatmaTsBelgila(sikl.id, n.userId);
   }
 }
 
@@ -537,6 +734,7 @@ async function yigimEslatmalari(api: Api): Promise<void> {
   const { yigimEslatmaSoat } = await sozlamalarOl();
   const hozir = Date.now();
   const qabul = await tolovQabulQiluvchi();
+  const adminAloqa = await adminAloqasi();
 
   for (const n of await eslatmaNomzodlari(yigim)) {
     const kerak = yigimEslatmasiKerakmi({
@@ -544,11 +742,12 @@ async function yigimEslatmalari(api: Api): Promise<void> {
       hozir,
       oxirgiTs: n.oxirgiEslatmaTs,
       oraliqSoat: yigimEslatmaSoat,
+      uzrTs: n.oxirgiUzrTs,
     });
     if (!kerak) continue;
 
-    const yetdi = await shaxsiy(api, n.user, yigimEslatmaXabari(yigim, n, qabul), {
-      reply_markup: yigimTolashKeyboard(),
+    const yetdi = await shaxsiy(api, n.user, yigimEslatmaXabari(yigim, n, qabul, adminAloqa), {
+      reply_markup: yigimTolashKeyboard(yigim.id),
     });
     // Faqat yetkazilganda belgilaymiz — bloklangan hisob tufayli keyingi
     // 5 soat behuda o'tib ketmasin (navbat/to'lov eslatmalaridagi bilan

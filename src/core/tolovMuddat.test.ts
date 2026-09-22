@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  hisoblaDaraja, jarimaHisobla, kechikkanmi, muddatiOtdimi, muddatNatijasi,
+  amaldagiTalab, hisoblaDaraja, kechikkanmi, muddatiOtdimi, muddatNatijasi,
   tolovEslatmasiKerakmi,
 } from "./tolov.js";
 import { kunOxirigachaSoat } from "./vaqt.js";
@@ -17,20 +17,18 @@ import { config } from "../config.js";
 
 const TALAB = 900_000;
 
-/** Jarimasiz (standart) holat — uy qoidasi jarima belgilamagan. */
-function natija(tasdiqlangan: number, kutilmoqda = 0, jarimaFoiz = 0) {
-  return muddatNatijasi({ talab: TALAB, tasdiqlangan, kutilmoqda, jarimaFoiz });
+function natija(tasdiqlangan: number, kutilmoqda = 0) {
+  return muddatNatijasi({ talab: TALAB, tasdiqlangan, kutilmoqda });
 }
 
 // ---------------------------------------------------------------------------
 // MUDDAT NATIJASI
 // ---------------------------------------------------------------------------
 
-test("muddatgacha to'liq to'lagan — qoldiq yo'q, jarima yo'q", () => {
+test("muddatgacha to'liq to'lagan — qoldiq yo'q", () => {
   const n = natija(900_000);
   assert.equal(n.daraja, "tola");
   assert.equal(n.qoldiq, 0);
-  assert.equal(n.jarima, 0);
   assert.equal(n.tekshiruvKutilmoqda, false);
 });
 
@@ -68,36 +66,23 @@ test("tekshirilmagan to'lov qoldiqni KAMAYTIRMAYDI", () => {
   assert.equal(n.daraja, "qisman");
 });
 
-test("tekshiruv kutayotgan odamga jarima YOZILMAYDI", () => {
+test("tekshiruv kutayotgan odam YAKUNIY deb belgilanmaydi", () => {
   // Muddatgacha yuborgan, admin hali tekshirmagan — bu odamning aybi emas.
-  const n = natija(0, 900_000, 10);
+  const n = natija(0, 900_000);
   assert.equal(n.tekshiruvKutilmoqda, true);
-  assert.equal(n.jarima, 0);
-  assert.equal(n.qoldiq, 900_000, "qoldiq baribir ko'rsatiladi — faqat jarima kechiktiriladi");
+  assert.equal(n.qoldiq, 900_000, "qoldiq baribir ko'rsatiladi");
 });
 
-test("tekshiruv tugagach (rad etilgan) jarima haqiqiy qoldiqdan hisoblanadi", () => {
+test("tekshiruv tugagach (rad etilgan) bayroq tushadi", () => {
   // Rad etilgandan keyin kutilmoqda 0 bo'ladi — surat qayta hisoblanadi.
-  const n = natija(0, 0, 10);
+  const n = natija(0, 0);
   assert.equal(n.tekshiruvKutilmoqda, false);
-  assert.equal(n.jarima, 90_000);
+  assert.equal(n.qoldiq, 900_000);
 });
 
-test("jarima YETMAGAN summadan olinadi, butun talabdan emas", () => {
-  // 700k to'lagan, 200k yetmagan → jarima 200k dan hisoblanadi.
-  const n = natija(700_000, 0, 10);
+test("qoldiq YETMAGAN summadan hisoblanadi, butun talabdan emas", () => {
+  const n = natija(700_000, 0);
   assert.equal(n.qoldiq, 200_000);
-  assert.equal(n.jarima, 20_000);
-  assert.notEqual(n.jarima, 90_000, "to'liq to'lamagandek muomala qilinmasin");
-});
-
-test("standart holatda jarima 0 — bot moliyaviy qoida o'ylab chiqarmaydi", () => {
-  assert.equal(natija(0).jarima, 0);
-  assert.equal(natija(500_000).jarima, 0);
-});
-
-test("to'liq to'laganda jarima foizi qo'yilgan bo'lsa ham 0", () => {
-  assert.equal(natija(900_000, 0, 25).jarima, 0);
 });
 
 test("da'vodan kam tasdiqlansa faqat tasdiqlangani hisobga olinadi", () => {
@@ -112,13 +97,18 @@ test("da'vodan kam tasdiqlansa faqat tasdiqlangani hisobga olinadi", () => {
 // SHAXSIY ESLATMA
 // ---------------------------------------------------------------------------
 
+const HOZIR = new Date("2026-08-12T09:00:00+05:00").getTime();
+const SOAT = 3_600_000;
+
 function eslatma(over: Partial<Parameters<typeof tolovEslatmasiKerakmi>[0]> = {}) {
   return tolovEslatmasiKerakmi({
     qoldiq: 300_000,
     bugun: "2026-08-12",
     muddat: "2026-08-15",
-    oxirgiEslatma: null,
+    oxirgiTs: null,
     eslatmaKuni: 5,
+    oraliqSoat: 5,
+    hozir: HOZIR,
     ...over,
   });
 }
@@ -131,18 +121,25 @@ test("to'liq to'laganga eslatma YUBORILMAYDI", () => {
   assert.equal(eslatma({ qoldiq: 0 }), false);
 });
 
-test("bir kunda ikki marta eslatilmaydi", () => {
-  assert.equal(eslatma({ oxirgiEslatma: "2026-08-12" }), false);
-  assert.equal(eslatma({ oxirgiEslatma: "2026-08-11" }), true, "kechagi eslatma bugungisini to'smaydi");
+test("oraliq o'tmaguncha qayta eslatilmaydi", () => {
+  assert.equal(eslatma({ oxirgiTs: new Date(HOZIR - 4 * SOAT) }), false, "4 soat — hali erta");
+  assert.equal(eslatma({ oxirgiTs: new Date(HOZIR - 5 * SOAT) }), true, "5 soat — vaqti keldi");
+  assert.equal(eslatma({ oxirgiTs: new Date(HOZIR - 9 * SOAT) }), true);
 });
 
-test("bot qayta ishga tushsa ham bir kunda ikki marta eslatmaydi", () => {
-  // Eslatma holati bazada (`tolov_holat.oxirgi_eslatma`), xotirada emas —
+test("bot qayta ishga tushsa ham oraliq saqlanadi", () => {
+  // Eslatma holati bazada (`tolov_holat.oxirgi_eslatma_ts`), xotirada emas —
   // shuning uchun qayta ishga tushgandan keyingi chaqiruv ham shu qarorni
-  // beradi: bugun allaqachon eslatilgan.
-  const bazadagiHolat = "2026-08-12";
-  assert.equal(eslatma({ oxirgiEslatma: bazadagiHolat }), false);
-  assert.equal(eslatma({ oxirgiEslatma: bazadagiHolat }), false);
+  // beradi: hali 5 soat o'tmagan.
+  const bazadagiHolat = new Date(HOZIR - 2 * SOAT);
+  assert.equal(eslatma({ oxirgiTs: bazadagiHolat }), false);
+  assert.equal(eslatma({ oxirgiTs: bazadagiHolat }), false);
+});
+
+test("oraliq sozlamasi hurmat qilinadi", () => {
+  const uchSoat = { oxirgiTs: new Date(HOZIR - 4 * SOAT), oraliqSoat: 3 };
+  assert.equal(eslatma(uchSoat), true, "3 soatlik oraliqda 4 soat yetarli");
+  assert.equal(eslatma({ ...uchSoat, oraliqSoat: 12 }), false, "12 soatlik oraliqda hali erta");
 });
 
 test("oyna ochilmaguncha eslatma yuborilmaydi", () => {
@@ -151,21 +148,23 @@ test("oyna ochilmaguncha eslatma yuborilmaydi", () => {
   assert.equal(eslatma({ bugun: "2026-08-10" }), true, "aynan oyna ochilgan kun kiradi");
 });
 
-test("SOZLAMA bo'yicha ogohlantirish 12-kundan boshlanadi (15-kun muddati)", () => {
-  // Talab aynan shunday: "reminders must start exactly 3 days before the
-  // deadline, meaning from the 12th". Shu sababli sinovda `eslatmaKuni`
-  // qo'lda emas, config'dan olinadi — sozlama o'zgarsa test yiqiladi.
+test("SOZLAMA bo'yicha ogohlantirish 11-kundan boshlanadi (14-kun muddati)", () => {
+  // Talab aynan shunday: ogohlantirish muddatdan 3 kun oldin boshlanadi.
+  // Shu sababli sinovda `eslatmaKuni` qo'lda emas, config'dan olinadi —
+  // sozlama o'zgarsa test yiqiladi.
   const p = {
     qoldiq: 500_000,
-    muddat: "2026-08-15",
-    oxirgiEslatma: null,
+    muddat: "2026-08-14",
+    oxirgiTs: null,
     eslatmaKuni: config.tolovEslatmaKuni,
+    oraliqSoat: config.tolovEslatmaSoat,
+    hozir: HOZIR,
   };
-  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-11" }), false, "11-kuni hali erta");
-  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-12" }), true, "12-kuni boshlanadi");
+  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-10" }), false, "10-kuni hali erta");
+  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-11" }), true, "11-kuni boshlanadi");
+  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-12" }), true);
   assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-13" }), true);
-  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-14" }), true);
-  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-15" }), true, "muddat kuni ham");
+  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-14" }), true, "muddat kuni ham");
 });
 
 test("muddat o'tib ketsa ham qarzdorga eslatma davom etadi", () => {
@@ -238,23 +237,6 @@ test("kechikish PUL va VAQT holatlarining kesishmasi", () => {
   assert.equal(kechikkanmi(0, "2026-08-15", "2026-08-20"), false);
 });
 
-test("jarima qoldiqdan hisoblanadi, standart foizda 0 chiqadi", () => {
-  assert.equal(jarimaHisobla(500_000, 0), 0, "foiz 0 — jarima o'chiq");
-  assert.equal(jarimaHisobla(500_000, 10), 50_000);
-  assert.equal(jarimaHisobla(0, 10), 0, "qarzi yo'qqa jarima yo'q");
-  // Yaxlitlash: 333 333 dan 7% = 23 333.31 → 23 333
-  assert.equal(jarimaHisobla(333_333, 7), 23_333);
-});
-
-test("jarima muddat suratida ham, joriy holatda ham bir xil hisoblanadi", () => {
-  // `muddatNatijasi` ichkarida ham shu funksiyani ishlatadi — ikkita
-  // hisob-kitob bo'lib qolmasligi kerak.
-  const n = muddatNatijasi({
-    talab: TALAB, tasdiqlangan: 400_000, kutilmoqda: 0, jarimaFoiz: 10,
-  });
-  assert.equal(n.jarima, jarimaHisobla(n.qoldiq, 10));
-});
-
 test("kunOxirigachaSoat 1..24 oralig'ida bo'ladi", () => {
   // Toshkent UTC+5: UTC 19:00 → Toshkent 00:00, ya'ni kun endi boshlandi.
   assert.equal(kunOxirigachaSoat(new Date("2026-08-15T19:00:00Z")), 24);
@@ -262,4 +244,48 @@ test("kunOxirigachaSoat 1..24 oralig'ida bo'ladi", () => {
   assert.equal(kunOxirigachaSoat(new Date("2026-08-15T18:00:00Z")), 1);
   // UTC 07:00 → Toshkent 12:00, yarim kun qoldi.
   assert.equal(kunOxirigachaSoat(new Date("2026-08-15T07:00:00Z")), 12);
+});
+
+// ---------------------------------------------------------------------------
+// SHAXSIY TALAB
+// ---------------------------------------------------------------------------
+
+test("shaxsiy talab qo'yilmagan bo'lsa siklning umumiy talabi amal qiladi", () => {
+  assert.equal(amaldagiTalab(900_000, null), 900_000);
+  assert.equal(amaldagiTalab(900_000, undefined as unknown as null), 900_000);
+});
+
+test("shaxsiy talab qo'yilgan bo'lsa O'SHA amal qiladi", () => {
+  // 20 kun turib chiqib ketadigan odam: kelishuv 600 000.
+  assert.equal(amaldagiTalab(900_000, 600_000), 600_000);
+  // postgres.js BIGINT'ni MATN qilib qaytaradi — raqamga o'girilishi shart,
+  // aks holda `900000 - "600000"` emas, string solishtiruv chiqardi.
+  assert.equal(amaldagiTalab(900_000, "600000"), 600_000);
+});
+
+test("kelishilgan kam summani to'lagan odam TO'LIQ to'lagan hisoblanadi", () => {
+  const talab = amaldagiTalab(900_000, "600000");
+  assert.equal(hisoblaDaraja(600_000, talab), "tola");
+  assert.equal(muddatNatijasi({ talab, tasdiqlangan: 600_000, kutilmoqda: 0 }).qoldiq, 0);
+  // Va demak unga eslatma ham bormaydi — `tolovEslatmasiKerakmi` qarzga qaraydi.
+  assert.equal(
+    tolovEslatmasiKerakmi({
+      qoldiq: 0,
+      bugun: "2026-08-12",
+      muddat: "2026-08-14",
+      oxirgiTs: null,
+      eslatmaKuni: 5,
+      oraliqSoat: 5,
+      hozir: HOZIR,
+    }),
+    false,
+  );
+});
+
+test("shaxsiy talab umumiysidan KATTA ham bo'la oladi", () => {
+  // Chegirma emas, shunchaki "boshqacha" — mehmon olib kelgan odam ko'proq
+  // to'lashi kerak bo'lishi mumkin. Kod hech qanday yo'nalish o'ylamaydi.
+  const talab = amaldagiTalab(900_000, 1_200_000);
+  assert.equal(hisoblaDaraja(900_000, talab), "qisman");
+  assert.equal(muddatNatijasi({ talab, tasdiqlangan: 900_000, kutilmoqda: 0 }).qoldiq, 300_000);
 });

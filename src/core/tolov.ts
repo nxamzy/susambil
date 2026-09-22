@@ -23,14 +23,14 @@
  */
 import type postgres from "postgres";
 import { sql, type SiklTur, type Tolov, type TolovDalilTuri, type TolovSikl, type User } from "../db/index.js";
-import { config, TOLOV_STD } from "../config.js";
+import { TOLOV_STD } from "../config.js";
 import { sozlamalarOl } from "./sozlamalar.js";
 import { bugungiSana, kunFarqi, kunQosh, siklDavri } from "./vaqt.js";
 import { logla } from "./adminlog.js";
+import { faollikYoz } from "./faollik.js";
 
 let keshlanganTalab: number | undefined;
 let keshlanganQabul: { ism: string; karta: string } | undefined;
-let keshlanganJarimaFoiz: number | undefined;
 
 /** Har kishidan talab qilinadigan summa — settings'da bo'lmasa standart qiymat. */
 export async function tolovTalabi(): Promise<number> {
@@ -81,32 +81,61 @@ export async function tolovQabulQiluvchiniOrnat(ism: string, karta: string): Pro
   keshlanganQabul = { ism, karta };
 }
 
-/**
- * Muddatda yig'ilmay qolgan summadan olinadigan jarima foizi.
- *
- * Standart 0 = jarima o'chiq. Uy qoidalari kvartira to'lovi uchun jarima
- * belgilamagan (mavjud `jarimaKunlik` faqat tozalash navbatiga tegishli),
- * shuning uchun bot o'zicha moliyaviy qoida o'ylab chiqarmaydi — foizni
- * admin ochiq ravishda o'zi kiritadi.
- */
-export async function tolovJarimaFoizi(): Promise<number> {
-  if (keshlanganJarimaFoiz !== undefined) return keshlanganJarimaFoiz;
-  const [r] = await sql<{ qiymat: string }[]>`
-    SELECT qiymat FROM settings WHERE kalit = 'tolov_jarima_foiz'
-  `;
-  keshlanganJarimaFoiz = r ? Number(r.qiymat) : TOLOV_STD.jarimaFoiz;
-  return keshlanganJarimaFoiz;
-}
-
-export async function tolovJarimaFoiziniOrnat(foiz: number): Promise<void> {
-  await sql`
-    INSERT INTO settings (kalit, qiymat) VALUES ('tolov_jarima_foiz', ${String(foiz)})
-    ON CONFLICT (kalit) DO UPDATE SET qiymat = EXCLUDED.qiymat
-  `;
-  keshlanganJarimaFoiz = foiz;
-}
-
 export type TolovDaraja = "tolanmagan" | "qisman" | "tola";
+
+// ---------------------------------------------------------------------------
+// SHAXSIY TALAB
+// ---------------------------------------------------------------------------
+
+/**
+ * Bitta odamdan shu siklda talab qilinadigan summa.
+ *
+ * Uyda hamma bir xil turmaydi: oyning 20 kunini turib chiqib ketadigan odam
+ * kelishuv bo'yicha 900 000 emas, 600 000 to'laydi. Ilgari bunday odam
+ * abadiy "qisman to'lagan" bo'lib qolar, qarzdorlar ro'yxatidan tushmas va
+ * har 5 soatda eslatma olardi.
+ *
+ * `tolov_holat.shaxsiy_talab` NULL bo'lsa siklning umumiy talabi amal
+ * qiladi. HAR JOYDA shu funksiyadan o'tiladi — `qoldiq`, `daraja`,
+ * `kechikkan`, muddat surati va eslatma ro'yxati bir xil raqamga tayanishi
+ * shart, aks holda odam bir ekranda "to'lagan", boshqasida "qarzdor" bo'lib
+ * ko'rinardi.
+ */
+export function amaldagiTalab(siklTalab: number, shaxsiy: string | number | null): number {
+  return shaxsiy === null || shaxsiy === undefined ? siklTalab : Number(shaxsiy);
+}
+
+/**
+ * Shaxsiy talabni qo'yadi yoki olib tashlaydi (`null`).
+ *
+ * FAQAT SHU SIKL uchun: keyingi oy yana umumiy talabdan boshlanadi, ya'ni
+ * bir marta kelishilgan chegirma jimgina abadiylashib qolmaydi. `talab`
+ * o'zi `tolov_sikllari` da muzlatilgani bilan bir xil falsafa.
+ *
+ * Muddat surati allaqachon olingan bo'lsa qayta hisoblanadi — aks holda
+ * dashboardda eski "muddatda yetmagan" raqami qolib ketardi.
+ */
+export async function shaxsiyTalabOrnat(
+  siklId: number,
+  userId: number,
+  summa: number | null,
+  adminId: number,
+): Promise<void> {
+  await sql`
+    INSERT INTO tolov_holat (sikl_id, user_id, shaxsiy_talab)
+    VALUES (${siklId}, ${userId}, ${summa})
+    ON CONFLICT (sikl_id, user_id) DO UPDATE SET shaxsiy_talab = EXCLUDED.shaxsiy_talab
+  `;
+  await logla(
+    adminId,
+    "shaxsiy_talab",
+    "sikl",
+    siklId,
+    null,
+    summa === null ? `${userId}: umumiy talab` : `${userId}: ${summa}`,
+  );
+  await muddatSuratiniYangila(siklId, userId);
+}
 
 /**
  * Tasdiqlangan summadan holatni aniqlaydi — yagona joy, hamma yerda shu
@@ -273,9 +302,8 @@ export type MuddatNatija = {
   kutilmoqda: number;
   qoldiq: number;
   daraja: TolovDaraja;
-  /** Muddatda hali tekshiruvda turgan to'lovi bor edi — jarima kechiktiriladi */
+  /** Muddatda hali tekshiruvda turgan to'lovi bor edi — natija yakuniy emas */
   tekshiruvKutilmoqda: boolean;
-  jarima: number;
 };
 
 /**
@@ -287,20 +315,20 @@ export type MuddatNatija = {
  *     tekshirilmagan da'vo pulni yig'ilgan qilib ko'rsatmaydi.
  *
  *  2) Lekin agar odam muddatgacha to'lov yuborgan bo'lsa-yu, admin hali
- *     tekshirmagan bo'lsa, u JAZOLANMAYDI: `jarima` 0 bo'lib qoladi va
- *     `tekshiruvKutilmoqda` bayrog'i qo'yiladi. Admin tekshirgach surat
- *     qayta hisoblanadi (`muddatSuratiniYangila`) — o'shanda haqiqiy
- *     natija chiqadi. Talab: "Do not punish the user for the verification
- *     delay".
+ *     tekshirmagan bo'lsa, natija YAKUNIY DEB BELGILANMAYDI:
+ *     `tekshiruvKutilmoqda` bayrog'i qo'yiladi va ko'rinishlarda "tekshiruv
+ *     kechikkan" deb aytiladi. Admin tekshirgach surat qayta hisoblanadi
+ *     (`muddatSuratiniYangila`) — o'shanda haqiqiy natija chiqadi. Talab:
+ *     "Do not punish the user for the verification delay".
  *
- * `jarimaFoiz` standart holatda 0 — uy qoidasi kvartira to'lovi uchun
- * jarima belgilamagan, shuning uchun bot o'zicha summa o'ylab chiqarmaydi.
+ * Jarima (pul) tizimi olib tashlangan: uy qoidasi kvartira to'lovi uchun
+ * jarima belgilamagan edi va foiz hech qachon 0 dan boshqa qilinmadi.
+ * Bot faqat YETMAGAN summani ko'rsatadi, moliyaviy jazo o'ylab chiqarmaydi.
  */
 export function muddatNatijasi(p: {
   talab: number;
   tasdiqlangan: number;
   kutilmoqda: number;
-  jarimaFoiz: number;
 }): MuddatNatija {
   const qoldiq = Math.max(0, p.talab - p.tasdiqlangan);
   const tekshiruvKutilmoqda = qoldiq > 0 && p.kutilmoqda > 0;
@@ -311,30 +339,45 @@ export function muddatNatijasi(p: {
     qoldiq,
     daraja: hisoblaDaraja(p.tasdiqlangan, p.talab),
     tekshiruvKutilmoqda,
-    jarima: tekshiruvKutilmoqda ? 0 : jarimaHisobla(qoldiq, p.jarimaFoiz),
   };
 }
 
 /**
- * Shu odamga bugun to'lov eslatmasi yuborilsinmi.
+ * Shu odamga hozir to'lov eslatmasi yuborilsinmi.
+ *
+ * ILGARI KUNIGA BIR MARTA edi — va shunchaki e'tibordan chetda qolardi.
+ * Endi `yigimEslatmasiKerakmi` bilan bir xil SOATLIK chastota
+ * (`oraliqSoat`, standart 5), faqat bitta farq bilan: bu funksiya OYNAGA
+ * bog'liq. Muddatga `eslatmaKuni` kundan ko'p qolgan bo'lsa hali erta —
+ * aks holda oyning boshidan har 5 soatda DM ketib, oyiga yetmishta xabar
+ * bo'lib qolardi. Yig'imniki esa muddatdan mustaqil, chunki u umuman
+ * kalendar oyiga bog'lanmaydi.
  *
  * Spam bo'lmasligi uchun to'rt shart:
  *  - qarzi qolmagan bo'lsa — umuman yuborilmaydi (talab: to'liq to'lagan
- *    odam eslatma olishda davom etmasligi kerak);
- *  - bir kunda bir marta;
- *  - muddatga `eslatmaKuni` kundan ko'p qolgan bo'lsa hali erta;
+ *    odam eslatma olishda davom etmasligi kerak). "Qarz" endi SHAXSIY
+ *    talabdan hisoblanadi, ya'ni kelishilgan kam summani to'lagan odam ham
+ *    ro'yxatdan chiqadi;
+ *  - oxirgi eslatmadan `oraliqSoat` o'tmagan bo'lsa — hali erta;
+ *  - oyna ochilmagan bo'lsa — hali erta;
  *  - muddat o'tib ketgan bo'lsa DAVOM ETADI — qarz o'z-o'zidan yo'qolmaydi.
  */
 export function tolovEslatmasiKerakmi(p: {
   qoldiq: number;
   bugun: string;
   muddat: string;
-  oxirgiEslatma: string | null;
+  oxirgiTs: Date | null;
   eslatmaKuni: number;
+  oraliqSoat: number;
+  hozir: number;
+  /** Odam "🙁 To'lay olmayapman" deb sabab yozgan oxirgi lahza */
+  uzrTs?: Date | null;
 }): boolean {
   if (p.qoldiq <= 0) return false;
-  if (p.oxirgiEslatma === p.bugun) return false;
-  return kunFarqi(p.bugun, p.muddat) <= p.eslatmaKuni;
+  if (uzrTinimidami(p.uzrTs, p.hozir)) return false;
+  if (kunFarqi(p.bugun, p.muddat) > p.eslatmaKuni) return false;
+  if (!p.oxirgiTs) return true;
+  return p.hozir - new Date(p.oxirgiTs).getTime() >= p.oraliqSoat * 3_600_000;
 }
 
 // ---------------------------------------------------------------------------
@@ -342,7 +385,10 @@ export function tolovEslatmasiKerakmi(p: {
 // ---------------------------------------------------------------------------
 
 export type TolovHolatMalumoti = {
+  /** Shu ODAMDAN talab qilinadigan summa — `amaldagiTalab` natijasi */
   talab: number;
+  /** Talab siklning umumiysi emas, shu odamga alohida qo'yilgan */
+  shaxsiy: boolean;
   tasdiqlangan: number;
   qoldiq: number;
   daraja: TolovDaraja;
@@ -352,8 +398,6 @@ export type TolovHolatMalumoti = {
   kutilmoqdaSumma: number;
   /** Muddat o'tgan va qarz qolgan */
   kechikkan: boolean;
-  /** Kechikkan bo'lsa sozlangan foizdan hisoblangan jarima (foiz 0 bo'lsa 0) */
-  jarima: number;
   /** Qaysi oy hisoblanmoqda — muddat va talab shu yerdan olinadi */
   sikl: TolovSikl;
 };
@@ -367,38 +411,35 @@ export async function foydalanuvchiTolovHolati(
   sikl?: TolovSikl,
 ): Promise<TolovHolatMalumoti> {
   const s = sikl ?? (await joriySikl());
-  const [r] = await sql<{ tasdiqlangan: string; kutilmoqda_summa: string; kutilmoqda: number }[]>`
+  const [r] = await sql<
+    { tasdiqlangan: string; kutilmoqda_summa: string; kutilmoqda: number; shaxsiy_talab: string | null }[]
+  >`
     SELECT
-      (COALESCE(SUM(tasdiqlangan_summa) FILTER (WHERE holat = 'tasdiqlandi'), 0) +
+      (COALESCE(SUM(t.tasdiqlangan_summa) FILTER (WHERE t.holat = 'tasdiqlandi'), 0) +
        COALESCE((SELECT SUM(summa) FROM tolov_tuzatish
                  WHERE user_id = ${userId} AND sikl_id = ${s.id}), 0)
       )::bigint AS tasdiqlangan,
-      COALESCE(SUM(kiritgan_summa)     FILTER (WHERE holat = 'kutilmoqda'),   0)::bigint AS kutilmoqda_summa,
-      count(*) FILTER (WHERE holat = 'kutilmoqda')::int AS kutilmoqda
-    FROM tolovlar WHERE user_id = ${userId} AND sikl_id = ${s.id}
+      COALESCE(SUM(t.kiritgan_summa)     FILTER (WHERE t.holat = 'kutilmoqda'),   0)::bigint AS kutilmoqda_summa,
+      count(t.id) FILTER (WHERE t.holat = 'kutilmoqda')::int AS kutilmoqda,
+      (SELECT shaxsiy_talab FROM tolov_holat
+        WHERE sikl_id = ${s.id} AND user_id = ${userId}) AS shaxsiy_talab
+    FROM tolovlar t WHERE t.user_id = ${userId} AND t.sikl_id = ${s.id}
   `;
   const tasdiqlangan = Number(r?.tasdiqlangan ?? 0);
-  const qoldiq = Math.max(0, s.talab - tasdiqlangan);
+  const talab = amaldagiTalab(s.talab, r?.shaxsiy_talab ?? null);
+  const qoldiq = Math.max(0, talab - tasdiqlangan);
   const kechikkan = kechikkanmi(qoldiq, s.muddat);
   return {
-    talab: s.talab,
+    talab,
+    shaxsiy: (r?.shaxsiy_talab ?? null) !== null,
     tasdiqlangan,
     qoldiq,
-    daraja: hisoblaDaraja(tasdiqlangan, s.talab),
+    daraja: hisoblaDaraja(tasdiqlangan, talab),
     kutilmoqdaSoni: r?.kutilmoqda ?? 0,
     kutilmoqdaSumma: Number(r?.kutilmoqda_summa ?? 0),
     kechikkan,
-    jarima: kechikkan ? jarimaHisobla(qoldiq, await tolovJarimaFoizi()) : 0,
     sikl: s,
   };
-}
-
-/**
- * Qarzdan jarima. Yagona joy — muddat surati ham (`muddatNatijasi`), joriy
- * ko'rinish ham shuni ishlatadi, ikkita hisob-kitob bo'lmasin.
- */
-export function jarimaHisobla(qoldiq: number, foiz: number): number {
-  return Math.round((qoldiq * foiz) / 100);
 }
 
 /**
@@ -432,6 +473,9 @@ export async function tolovYuborish(
     ON CONFLICT DO NOTHING
     RETURNING *
   `;
+  // `ON CONFLICT DO NOTHING` — bir xil chek ikkinchi marta yuborilsa yangi
+  // yozuv ham, faollik ham qo'shilmaydi.
+  if (t) await faollikYoz(userId, "tolov");
   return t ?? null;
 }
 
@@ -466,7 +510,7 @@ export async function avvalgiDalil(
  *
  * Tasdiq muddatdan KEYIN kelgan bo'lsa, o'sha siklning muddat surati qayta
  * hisoblanadi: "tekshiruv kutilmoqda" holati yopilib, haqiqiy natija
- * yoziladi (talab: tekshiruv kechikkani uchun jarima yozilmasin).
+ * yoziladi (talab: tekshiruv kechikkani odamga zarar qilmasin).
  */
 export async function tolovniTasdiqla(
   tolovId: number,
@@ -595,6 +639,8 @@ type SuratQator = {
   ism: string;
   tasdiqlangan: string;
   kutilmoqda: string;
+  /** NULL bo'lsa siklning umumiy talabi (`amaldagiTalab`) */
+  shaxsiy_talab: string | null;
 };
 
 /**
@@ -616,14 +662,16 @@ async function muddatYigindisi(
                       WHERE tz.user_id = u.id AND tz.sikl_id = ${sikl.id}
                         AND (tz.created_at AT TIME ZONE 'Asia/Tashkent')::date <= ${sikl.muddat}::date), 0)
            )::bigint AS tasdiqlangan,
-           COALESCE(SUM(t.kiritgan_summa)     FILTER (WHERE t.holat = 'kutilmoqda'),   0)::bigint AS kutilmoqda
+           COALESCE(SUM(t.kiritgan_summa)     FILTER (WHERE t.holat = 'kutilmoqda'),   0)::bigint AS kutilmoqda,
+           h.shaxsiy_talab
     FROM users u
     LEFT JOIN tolovlar t
       ON t.user_id = u.id
      AND t.sikl_id = ${sikl.id}
      AND (t.created_at AT TIME ZONE 'Asia/Tashkent')::date <= ${sikl.muddat}::date
+    LEFT JOIN tolov_holat h ON h.sikl_id = ${sikl.id} AND h.user_id = u.id
     WHERE u.faol AND (${userId ?? null}::int IS NULL OR u.id = ${userId ?? null}::int)
-    GROUP BY u.id, u.ism
+    GROUP BY u.id, u.ism, h.shaxsiy_talab
     ORDER BY u.ism
   `;
 }
@@ -637,11 +685,11 @@ async function suratniYoz(
   await db`
     INSERT INTO tolov_holat (
       sikl_id, user_id, muddat_talab, muddat_tasdiqlangan, muddat_kutilmoqda,
-      muddat_qoldiq, muddat_daraja, muddat_jarima, muddat_vaqti
+      muddat_qoldiq, muddat_daraja, muddat_vaqti
     )
     VALUES (
       ${siklId}, ${userId}, ${n.talab}, ${n.tasdiqlangan}, ${n.kutilmoqda},
-      ${n.qoldiq}, ${n.daraja}, ${n.jarima}, now()
+      ${n.qoldiq}, ${n.daraja}, now()
     )
     ON CONFLICT (sikl_id, user_id) DO UPDATE SET
       muddat_talab        = EXCLUDED.muddat_talab,
@@ -649,7 +697,6 @@ async function suratniYoz(
       muddat_kutilmoqda   = EXCLUDED.muddat_kutilmoqda,
       muddat_qoldiq       = EXCLUDED.muddat_qoldiq,
       muddat_daraja       = EXCLUDED.muddat_daraja,
-      muddat_jarima       = EXCLUDED.muddat_jarima,
       muddat_vaqti        = EXCLUDED.muddat_vaqti
   `;
 }
@@ -673,8 +720,6 @@ async function suratniYoz(
  * so'rovlari tranzaksiyani uzoq ushlab turmasligi kerak.
  */
 export async function siklMuddatiniHisobla(sikl: TolovSikl): Promise<MuddatSurati[] | null> {
-  const jarimaFoiz = await tolovJarimaFoizi();
-
   return sql.begin(async (tx) => {
     const [s] = await tx<{ holat: string }[]>`
       SELECT holat FROM tolov_sikllari WHERE id = ${sikl.id} FOR UPDATE
@@ -686,10 +731,9 @@ export async function siklMuddatiniHisobla(sikl: TolovSikl): Promise<MuddatSurat
 
     for (const q of qatorlar) {
       const n = muddatNatijasi({
-        talab: sikl.talab,
+        talab: amaldagiTalab(sikl.talab, q.shaxsiy_talab),
         tasdiqlangan: Number(q.tasdiqlangan),
         kutilmoqda: Number(q.kutilmoqda),
-        jarimaFoiz,
       });
       await suratniYoz(sikl.id, q.user_id, n, tx);
       natijalar.push({ ...n, userId: q.user_id, ism: q.ism });
@@ -716,7 +760,7 @@ export async function muddatSuratiniYangila(
 ): Promise<MuddatNatija | null> {
   const sikl = await siklniOl(siklId);
   if (!sikl || sikl.holat === "ochiq") return null;
-  // Yig'imda "muddatda qancha yetmagan edi" degan savol yo'q — jarima ham,
+  // Yig'imda "muddatda qancha yetmagan edi" degan savol yo'q —
   // surat ham faqat oylik siklniki. Yig'imga to'lov ham shu funksiyadan
   // o'tadi (bitta tasdiqlash yo'li), shuning uchun to'siq aynan shu yerda.
   if (sikl.tur === "yigim") return null;
@@ -725,10 +769,9 @@ export async function muddatSuratiniYangila(
   if (!q) return null;
 
   const n = muddatNatijasi({
-    talab: sikl.talab,
+    talab: amaldagiTalab(sikl.talab, q.shaxsiy_talab),
     tasdiqlangan: Number(q.tasdiqlangan),
     kutilmoqda: Number(q.kutilmoqda),
-    jarimaFoiz: await tolovJarimaFoizi(),
   });
   await suratniYoz(siklId, userId, n);
   return n;
@@ -746,11 +789,10 @@ export async function muddatSuratiniOl(
       muddat_kutilmoqda: string | null;
       muddat_qoldiq: string | null;
       muddat_daraja: TolovDaraja | null;
-      muddat_jarima: string | null;
     }[]
   >`
     SELECT muddat_talab, muddat_tasdiqlangan, muddat_kutilmoqda,
-           muddat_qoldiq, muddat_daraja, muddat_jarima
+           muddat_qoldiq, muddat_daraja
     FROM tolov_holat WHERE sikl_id = ${siklId} AND user_id = ${userId}
   `;
   if (!r?.muddat_daraja || r.muddat_talab === null) return null;
@@ -764,7 +806,6 @@ export async function muddatSuratiniOl(
     qoldiq,
     daraja: r.muddat_daraja,
     tekshiruvKutilmoqda: qoldiq > 0 && kutilmoqda > 0,
-    jarima: Number(r.muddat_jarima ?? 0),
   };
 }
 
@@ -795,7 +836,7 @@ export async function siklniYakunla(siklId: number): Promise<TolovSikl | null> {
  *
  * Muddat surati qayta hisoblanadi — `tolovniTasdiqla`/`tolovniRadEt` bilan
  * bir xil naqsh, aks holda tuzatish dashboardda ko'rinsa ham muddat
- * natijasida (kechikkanmi, jarima) eskirgan raqam qolib ketardi.
+ * natijasida (kechikkanmi) eskirgan raqam qolib ketardi.
  */
 export async function tolovTuzat(
   userId: number,
@@ -846,17 +887,19 @@ export type EslatmaNomzodi = {
   ism: string;
   /** To'liq qator — `shaxsiy()` shuni kutadi, sun'iy obyekt yasalmaydi. */
   user: User;
+  /** Shu ODAMDAN talab qilinadigan summa (shaxsiy bo'lishi mumkin) */
+  talab: number;
   tasdiqlangan: number;
   qoldiq: number;
   kutilmoqdaSumma: number;
-  /** Oylik to'lov eslatmasi — KUNIGA bir marta, shuning uchun sana yetarli. */
-  oxirgiEslatma: string | null;
   /**
    * Yig'im eslatmasi — har bir necha SOATDA, shuning uchun aniq lahza
    * kerak. Ikkalasi bir qatorda yonma-yon: bitta (sikl, odam) juftligi
    * ikkala turga tegishli bo'la olmaydi, demak chalkashmaydi.
    */
   oxirgiEslatmaTs: Date | null;
+  /** Oxirgi "🙁 To'lay olmayapman" sababi yozilgan payt — tinim shundan */
+  oxirgiUzrTs: Date | null;
 };
 
 /**
@@ -874,8 +917,9 @@ export async function eslatmaNomzodlari(sikl: TolovSikl): Promise<EslatmaNomzodi
     (User & {
       tasdiqlangan: string;
       kutilmoqda_summa: string;
-      oxirgi_eslatma: string | null;
       oxirgi_eslatma_ts: Date | null;
+      shaxsiy_talab: string | null;
+      oxirgi_uzr_ts: Date | null;
     })[]
   >`
     SELECT u.*,
@@ -884,42 +928,33 @@ export async function eslatmaNomzodlari(sikl: TolovSikl): Promise<EslatmaNomzodi
                       WHERE tz.user_id = u.id AND tz.sikl_id = ${sikl.id}), 0)
            )::bigint AS tasdiqlangan,
            COALESCE(SUM(t.kiritgan_summa)     FILTER (WHERE t.holat = 'kutilmoqda'),   0)::bigint AS kutilmoqda_summa,
-           to_char(h.oxirgi_eslatma, 'YYYY-MM-DD') AS oxirgi_eslatma,
-           h.oxirgi_eslatma_ts
+           h.oxirgi_eslatma_ts,
+           h.shaxsiy_talab,
+           (SELECT max(uz.created_at) FROM tolov_uzrlari uz
+             WHERE uz.sikl_id = ${sikl.id} AND uz.user_id = u.id) AS oxirgi_uzr_ts
     FROM users u
     LEFT JOIN tolovlar t ON t.user_id = u.id AND t.sikl_id = ${sikl.id}
     LEFT JOIN tolov_holat h ON h.sikl_id = ${sikl.id} AND h.user_id = u.id
     WHERE u.faol AND u.telegram_id IS NOT NULL
-    GROUP BY u.id, h.oxirgi_eslatma, h.oxirgi_eslatma_ts
+    GROUP BY u.id, h.oxirgi_eslatma_ts, h.shaxsiy_talab
     ORDER BY u.ism
   `;
 
   return rows.map((r) => {
     const tasdiqlangan = Number(r.tasdiqlangan);
+    const talab = amaldagiTalab(sikl.talab, r.shaxsiy_talab);
     return {
       userId: r.id,
       ism: r.ism,
       user: r,
+      talab,
       tasdiqlangan,
-      qoldiq: Math.max(0, sikl.talab - tasdiqlangan),
+      qoldiq: Math.max(0, talab - tasdiqlangan),
       kutilmoqdaSumma: Number(r.kutilmoqda_summa),
-      oxirgiEslatma: r.oxirgi_eslatma,
       oxirgiEslatmaTs: r.oxirgi_eslatma_ts,
+      oxirgiUzrTs: r.oxirgi_uzr_ts,
     };
   });
-}
-
-/** "Bugun eslatildi" — bazada, ya'ni bot qayta ishga tushsa ham yo'qolmaydi. */
-export async function eslatmaBelgila(
-  siklId: number,
-  userId: number,
-  kun: string,
-): Promise<void> {
-  await sql`
-    INSERT INTO tolov_holat (sikl_id, user_id, oxirgi_eslatma)
-    VALUES (${siklId}, ${userId}, ${kun}::date)
-    ON CONFLICT (sikl_id, user_id) DO UPDATE SET oxirgi_eslatma = EXCLUDED.oxirgi_eslatma
-  `;
 }
 
 /**
@@ -946,6 +981,10 @@ export async function guruhEslatmasiniBelgila(siklId: number, kun: string): Prom
 export type SiklOdam = {
   userId: number;
   ism: string;
+  /** Shu ODAMDAN talab qilinadigan summa (shaxsiy bo'lishi mumkin) */
+  talab: number;
+  /** Talab siklning umumiysi emas, shu odamga alohida qo'yilgan */
+  shaxsiy: boolean;
   tasdiqlangan: number;
   qoldiq: number;
   kutilmoqdaSumma: number;
@@ -953,10 +992,10 @@ export type SiklOdam = {
   daraja: TolovDaraja;
   /** Muddat o'tgan va qarzi qolgan */
   kechikkan: boolean;
-  /** Kechikkan bo'lsa sozlangan foizdan hisoblangan jarima */
-  jarima: number;
   /** Muddat surati — muddat hali kelmagan bo'lsa `null` */
   muddat: MuddatNatija | null;
+  /** Oxirgi "🙁 To'lay olmayapman" sababi — FAQAT admin ko'rinishlari uchun */
+  uzr: Uzr | null;
 };
 
 export type TolovDashboard = {
@@ -975,8 +1014,6 @@ export type TolovDashboard = {
   qarzdorlar: SiklOdam[];
   /** Muddat o'tgan va hamon qarzi bor — `qarzdorlar`ning quyi to'plami */
   kechikkanlar: SiklOdam[];
-  /** Sozlangan foiz bo'yicha jami jarima (foiz 0 bo'lsa 0) */
-  jamiJarima: number;
 };
 
 /** Admin/Sorabek uchun umumiy ko'rinish: shu oyda kim qancha to'lagan. */
@@ -996,7 +1033,9 @@ export async function tolovDashboard(sikl?: TolovSikl): Promise<TolovDashboard> 
       muddat_kutilmoqda: string | null;
       muddat_qoldiq: string | null;
       muddat_daraja: TolovDaraja | null;
-      muddat_jarima: string | null;
+      shaxsiy_talab: string | null;
+      uzr_sabab: string | null;
+      uzr_vaqt: Date | null;
     }[]
   >`
     SELECT u.id AS user_id, u.ism,
@@ -1008,34 +1047,41 @@ export async function tolovDashboard(sikl?: TolovSikl): Promise<TolovDashboard> 
            count(t.id) FILTER (WHERE t.holat = 'kutilmoqda')::int AS kutilmoqda_soni,
            count(t.id) FILTER (WHERE t.holat = 'rad')::int        AS rad_soni,
            h.muddat_talab, h.muddat_tasdiqlangan, h.muddat_kutilmoqda,
-           h.muddat_qoldiq, h.muddat_daraja, h.muddat_jarima
+           h.muddat_qoldiq, h.muddat_daraja, h.shaxsiy_talab,
+           uz.sabab AS uzr_sabab, uz.created_at AS uzr_vaqt
     FROM users u
     LEFT JOIN tolovlar t ON t.user_id = u.id AND t.sikl_id = ${s.id}
     LEFT JOIN tolov_holat h ON h.sikl_id = ${s.id} AND h.user_id = u.id
+    LEFT JOIN LATERAL (
+      SELECT sabab, created_at FROM tolov_uzrlari
+      WHERE sikl_id = ${s.id} AND user_id = u.id
+      ORDER BY id DESC LIMIT 1
+    ) uz ON TRUE
     WHERE u.faol
     GROUP BY u.id, u.ism, h.muddat_talab, h.muddat_tasdiqlangan,
-             h.muddat_kutilmoqda, h.muddat_qoldiq, h.muddat_daraja, h.muddat_jarima
+             h.muddat_kutilmoqda, h.muddat_qoldiq, h.muddat_daraja, h.shaxsiy_talab,
+             uz.sabab, uz.created_at
     ORDER BY u.ism
   `;
 
-  const jarimaFoiz = await tolovJarimaFoizi();
-
   const odamlar: SiklOdam[] = qatorlar.map((q) => {
     const tasdiqlangan = Number(q.tasdiqlangan);
-    const qoldiq = Math.max(0, s.talab - tasdiqlangan);
+    const talab = amaldagiTalab(s.talab, q.shaxsiy_talab);
+    const qoldiq = Math.max(0, talab - tasdiqlangan);
     const kechikkan = kechikkanmi(qoldiq, s.muddat);
     const muddatQoldiq = Number(q.muddat_qoldiq ?? 0);
     const muddatKutilmoqda = Number(q.muddat_kutilmoqda ?? 0);
     return {
       userId: q.user_id,
       ism: q.ism,
+      talab,
+      shaxsiy: q.shaxsiy_talab !== null,
       tasdiqlangan,
       qoldiq,
       kutilmoqdaSumma: Number(q.kutilmoqda_summa),
       kutilmoqdaSoni: q.kutilmoqda_soni,
-      daraja: hisoblaDaraja(tasdiqlangan, s.talab),
+      daraja: hisoblaDaraja(tasdiqlangan, talab),
       kechikkan,
-      jarima: kechikkan ? jarimaHisobla(qoldiq, jarimaFoiz) : 0,
       muddat:
         q.muddat_daraja && q.muddat_talab !== null
           ? {
@@ -1045,14 +1091,16 @@ export async function tolovDashboard(sikl?: TolovSikl): Promise<TolovDashboard> 
               qoldiq: muddatQoldiq,
               daraja: q.muddat_daraja,
               tekshiruvKutilmoqda: muddatQoldiq > 0 && muddatKutilmoqda > 0,
-              jarima: Number(q.muddat_jarima ?? 0),
             }
           : null,
+      uzr: q.uzr_sabab && q.uzr_vaqt ? { sabab: q.uzr_sabab, vaqt: q.uzr_vaqt } : null,
     };
   });
 
   const jamiTasdiqlangan = odamlar.reduce((n, o) => n + o.tasdiqlangan, 0);
-  const jamiTalab = s.talab * odamlar.length;
+  // Har kimning O'Z talabidan — shaxsiy summa qo'yilgan odam bo'lsa
+  // `talab × odam soni` noto'g'ri jami berardi.
+  const jamiTalab = odamlar.reduce((n, o) => n + o.talab, 0);
 
   return {
     sikl: s,
@@ -1069,7 +1117,6 @@ export async function tolovDashboard(sikl?: TolovSikl): Promise<TolovDashboard> 
     // Eng ko'p qarzdori birinchi — admin kimdan boshlashini bir qarashda ko'rsin.
     qarzdorlar: odamlar.filter((o) => o.qoldiq > 0).sort((a, b) => b.qoldiq - a.qoldiq),
     kechikkanlar: odamlar.filter((o) => o.kechikkan).sort((a, b) => b.qoldiq - a.qoldiq),
-    jamiJarima: odamlar.reduce((n, o) => n + o.jarima, 0),
   };
 }
 
@@ -1142,7 +1189,7 @@ export async function siklTarixi(limit = 12): Promise<SiklXulosa[]> {
  *  1) `davr` yo'q — kalendar oyiga bog'lanmaydi, `nom` esa bor.
  *  2) MUDDAT SURATI OLINMAYDI (`muddatiOtganSikllar` `tur='oylik'` bilan
  *     cheklangan). Yig'imda "muddatda yetmagan edi" degan savol yo'q:
- *     pul yig'ilmaguncha eslatma davom etadi, jarima esa yo'q.
+ *     pul yig'ilmaguncha eslatma davom etadi, xolos.
  *  3) Bir vaqtda BITTA ochiq yig'im (bazadagi qisman UNIQUE indeks).
  *     Aks holda chek qaysi yig'imga tegishli ekani noaniq bo'lardi.
  */
@@ -1262,6 +1309,72 @@ export async function yigimNominiOzgartir(
 }
 
 /**
+ * Ochiq yig'imning savdo ro'yxatini ALMASHTIRADI. Yig'im hali davom
+ * etayotgan voqea (`yigimTalabiniOzgartir` bilan bir xil sabab) — admin
+ * e'londan keyin "yana idish yuvish suyuqligi ham kerak" deb qo'shishi
+ * yoki `NOM_MAX` dan oldin nomga yozilib kesilgan ro'yxatni to'g'rilashi
+ * mumkin. Yopilgan yig'im o'zgarmaydi.
+ */
+// ---------------------------------------------------------------------------
+// "TO'LAY OLMAYAPMAN" — qarzdorning o'z sababi
+// ---------------------------------------------------------------------------
+
+/**
+ * Sabab yozilgach shu odamga eslatma necha soat to'xtab turadi.
+ *
+ * "Maoshim 25-da tushadi" deb yozgan odamni o'sha kuni yana har 5 soatda
+ * bezovta qilish uning botni o'chirib qo'yishiga olib keladi. To'liq
+ * to'xtatib ham bo'lmaydi — qarz o'z-o'zidan yo'qolmaydi. Bir kunlik tinim:
+ * admin sababni ko'rib ulguradi (kerak bo'lsa "🧾 Shaxsiy summa" qo'yadi),
+ * so'ng eslatma o'z jadvaliga qaytadi.
+ */
+export const UZR_TINIM_SOAT = 24;
+
+/** Sabab uzunligi — admin DM'ida va dashboard qatorida sig'sin. */
+export const UZR_MAX = 300;
+
+export type Uzr = { sabab: string; vaqt: Date };
+
+/** Yangi sabab — har biri alohida qator, eskisi bosib yozilmaydi. */
+export async function uzrYoz(siklId: number, userId: number, sabab: string): Promise<void> {
+  await sql`
+    INSERT INTO tolov_uzrlari (sikl_id, user_id, sabab)
+    VALUES (${siklId}, ${userId}, ${sabab.trim().slice(0, UZR_MAX)})
+  `;
+}
+
+/** Bitta odamning shu sikldagi barcha sabablari — eng yangisi birinchi. */
+export async function uzrlarTarixi(siklId: number, userId: number): Promise<Uzr[]> {
+  return sql<Uzr[]>`
+    SELECT sabab, created_at AS vaqt FROM tolov_uzrlari
+    WHERE sikl_id = ${siklId} AND user_id = ${userId}
+    ORDER BY id DESC
+  `;
+}
+
+/**
+ * Sabab yozilganidan beri tinim hali tugamaganmi — sof funksiya, ikkala
+ * eslatma (`tolovEslatmasiKerakmi`, `yigimEslatmasiKerakmi`) ham shundan
+ * o'tadi.
+ */
+export function uzrTinimidami(uzrTs: Date | null | undefined, hozir: number): boolean {
+  if (!uzrTs) return false;
+  return hozir - new Date(uzrTs).getTime() < UZR_TINIM_SOAT * 3_600_000;
+}
+
+export async function yigimNarsalariniOzgartir(
+  id: number,
+  narsalar: string[],
+): Promise<TolovSikl | null> {
+  const [s] = await sql<SiklQator[]>`
+    UPDATE tolov_sikllari SET narsalar = ${narsalar.length > 0 ? narsalar : null}
+    WHERE id = ${id} AND tur = 'yigim' AND holat = 'ochiq'
+    RETURNING ${siklUstunlari()}
+  `;
+  return s ? siklMap(s) : null;
+}
+
+/**
  * Shu odamga hozir yig'im eslatmasi yuborilsinmi — sof funksiya,
  * `tolovEslatmasiKerakmi` bilan bir xil naqsh (bazasiz sinaladi).
  *
@@ -1277,8 +1390,11 @@ export function yigimEslatmasiKerakmi(p: {
   hozir: number;
   oxirgiTs: Date | null;
   oraliqSoat: number;
+  /** Odam "🙁 To'lay olmayapman" deb sabab yozgan oxirgi lahza */
+  uzrTs?: Date | null;
 }): boolean {
   if (p.qoldiq <= 0) return false;
+  if (uzrTinimidami(p.uzrTs, p.hozir)) return false;
   if (!p.oxirgiTs) return true;
   return p.hozir - new Date(p.oxirgiTs).getTime() >= p.oraliqSoat * 3_600_000;
 }

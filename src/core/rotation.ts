@@ -8,10 +8,9 @@ import {
   type User,
 } from "../db/index.js";
 import { config, RASM_MAX } from "../config.js";
-import { sozlamalarOl } from "./sozlamalar.js";
 import type { NavbatVazifasi } from "./vazifalar.js";
 import { logla } from "./adminlog.js";
-import { navbatBalli } from "./rating.js";
+import { faollikYoz } from "./faollik.js";
 import { bugungiSana } from "./vaqt.js";
 
 const KUN_MS = 24 * 60 * 60 * 1000;
@@ -162,41 +161,38 @@ export async function xonaAzolari(roomId: number): Promise<User[]> {
 }
 
 /**
- * Navbat tartibi u yoq-bu yoq yuradi — oxiriga yetgach boshiga sakramaydi,
- * orqasiga qaytadi:
+ * Navbat tartibi AYLANMA — `rooms.tartib` bo'yicha keyingisi, oxiridan
+ * boshiga qaytadi. Uyda: 4 → 3 → 2 → 1 → 4 → ...
  *
- *   1 → 2 → 3 → 4 → 3 → 2 → 1 → 2 → 3 → 4 → ...
+ * Ilgari "u yoq-bu yoq" edi (1 → 2 → 3 → 4 → 3 → 2 → 1 → 2) va yo'nalish
+ * oldingi navbatdan taxmin qilinardi. Uy esa amalda aylanib yurardi, farq
+ * chekkada chiqdi: 1-xonadan keyin bot 4-xona o'rniga yana 2-xonani
+ * tanlardi (27-avgust, 20-sentabr) — o'rtadagi xonalar navbatni ikki
+ * barobar ko'p olardi. Endi yo'nalish taxmin qilinmaydi: tartib bazada
+ * ochiq yozilgan va admin uni "🔢 Navbat tartibi" dan ko'radi/o'zgartiradi.
  *
- * Yo'nalish alohida saqlanmaydi, oldingi navbatdan aniqlanadi. Shunday
- * qilingani uchun admin /navbatber bilan qo'lda sakratsa ham tartib o'zidan
- * tiklanadi — hech qayerda "eskirgan yo'nalish" qolib ketmaydi.
+ * Tarixga qaralmaydi — admin qo'lda boshqa xonaga o'tkazsa, keyingisi
+ * o'sha xonadan hisoblanadi ("sakrash" shu ma'noni anglatadi).
  */
 export async function keyingiXona(hozirgi: Room): Promise<Room> {
-  const xonalar = await sql<Room[]>`SELECT * FROM rooms ORDER BY tartib`;
+  const xonalar = await tartibdagiXonalar();
   if (xonalar.length === 0) throw new Error("Bazada birorta ham xona yo'q");
 
   const joy = xonalar.findIndex((x) => x.id === hozirgi.id);
   if (joy === -1) return xonalar[0]!;
-
-  // Oldingi tugagan navbat boshqa xonada bo'lgan — qay tomonga yurayotganimiz
-  // shundan bilinadi. Birinchi navbatda hech nima yo'q, oldinga yuramiz.
-  const [oldingi] = await sql<{ room_id: number }[]>`
-    SELECT room_id FROM turns
-    WHERE holat <> 'faol' AND room_id <> ${hozirgi.id}
-    ORDER BY id DESC LIMIT 1
-  `;
-  const oldingiJoy = oldingi ? xonalar.findIndex((x) => x.id === oldingi.room_id) : -1;
-
-  return xonalar[keyingiJoy(joy, oldingiJoy, xonalar.length)]!;
+  return xonalar[keyingiJoy(joy, xonalar.length)]!;
 }
 
-/**
- * Yuqoridagi tartibning sof mantiqi — bazasiz testlash uchun ajratilgan.
- *
- * @param joy        hozirgi xonaning tartibdagi o'rni (0 dan)
- * @param oldingiJoy oldingi navbat xonasining o'rni; bilinmasa -1
- * @param soni       jami xonalar soni
- */
+/** Xonalar navbat tartibida — birinchisi navbatni boshlaydi. */
+export async function tartibdagiXonalar(): Promise<Room[]> {
+  return sql<Room[]>`SELECT * FROM rooms ORDER BY tartib`;
+}
+
+/** Xona raqamlari navbat tartibida — `bot/text.ts` ga shu ko'rinishda beriladi. */
+export async function navbatTartibi(): Promise<number[]> {
+  return (await tartibdagiXonalar()).map((x) => x.raqam);
+}
+
 /**
  * Kelgusi navbatlar tartibi. Hozirgi navbatdan keyin kim kelishini oldindan
  * ko'rsatish uchun — bazaga tegmasdan, o'sha tartib mantiqi bilan hisoblanadi.
@@ -205,35 +201,66 @@ export async function kelgusiTartib(nechta = 3): Promise<{ room: Room; azolar: U
   const navbat = await faolNavbat();
   if (!navbat) return [];
 
-  const xonalar = await sql<Room[]>`SELECT * FROM rooms ORDER BY tartib`;
+  const xonalar = await tartibdagiXonalar();
   if (xonalar.length < 2) return [];
 
-  const [oldingi] = await sql<{ room_id: number }[]>`
-    SELECT room_id FROM turns
-    WHERE holat <> 'faol' AND room_id <> ${navbat.room.id}
-    ORDER BY id DESC LIMIT 1
-  `;
-
   let joy = xonalar.findIndex((x) => x.id === navbat.room.id);
-  let oldingiJoy = oldingi ? xonalar.findIndex((x) => x.id === oldingi.room_id) : -1;
   if (joy === -1) return [];
 
+  // Aylanmada hozirgi xonaning o'zi qaytib kelguncha — undan uzoq ro'yxat
+  // takrorlanib qoladi.
   const natija: { room: Room; azolar: User[] }[] = [];
-  for (let i = 0; i < Math.min(nechta, xonalar.length); i++) {
-    const keyingi = keyingiJoy(joy, oldingiJoy, xonalar.length);
-    oldingiJoy = joy;
-    joy = keyingi;
+  for (let i = 0; i < Math.min(nechta, xonalar.length - 1); i++) {
+    joy = keyingiJoy(joy, xonalar.length);
     const room = xonalar[joy]!;
     natija.push({ room, azolar: await xonaAzolari(room.id) });
   }
   return natija;
 }
 
-export function keyingiJoy(joy: number, oldingiJoy: number, soni: number): number {
+/**
+ * Yuqoridagi tartibning sof mantiqi — bazasiz testlash uchun ajratilgan.
+ *
+ * @param joy  hozirgi xonaning tartibdagi o'rni (0 dan)
+ * @param soni jami xonalar soni
+ */
+export function keyingiJoy(joy: number, soni: number): number {
   if (soni <= 1) return 0;
-  let yonalish = oldingiJoy === -1 || oldingiJoy < joy ? 1 : -1;
-  if (joy + yonalish < 0 || joy + yonalish >= soni) yonalish = -yonalish;
-  return joy + yonalish;
+  return (joy + 1) % soni;
+}
+
+/**
+ * Admin yozgan tartibni tekshiradi: "4 3 2 1", "4,3,2,1", "4-3-2-1" —
+ * har bir xona AYNAN BIR MARTA bo'lishi shart. Aks holda `null`: bitta
+ * xona tushib qolsa u hech qachon navbat olmasdi, ikki marta yozilsa
+ * ikki barobar olardi — ikkalasi ham tuzatilayotgan xatoning o'zi.
+ */
+export function tartibniOqi(xom: string, raqamlar: number[]): number[] | null {
+  const sonlar = (xom.match(/\d+/g) ?? []).map(Number);
+  if (sonlar.length !== raqamlar.length) return null;
+  if (new Set(sonlar).size !== sonlar.length) return null;
+  if (!sonlar.every((s) => raqamlar.includes(s))) return null;
+  return sonlar;
+}
+
+/**
+ * Navbat tartibini o'zgartiradi. `tartib` UNIQUE, shuning uchun avval
+ * manfiyga surib, keyin qayta raqamlanadi (`db/schema.sql` dagi
+ * `navbat_aylanma_seed` bilan bir xil usul) — to'g'ridan-to'g'ri
+ * almashtirish oraliqda to'qnashardi.
+ *
+ * Joriy navbatga tegmaydi: hozirgi xona o'z navbatini tugatadi, keyingisi
+ * yangi tartib bo'yicha tanlanadi.
+ */
+export async function tartibniOrnat(adminId: number, raqamlar: number[]): Promise<void> {
+  const eski = (await tartibdagiXonalar()).map((x) => x.raqam).join(" → ");
+  await sql.begin(async (tx) => {
+    await tx`UPDATE rooms SET tartib = -1 - tartib`;
+    for (const [i, raqam] of raqamlar.entries()) {
+      await tx`UPDATE rooms SET tartib = ${i} WHERE raqam = ${raqam}`;
+    }
+  });
+  await logla(adminId, "navbat_tartibi", "navbat", null, eski, raqamlar.join(" → "));
 }
 
 /** Muddatdan necha kun kechikkani (butun kun, kamida 0). */
@@ -244,9 +271,6 @@ export function kechikkanKun(muddat: Date, sana: Date = new Date()): number {
 
 export type YopishNatijasi = {
   kechikkanKun: number;
-  jarima: number;
-  /** Xonaning har bir a'zosiga tegadigan ball */
-  ballHar: number;
   keyingi: { room: Room; azolar: User[]; muddat: Date };
 };
 
@@ -298,12 +322,8 @@ export async function navbatniYopish(
 
   if (!yopildi) return null;
 
-  const azolar = await xonaAzolari(room.id);
-  const { jarimaKunlik } = await sozlamalarOl();
   return {
     kechikkanKun: kechikdi,
-    jarima: kechikdi * jarimaKunlik,
-    ballHar: navbatBalli(azolar.length, kechikdi),
     keyingi: {
       room: keyingiRoom,
       azolar: await xonaAzolari(keyingiRoom.id),
@@ -331,7 +351,18 @@ export async function navbatniBoshlash(): Promise<FaolNavbat | null> {
   return faolNavbat();
 }
 
-/** Navbatni admin qo'lda boshqa xonaga o'tkazadi. */
+/**
+ * Navbatni admin qo'lda boshqa xonaga o'tkazadi.
+ *
+ * Eski navbatning TASDIQ KUTAYOTGAN topshirig'i ham shu yerda bekor
+ * qilinadi. Bo'lmasa u `kutilmoqda` bo'lib abadiy qolardi: navbat
+ * `admin_yopdi` bo'lgani uchun uni tasdiqlaydigan tugma ishlamaydi, lekin
+ * `jobs/reminders.ts` guruhga "tasdiqlang" deb eslatishda davom etardi
+ * (turn 8 / submission 20 aynan shunday osilib qolgan edi).
+ *
+ * Tartib muhim: `submissions` AVVAL yangilanadi, chunki uni topish sharti
+ * navbatning hali `faol` ekaniga tayanadi.
+ */
 export async function navbatniOzgartirish(xonaRaqami: number): Promise<FaolNavbat> {
   const [room] = await sql<Room[]>`SELECT * FROM rooms WHERE raqam = ${xonaRaqami}`;
   if (!room) throw new Error(`${xonaRaqami}-xona topilmadi`);
@@ -340,6 +371,11 @@ export async function navbatniOzgartirish(xonaRaqami: number): Promise<FaolNavba
   const muddat = new Date(Date.now() + siklKuni * KUN_MS);
 
   await sql.begin(async (tx) => {
+    await tx`
+      UPDATE submissions SET bekor = TRUE
+      WHERE holat = 'kutilmoqda' AND NOT bekor
+        AND turn_id IN (SELECT id FROM turns WHERE holat = 'faol')
+    `;
     await tx`UPDATE turns SET holat = 'admin_yopdi', tasdiqlandi = now() WHERE holat = 'faol'`;
     await tx`INSERT INTO turns (room_id, muddat) VALUES (${room.id}, ${muddat})`;
   });
@@ -495,7 +531,12 @@ export async function martaniYop(
   vazifa: NavbatVazifasi,
   userId: number,
 ): Promise<MartaYopishNatija | null> {
-  return sql.begin(async (tx) => {
+  // Faollik HAQIQATAN yopilganda sanaladi. Quyidagi "allaqachon to'liq"
+  // shoxi ham natija qaytaradi — ikkinchi marta bosilgan tugma harakat
+  // emas, uni sanash hisoblagichni "kim ko'p tugma bosgan" ga aylantirardi.
+  let yopildi = false;
+
+  const natija = await sql.begin(async (tx) => {
     const [t] = await tx<Turn[]>`
       SELECT * FROM turns WHERE id = ${turnId} AND holat = 'faol' FOR UPDATE
     `;
@@ -545,6 +586,7 @@ export async function martaniYop(
       RETURNING *
     `;
     if (!yangilangan) return null;
+    yopildi = true;
 
     return {
       turn: yangilangan,
@@ -553,6 +595,12 @@ export async function martaniYop(
       takror: vazifa.takror_soni,
     };
   });
+
+  // Tranzaksiyadan KEYIN: `sql.begin` xato bersa orqaga qaytadi va bu
+  // satrga umuman yetib kelinmaydi, ya'ni yopilmagan marta sanalib
+  // qolmaydi.
+  if (yopildi) await faollikYoz(userId, "vazifa");
+  return natija;
 }
 
 /**
@@ -714,6 +762,7 @@ export async function navbatTopshir(
     RETURNING *
   `;
   if (!sub) throw new Error("Navbat topshirig'i yaratilmadi");
+  await faollikYoz(finalizerUserId, "navbat");
   return sub;
 }
 

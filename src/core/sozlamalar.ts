@@ -23,12 +23,12 @@ export type Sozlamalar = {
   eslatmaKuni: number;
   /** "Oxirgi kun" eslatmasi necha soatda bir qaytariladi */
   eslatmaOraligiSoat: number;
-  /** Navbat kechikkan har kun uchun jarima (so'm) — faqat reytingda ko'rsatiladi */
-  jarimaKunlik: number;
   /** Kvartira puli oyning shu kunигача yig'ilishi kerak (odatda 15) */
   tolovMuddatKuni: number;
   /** To'lov eslatmasi muddatga necha kun qolganda boshlanadi */
   tolovEslatmaKuni: number;
+  /** Kvartira to'lovi eslatmasi necha soatda bir qaytariladi (oyna ichida) */
+  tolovEslatmaSoat: number;
   /** Pul yig'imi eslatmasi necha soatda bir qaytariladi */
   yigimEslatmaSoat: number;
 };
@@ -62,14 +62,6 @@ export const SOZLAMA_TAVSIF = {
     min: 1,
     max: 24,
   },
-  jarima_kunlik: {
-    maydon: "jarimaKunlik",
-    nom: "Kunlik jarima (so'm)",
-    izoh: "Navbat kechikkan har kun uchun — faqat reytingda ko'rsatiladi",
-    standart: config.jarimaKunlik,
-    min: 0,
-    max: 100_000,
-  },
   tolov_muddat_kuni: {
     maydon: "tolovMuddatKuni",
     nom: "To'lov muddati (oyning kuni)",
@@ -85,6 +77,14 @@ export const SOZLAMA_TAVSIF = {
     standart: config.tolovEslatmaKuni,
     min: 1,
     max: 10,
+  },
+  tolov_eslatma_soat: {
+    maydon: "tolovEslatmaSoat",
+    nom: "To'lov eslatmasi (soat)",
+    izoh: "Kvartira to'lovini to'lamaganlarga necha soatda bir eslatiladi",
+    standart: config.tolovEslatmaSoat,
+    min: 1,
+    max: 48,
   },
   yigim_eslatma_soat: {
     maydon: "yigimEslatmaSoat",
@@ -103,9 +103,9 @@ export const SOZLAMA_VARIANT: Record<SozlamaKalit, number[]> = {
   kerakli_tasdiq: [1, 2, 3, 4, 5, 6],
   eslatma_kuni: [1, 2, 3, 4, 5],
   eslatma_oraligi_soat: [1, 2, 3, 4, 5, 6, 8, 12, 24],
-  jarima_kunlik: [0, 5_000, 10_000, 15_000, 20_000, 30_000, 50_000],
-  tolov_muddat_kuni: [5, 10, 12, 15, 18, 20, 25, 28],
+  tolov_muddat_kuni: [5, 10, 12, 14, 15, 18, 20, 25, 28],
   tolov_eslatma_kuni: [1, 2, 3, 4, 5, 7, 10],
+  tolov_eslatma_soat: [1, 2, 3, 4, 5, 6, 8, 12, 24, 48],
   yigim_eslatma_soat: [1, 2, 3, 4, 5, 6, 8, 12, 24, 48],
 };
 

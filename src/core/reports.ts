@@ -21,7 +21,8 @@
  * berilmaganini bildiradi.
  */
 import { sql, type JavobgarJavobi, type Report } from "../db/index.js";
-import { BALLAR, type Ishonch, type ShikoyatJoyi } from "../config.js";
+import { type Ishonch, type ShikoyatJoyi } from "../config.js";
+import { faollikYoz } from "./faollik.js";
 
 /** Bir kishi bir odam haqida shuncha vaqt ichida qayta yoza olmaydi. */
 export const TAKROR_MS = 30 * 60_000;
@@ -72,12 +73,16 @@ export async function shikoyatYuborish(
   }
 
   const [report] = await sql<Report[]>`
-    INSERT INTO reports (reporter_id, reported_id, ishonch, joy, izoh, photo_id, media_turi, ball)
+    INSERT INTO reports (reporter_id, reported_id, ishonch, joy, izoh, photo_id, media_turi)
     VALUES (${reporterId}, ${reportedId}, ${ishonch}, ${joy}, ${izoh.trim().slice(0, 500)},
-            ${mediaId}, ${mediaTuri}, ${BALLAR.shikoyatJarima})
+            ${mediaId}, ${mediaTuri})
     RETURNING *
   `;
   if (!report) throw new Error("Yozuv yaratilmadi");
+  // Shikoyat YOZISH harakati sanaladi — kim haqida ekani emas. Sababchi
+  // hech qachon faollik olmaydi va yo'qotmaydi: bu hisoblagich baho
+  // bermaydi (`core/faollik.ts`).
+  await faollikYoz(reporterId, "shikoyat");
   return { ok: true, report };
 }
 

@@ -16,7 +16,7 @@ import {
   type SozlamaKalit,
 } from "../../core/sozlamalar.js";
 import { kim } from "../group.js";
-import { AJRATGICH, esc, pul } from "../text.js";
+import { AJRATGICH, esc } from "../text.js";
 
 async function faqatAdmin(ctx: Context): Promise<User | null> {
   const admin = await kim(ctx.from?.id);
@@ -25,9 +25,9 @@ async function faqatAdmin(ctx: Context): Promise<User | null> {
 
 const KALITLAR = Object.keys(SOZLAMA_TAVSIF) as SozlamaKalit[];
 
-/** Qiymatni odam tilida — jarima so'mda, qolganlari son. */
-function qiymatMatni(kalit: SozlamaKalit, q: number): string {
-  return kalit === "jarima_kunlik" ? (q === 0 ? "o'chiq" : pul(q)) : String(q);
+/** Qiymatni odam tilida — hozircha hammasi oddiy son. */
+function qiymatMatni(_kalit: SozlamaKalit, q: number): string {
+  return String(q);
 }
 
 async function sozlamalarKorsat(ctx: Context): Promise<void> {

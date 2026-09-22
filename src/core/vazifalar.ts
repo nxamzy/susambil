@@ -38,7 +38,7 @@ export type NavbatVazifasi = {
   /**
    * Navbat BOSHLANGANIDAN necha kun o'tgach bu vazifa erta ochiladi va
    * o'z eslatmasi (har 5 soatda, 1-marta bajarilgunicha) ishga tushadi.
-   * 0 = o'chiq (odatdagi "oxirgi kun" qulfi, oraliq eslatma yo'q). Musor = 3.
+   * 0 = o'chiq (odatdagi "oxirgi kun" qulfi, oraliq eslatma yo'q). Musor = 2.
    */
   oraliq_kun: number;
   tartib: number;

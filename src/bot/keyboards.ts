@@ -22,7 +22,7 @@ export const MENYU = {
   navbat: "📋 Navbat",
   yigim: "💰 Pul yig'imi",
   tolov: "💳 Kvartira to'lovi",
-  reyting: "🏆 Reyting",
+  faollik: "📊 Faollik",
   profil: "👤 Profil",
   azolar: "👥 A'zolar",
   tarix: "🕘 Tarix",
@@ -56,21 +56,35 @@ export const ADMIN_PANEL_TUGMA = "👑 Admin Panel";
 export const MENING_NAVBATIM_TUGMA = "🧹 Mening navbatim";
 
 /**
- * Shaxsiy chatdagi doimiy tugmalar — yozish maydonining ostida turadi va
- * hech qachon yo'qolmaydi. Guruhda ishlatilmaydi: u yerda tugmalar hammaga
- * ko'rinib, chatni bosib qo'yardi — guruh uchun `panelKeyboard()` bor.
+ * "Musor to'ldi" — uyda turgan HAR KIM navbatdagi xonaga bir bosishda
+ * xabar beradi (`handlers/navbat.ts` `musorToldi`). SHIKOYAT_TUGMA kabi
+ * maxsus: `MENYU` ko'rinishlaridan farqli, u ma'lumot ko'rsatmaydi —
+ * harakat qiladi.
+ */
+export const MUSOR_TUGMA = "🗑 Musor to'ldi";
+
+/**
+ * Shaxsiy chatdagi menyu tugmalari — yozish maydonining ostida turadi.
+ * Guruhda ishlatilmaydi: u yerda tugmalar hammaga ko'rinib, chatni bosib
+ * qo'yardi — guruh uchun `panelKeyboard()` bor.
+ *
+ * `.persistent()` ataylab yo'q. U bilan Telegram menyuni yigishga umuman
+ * ruxsat bermasdi va bu 6-8 qator tugma uzun xabarlarning (chek rasmi,
+ * to'lov e'loni) pastini bosib turardi. Usiz menyu o'z-o'zidan
+ * yo'qolmaydi — shunchaki foydalanuvchi ⌨️ tugmasi bilan uni vaqtincha
+ * yigib, xabarni to'liq o'qiy oladi va xohlagan payt qaytaradi.
  */
 export function menyuKeyboard(isAdmin = false, isDutyUser = false): Keyboard {
   const kb = new Keyboard();
   if (isDutyUser) kb.text(MENING_NAVBATIM_TUGMA).row();
   kb.text(MENYU.navbat).text(MENYU.yigim).row();
-  kb.text(MENYU.tolov).row();
-  kb.text(MENYU.reyting).text(MENYU.profil).row();
+  kb.text(MENYU.tolov).text(MUSOR_TUGMA).row();
+  kb.text(MENYU.faollik).text(MENYU.profil).row();
   kb.text(MENYU.azolar).text(MENYU.tarix).row();
   kb.text(MENYU.tanishtirish).row();
   kb.text(SHIKOYAT_TUGMA);
   if (isAdmin) kb.row().text(ADMIN_PANEL_TUGMA);
-  return kb.resized().persistent();
+  return kb.resized();
 }
 
 /**
@@ -92,10 +106,12 @@ export function panelKeyboard(): InlineKeyboard {
   const kb = new InlineKeyboard();
   kb.text(MENYU.navbat, "korish:navbat");
   kb.text(MENYU.yigim, "korish:yigim").row();
-  kb.text(MENYU.reyting, "korish:reyting");
+  kb.text(MENYU.faollik, "korish:faollik");
   kb.text(MENYU.profil, "korish:profil").row();
   kb.text(MENYU.azolar, "korish:azolar");
   kb.text(MENYU.tarix, "korish:tarix").row();
+  // Guruhda ham — musor to'lganini ko'rgan odam botni ochib o'tirmasin.
+  kb.text(MUSOR_TUGMA, "musor_toldi").row();
   kb.text("ℹ️ Bu bot qanday ishlaydi?", "korish:tanishtirish");
   return kb;
 }
@@ -116,6 +132,14 @@ export function xonaTanlashKeyboard(raqamlar: number[]): InlineKeyboard {
   for (const r of raqamlar) kb.text(`🚪 ${r}-xona`, `yangixona:${r}`);
   kb.row().text("✖️ Bekor qilish", "bekor");
   return kb;
+}
+
+/** Qo'llanma rasmi ostida: to'liq matnli qo'llanma va panelga qaytish. */
+export function qollanmaKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("📖 Batafsil (matn)", "korish:tanishtirish_matn")
+    .row()
+    .text("🏠 Panelga qaytish", "korish:panel");
 }
 
 /** Tanishtirishdan keyin panelga qaytish. */
@@ -232,12 +256,21 @@ export function shikoyatGuruhKeyboard(r: ReportToliq): InlineKeyboard | null {
   return kb;
 }
 
-/** "💳 Kvartira to'lovi" ko'rinishidagi asosiy tugmalar. */
-export function tolovKeyboard(): InlineKeyboard {
-  return new InlineKeyboard()
-    .text("💳 To'lov qilish", "tolov_boshla")
-    .row()
-    .text("📊 Mening to'lovlarim tarixi", "tolov_tarix");
+/**
+ * "🙁 To'lay olmayapman" tugmasining yozuvi — hamma joyda bir xil.
+ * Callback'da sikl id'si turadi: eslatma kelgan payt bilan tugma bosilgan
+ * payt orasida oy almashsa ham sabab to'g'ri siklga yozilsin.
+ */
+export const UZR_TUGMA = "🙁 To'lay olmayapman";
+
+/**
+ * "💳 Kvartira to'lovi" ko'rinishidagi asosiy tugmalar. `uzrSiklId` —
+ * qarzi bor odamga "🙁 To'lay olmayapman" ham chiqadi.
+ */
+export function tolovKeyboard(uzrSiklId?: number): InlineKeyboard {
+  const kb = new InlineKeyboard().text("💳 To'lov qilish", "tolov_boshla").row();
+  if (uzrSiklId) kb.text(UZR_TUGMA, `uzr:${uzrSiklId}`).row();
+  return kb.text("📊 Mening to'lovlarim tarixi", "tolov_tarix");
 }
 
 /** Adminga yuboriladigan tekshiruv xabaridagi tugmalar — faqat 'kutilmoqda'da ko'rinadi. */
@@ -280,6 +313,14 @@ export function tolovDashboardKeyboard(d: TolovDashboard): InlineKeyboard {
     kb.text("✏️ Summa", `yigim_summa:${d.sikl.id}`)
       .text("📅 Muddat", `yigim_muddat:${d.sikl.id}`)
       .row();
+    // Ochiq yig'imning nomi va savdo ro'yxati ham tuzatiladi — ilgari
+    // e'lon ketgach ularni o'zgartirishning yo'li yo'q edi va kesilgan
+    // ro'yxat har eslatmada takrorlanaverardi.
+    if (d.sikl.holat === "ochiq") {
+      kb.text("🛒 Ro'yxat", `yigim_rtahrir:${d.sikl.id}`)
+        .text("📝 Nomi", `yigim_nom:${d.sikl.id}`)
+        .row();
+    }
     kb.text("📣 Hammaga eslatma", `yigim_turtki:${d.sikl.id}`).row();
     kb.text("🛒 Uyga nima kerak", "narsalar").row();
     kb.text("📜 Yig'imlar tarixi", "yigim_tarix").row();
@@ -322,6 +363,12 @@ export function tolovFoydalanuvchiKeyboard(userId: number, yigim = false): Inlin
   const p = yigim ? "yigim" : "tolov";
   return new InlineKeyboard()
     .text(yigim ? "✏️ To'ladi/to'lamadi" : "✏️ To'lovni tuzatish", `${p}_tuzat:${userId}`)
+    .row()
+    // "Tuzatish" bilan ATAYLAB alohida: u odam TO'LAGAN pulni yozadi,
+    // bu esa undan TALAB qilinadigan summani o'zgartiradi. Ikkisini bitta
+    // tugmaga siqish tarixni yolg'onlashtirardi — 20 kun turgan odamning
+    // yetmagan 300 000 i "to'ladi" bo'lib yozilib qolardi.
+    .text("🧾 Shaxsiy summa", `${p}_shaxsiy:${userId}`)
     .row()
     .text(yigim ? "⬅️ Yig'im" : "⬅️ To'lovlar ro'yxati", `${p}_dashboard`);
 }
@@ -383,6 +430,8 @@ export function navbatAdminKeyboard(turnId: number): InlineKeyboard {
     .row()
     .text("🔀 Boshqa xonaga o'tkazish", "admin_navbat_xonaga")
     .row()
+    .text(`${MUSOR_TUGMA} — eslatish`, "musor_toldi")
+    .row()
     .text("⚙️ Navbat sozlamalari", "navbat_sozlama");
 }
 
@@ -414,6 +463,8 @@ export function navbatMuddatKeyboard(turnId: number): InlineKeyboard {
 /** Admin: navbatning vaqt sozlamalari. */
 export function navbatSozlamaKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
+    .text("🔢 Navbat tartibi", "navbat_tartib")
+    .row()
     .text("🔁 Sikl uzunligi", "navbat_sikl")
     .row()
     .text("🔓 Majburiy vazifa ochilishi", "navbat_majburiy")
@@ -473,7 +524,20 @@ export function adminPanelKeyboard(): InlineKeyboard {
     .text("⚙️ Sozlamalar", "sozlamalar")
     .text("📜 Tarix", "admin_logs")
     .row()
+    .text("📊 Hisobotlar", "hisobot")
     .text("⚠️ Kelishmovchiliklar", "admin_conflicts");
+}
+
+/** Admin: hisobotni qo'lda ochish (avtomatik yuborilgandan tashqari). */
+export function hisobotKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("📋 Oxirgi navbat", "hisobot:oxirgi")
+    .text("🧹 Joriy navbat", "hisobot:joriy")
+    .row()
+    .text("📅 Shu oy", "hisobot:oy")
+    .text("📅 O'tgan oy", "hisobot:otgan")
+    .row()
+    .text("⬅️ Admin panel", "admin_panel");
 }
 
 /** Har bir foydalanuvchi — bitta qatorda bitta tugma, holat matnda ko'rinadi. */
@@ -499,8 +563,6 @@ export function foydalanuvchiDetalKeyboard(
     .row()
     .text("🏠 Xona", `admin_edit_room:${u.id}`)
     .text(u.admin ? "👑 Admin — o'chirish" : "👑 Admin qilish", `admin_toggle_admin:${u.id}`)
-    .row()
-    .text("⭐ Ball tuzatish", `admin_ball:${u.id}`)
     .row();
 
   // Eski /qaytabogla buyrug'ining bir bosishlik, ID asosidagi o'rnini
@@ -693,9 +755,10 @@ export function xabarTasdiqKeyboard(): InlineKeyboard {
 // ---------------------------------------------------------------------------
 
 /** A'zoning "💰 Pul yig'imi" ko'rinishi — ochiq yig'im bor bo'lganda. */
-export function yigimKeyboard(toliqTolagan: boolean): InlineKeyboard {
+export function yigimKeyboard(toliqTolagan: boolean, siklId?: number): InlineKeyboard {
   const kb = new InlineKeyboard();
   if (!toliqTolagan) kb.text("💰 To'ladim — chek yuborish", "yigim_tolash").row();
+  if (!toliqTolagan && siklId) kb.text(UZR_TUGMA, `uzr:${siklId}`).row();
   kb.text("🛒 Uyga nima kerak", "narsalar").row();
   kb.text("📊 Mening to'lovlarim tarixi", "tolov_tarix");
   return kb;
@@ -728,6 +791,34 @@ export function yigimKunKeyboard(prefiks: string): InlineKeyboard {
   return kb;
 }
 
+/**
+ * Yig'im boshlanayotganda: e'longa qaysi narsalar chiqishini tanlash.
+ *
+ * HAMMA faol narsa tugma bo'lib chiqadi, "tugadi" deb belgilanganlari
+ * emas. Sabab: e'longa faqat belgilangani tushardi va hech kim
+ * belgilamagan bo'lsa ro'yxat BO'SH ketardi — uy esa nima olishni
+ * bilmasdi. Endi standart holatda hammasi tanlangan bo'ladi, admin
+ * keraksizini bir bosishda olib tashlaydi.
+ *
+ * Ro'yxatda yo'q narsa "✏️ Qo'lda qo'shish" bilan yoziladi va o'sha
+ * bosishda "Uyga kerak" ro'yxatiga ham tushadi — keyingi safar tayyor
+ * turadi.
+ */
+export function yigimNarsalarKeyboard(
+  narsalar: NarsaToliq[],
+  tanlangan: string[],
+): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const n of narsalar) {
+    const belgi = tanlangan.includes(n.nom) ? "✅" : "⬜️";
+    kb.text(`${belgi} ${n.emoji} ${n.nom}`, `yigim_narsa:${n.id}`).row();
+  }
+  kb.text("✏️ Qo'lda qo'shish", "yigim_narsa_qosh").row();
+  kb.text(tanlangan.length > 0 ? `✅ Davom (${tanlangan.length} ta)` : "➡️ Ro'yxatsiz davom", "yigim_narsa_ok");
+  kb.row().text("✖️ Bekor qilish", "bekor");
+  return kb;
+}
+
 /** Yuborishdan oldingi oxirgi tasdiq — e'lon ketgach ortga yo'l yo'q. */
 export function yigimBoshlashKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
@@ -744,9 +835,15 @@ export function yigimYakunlashKeyboard(siklId: number): InlineKeyboard {
     .text("⬅️ Orqaga", "yigim_dashboard");
 }
 
-/** Eslatmadan to'g'ridan-to'g'ri chek yuborishga o'tish uchun. */
-export function yigimTolashKeyboard(): InlineKeyboard {
-  return new InlineKeyboard().text("💰 To'ladim — chek yuborish", "yigim_tolash");
+/**
+ * Eslatmadan to'g'ridan-to'g'ri chek yuborishga o'tish uchun. `siklId`
+ * berilsa "🙁 To'lay olmayapman" ham chiqadi — eslatma aynan to'lay
+ * olmayotgan odamga keladi, sababini yozish yo'li ham shu yerda bo'lsin.
+ */
+export function yigimTolashKeyboard(siklId?: number): InlineKeyboard {
+  const kb = new InlineKeyboard().text("💰 To'ladim — chek yuborish", "yigim_tolash");
+  if (siklId) kb.row().text(UZR_TUGMA, `uzr:${siklId}`);
+  return kb;
 }
 
 // ---------------------------------------------------------------------------

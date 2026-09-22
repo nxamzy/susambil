@@ -560,6 +560,18 @@ async function tekshiruvQarori(
 }
 
 export function register(bot: Bot) {
+  /**
+   * Menyudagi "🔒 Anonim shikoyat" tugmasi bilan bir xil oqim, faqat
+   * buyruq orqali. Tugma yozish maydonining ostida turadi va odam menyuni
+   * yigib qo'ygan bo'lsa ko'rinmaydi — shikoyat esa aynan shu payt, jahl
+   * ustida kerak bo'ladi. Shaxsiy chat bilan cheklangan: butun oqim
+   * (izoh, joy, kim) guruhda ko'rinmasligi shart.
+   */
+  bot.command("shikoyat", async (ctx) => {
+    if (ctx.chat.type !== "private") return;
+    await shikoyatBoshla(ctx);
+  });
+
   bot.callbackQuery(/^shikoyat_joy:(\w+)$/, async (ctx) => {
     const holat = await holatOl(ctx.from.id);
     if (holat?.tur !== "shikoyat" || holat.qadam !== "joy") {

@@ -13,6 +13,7 @@ import * as adminUsers from "./handlers/adminUsers.js";
 import * as vazifalar from "./handlers/vazifalar.js";
 import * as sozlamalar from "./handlers/sozlamalar.js";
 import * as xabar from "./handlers/xabar.js";
+import * as hisobot from "./handlers/hisobot.js";
 import * as messages from "./handlers/messages.js";
 
 /** Xatoni qisqa ko'rinishda yozadi — butun ctx ni dump qilmaydi,
@@ -56,6 +57,7 @@ export function botYarat(): Bot {
   vazifalar.register(bot);
   sozlamalar.register(bot);
   xabar.register(bot);
+  hisobot.register(bot);
   photos.register(bot);
   messages.register(bot);
 
@@ -71,14 +73,26 @@ export function botYarat(): Bot {
  * o'tgan va hammaga ishlaydigan buyruqlar turishi kerak — bo'lmasa odam
  * menyudan bosadi-yu, javob kelmaydi. Admin buyruqlari bu yerda yo'q:
  * ular /yordam ichida, faqat adminga ko'rsatiladi.
+ *
+ * `/start` ro'yxatda TURISHI SHART. Telegram uni faqat bot bilan hali
+ * gaplashmagan odamga "Start" tugmasi qilib ko'rsatadi — bir marta
+ * bosilgach, `setMyCommands` ro'yxatida bo'lmasa `/` menyusidan butunlay
+ * yo'qoladi va odam panelga qaytadigan yo'lni topolmay qoladi.
+ *
+ * Bu ro'yxat deploydan keyin O'ZI YANGILANMAYDI — `buyruqlarniOrnat`
+ * faqat long polling rejimida (`src/index.ts`) chaqiriladi, Vercel esa
+ * webhook bilan ishlaydi. O'zgartirgandan keyin `npm run commands:set`.
  */
 export async function buyruqlarniOrnat(bot: Bot): Promise<void> {
   await bot.api.setMyCommands([
+    { command: "start", description: "Boshlash — asosiy panel va menyu" },
     { command: "navbat", description: "Kim navbatda" },
-    { command: "reyting", description: "Shu oylik reyting" },
     { command: "tarix", description: "Oxirgi navbatlar" },
+    { command: "faollik", description: "Kim botda ko'proq harakat qilyapti" },
     { command: "yigim", description: "Pul yig'imi — holati va to'lash" },
     { command: "kerak", description: "Uyga nima kerak — tugaganini belgilash" },
+    { command: "shikoyat", description: "Anonim shikoyat — ismingiz ko'rinmaydi" },
+    { command: "qollanma", description: "Botda nima bor — bitta rasmda" },
     { command: "yordam", description: "Buyruqlar ro'yxati" },
   ]);
 }

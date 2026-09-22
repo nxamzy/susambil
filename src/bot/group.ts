@@ -76,6 +76,35 @@ export async function korishXabar(
   `;
 }
 
+/**
+ * `korishXabar` ning rasmli nusxasi — bir xil kalit, ya'ni chatdagi oldingi
+ * ma'lumot xabari (matn bo'lsa ham) o'chiriladi. Yuborib bo'lmasa (rasm
+ * URL'i hali deploy qilinmagan, lokal ishga tushirish) `false` — chaqiruvchi
+ * matnli qo'llanmaga qaytadi.
+ */
+export async function korishRasm(
+  api: Api,
+  chatId: number,
+  rasm: string,
+  izoh: string,
+  extra: object = {},
+): Promise<boolean> {
+  const kalit = `korish_msg:${chatId}`;
+  try {
+    const yangi = await api.sendPhoto(chatId, rasm, { caption: izoh, parse_mode: "HTML", ...extra });
+    const [eski] = await sql<{ qiymat: string }[]>`SELECT qiymat FROM settings WHERE kalit = ${kalit}`;
+    if (eski?.qiymat) await api.deleteMessage(chatId, Number(eski.qiymat)).catch(() => {});
+    await sql`
+      INSERT INTO settings (kalit, qiymat) VALUES (${kalit}, ${String(yangi.message_id)})
+      ON CONFLICT (kalit) DO UPDATE SET qiymat = EXCLUDED.qiymat
+    `;
+    return true;
+  } catch (e) {
+    console.error("[korishRasm] rasm yuborilmadi:", e instanceof Error ? e.message : e);
+    return false;
+  }
+}
+
 /** Telegram id bo'yicha ro'yxatdan o'tgan odamni topadi. */
 export async function kim(telegramId: number | undefined): Promise<User | null> {
   if (!telegramId) return null;

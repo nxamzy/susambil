@@ -2,8 +2,6 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { Bot } from "grammy";
 import { config } from "../src/config.js";
 import { eslatmalarniTekshir } from "../src/jobs/reminders.js";
-import { oylikHisobot } from "../src/jobs/monthly.js";
-import { kunQismlari } from "../src/core/vaqt.js";
 
 /**
  * Kunlik/soatlik tetiklovchi. `eslatmalarniTekshir` — barcha eslatmalarning
@@ -32,14 +30,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const bot = new Bot(config.botToken);
   await bot.init();
 
-  const bajarildi: string[] = [];
   await eslatmalarniTekshir(bot.api);
-  bajarildi.push("eslatmalar");
 
-  if (kunQismlari().kun === 1) {
-    await oylikHisobot(bot.api);
-    bajarildi.push("oylik hisobot");
-  }
-
-  return res.status(200).json({ ok: true, bajarildi });
+  return res.status(200).json({ ok: true, bajarildi: ["eslatmalar"] });
 }

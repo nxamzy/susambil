@@ -23,6 +23,7 @@
  */
 import { sql } from "../db/index.js";
 import { logla } from "./adminlog.js";
+import { faollikYoz } from "./faollik.js";
 
 export type KerakliNarsa = {
   id: number;
@@ -103,6 +104,9 @@ export async function narsaTugadi(id: number, userId: number): Promise<KerakliNa
     WHERE id = ${id} AND faol AND tugadi IS NULL
     RETURNING *
   `;
+  // `tugadi IS NULL` sharti tufayli faqat BIRINCHI belgilagan odam
+  // sanaladi — keyin bosgan odam yozuvni ham, faollikni ham olmaydi.
+  if (n) await faollikYoz(userId, "narsa");
   return n ?? null;
 }
 
@@ -241,6 +245,10 @@ export async function narsaQosh(
   if (!n) return { ok: false, sabab: "nom" };
 
   await logla(userId, "narsa_qoshildi", "narsa", n.id, null, `${n.emoji} ${n.nom}`);
+  // Faqat HAQIQATAN yangi narsa uchun. Ro'yxatda bor nom yozilgan bo'lsa
+  // yuqorida `narsaTugadi` chaqirilgan va faollik o'sha yerda sanalgan —
+  // bitta harakat ikki marta yozilmasin.
+  await faollikYoz(userId, "narsa_qosh");
   return { ok: true, narsa: n };
 }
 
