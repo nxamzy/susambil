@@ -209,7 +209,7 @@ CREATE TABLE IF NOT EXISTS reports (
   izoh         TEXT NOT NULL,
   photo_id     TEXT,
   media_turi   TEXT NOT NULL DEFAULT 'rasm' CHECK (media_turi IN ('rasm', 'video')),
-  ball         INT NOT NULL,
+  ball         INT NOT NULL DEFAULT 0,
   -- kutilmoqda -> tuzatilmoqda -> tuzatildi | jarima
   --           \-> rad
   -- "jarima" ustidagi holatning o'zi ball qachon berilganini bildiradi —
@@ -285,6 +285,13 @@ DO $$ BEGIN
   ALTER TABLE reports ADD CONSTRAINT reports_javobgar_javobi_chk
     CHECK (javobgar_javobi IS NULL OR javobgar_javobi IN ('tan_oldi', 'rad_etdi'));
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- MIGRATSIYA 4: ball tizimi olib tashlanganda `shikoyatYuborish` INSERT'idan
+-- `ball` chiqarildi, ustun esa NOT NULL va standartsiz qoldi — har bir yangi
+-- shikoyat INSERT'da yiqilardi (guruhga ham, adminga ham hech narsa bormadi,
+-- 15-avgustdan keyin birorta shikoyat saqlanmagan). Ustun tarix uchun qoladi
+-- (eski yozuvlardagi qiymatlar), yangilari 0 oladi — submissions/chores bilan bir xil.
+ALTER TABLE reports ALTER COLUMN ball SET DEFAULT 0;
 
 -- ---------------------------------------------------------------------------
 -- KVARTIRA TO'LOVI
