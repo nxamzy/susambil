@@ -365,6 +365,19 @@ berilgani kabi. `MAJBURIY_DOIM_OCHIQ` (999) — "hech qachon qulflanmasin".
 Muddat o'zgarishi JIMGINA bo'lmaydi: guruhga e'lon chiqadi va navbatdagi
 xona a'zolariga DM ketadi — muddatni bildirmasdan surish adolatsiz bo'lardi.
 
+## Guruh admini haqidagi shikoyat — u tasdiqlaguncha guruhga chiqmaydi
+
+`SHAXSIY_KORIB_CHIQUVCHI_ID` (config.ts, Jamshidbek) haqidagi shikoyat
+darrov guruhga chiqmaydi: faqat UNING DM'iga boradi (boshqa adminlarga ham,
+`/shikoyatlar`ga ham emas), qarorni ham faqat u qiladi. "✅ Tasdiqlash"
+bosilganda birinchi marta guruhga chiqadi; rad etilsa — hech qachon.
+Boshqalar haqidagisi o'zgarmagan. Yagona qoida — sof `guruhdanUshlanadimi`
+(`core/reports.ts`, testlangan); `guruhXabarniYangila` shu bilan to'siladi,
+shuning uchun uni chaqiradigan har bir joy avtomatik bo'ysunadi.
+
+Qoida yashirin EMAS: yozuvchiga "kimni tanlash" qadamida va "Qabul qildim"da
+`ADMIN_SHIKOYATI_IZOH` ochiq aytiladi.
+
 ## Admin xabari — e'lon, ikkinchi tasdiqlash tizimi emas
 
 `bot/handlers/xabar.ts`: admin o'zi yozgan matnni navbatdagi xonaga /

@@ -19,10 +19,11 @@
 import type { Bot, Context, Api, InlineKeyboard as InlineKeyboardType } from "grammy";
 import { InlineKeyboard } from "grammy";
 import { sql, type JavobgarJavobi, type Report, type User } from "../../db/index.js";
-import { SHIKOYAT_JOYLARI, type Ishonch, type ShikoyatJoyi } from "../../config.js";
+import { SHAXSIY_KORIB_CHIQUVCHI_ID, SHIKOYAT_JOYLARI, type Ishonch, type ShikoyatJoyi } from "../../config.js";
 import {
   adminIzohQoshish,
   adminXabarlarniSaqla,
+  guruhdanUshlanadimi,
   guruhXabarniSaqla,
   javobgarIzohiniSaqla,
   javobgarJavobiniSaqla,
@@ -49,6 +50,7 @@ import {
 } from "../keyboards.js";
 import {
   AJRATGICH,
+  ADMIN_SHIKOYATI_IZOH,
   esc,
   shikoyatAdminXabari,
   shikoyatGuruhXabari,
@@ -212,15 +214,14 @@ async function shikoyatYuborildi(ctx: Context, m: YuborishManbasi): Promise<void
     return;
   }
 
-  await ctx.reply(
-    [
-      `✅ <b>Qabul qildim.</b>`,
-      ``,
-      `Bu butunlay maxfiy — yozganingizni faqat`,
-      `admin biladi.`,
-    ].join("\n"),
-    { parse_mode: "HTML" },
-  );
+  const qabul = [
+    `✅ <b>Qabul qildim.</b>`,
+    ``,
+    `Bu butunlay maxfiy — yozganingizni faqat`,
+    `admin biladi.`,
+  ];
+  if (guruhdanUshlanadimi(natija.report)) qabul.push(``, ADMIN_SHIKOYATI_IZOH);
+  await ctx.reply(qabul.join("\n"), { parse_mode: "HTML" });
 
   const yangi = await shikoyatniOl(natija.report.id);
   if (!yangi) return;
@@ -292,6 +293,9 @@ function guruhKlaviaturasi(r: ReportToliq): InlineKeyboardType {
  * o'zi tekshiradi).
  */
 async function guruhXabarniYangila(api: Api, r: ReportToliq): Promise<boolean> {
+  // Jamshidbek haqidagisi u tasdiqlaguncha guruhga chiqmaydi — bu xato
+  // emas, shuning uchun log ham yozilmaydi (`guruhdanUshlanadimi`).
+  if (guruhdanUshlanadimi(r)) return false;
   const chatId = await guruhId();
   if (!chatId) {
     console.error(`[shikoyat #${r.id}] guruh sozlanmagan (guruh_id yo'q) — guruhga yuborilmadi.`);
@@ -317,7 +321,7 @@ async function guruhXabarniYangila(api: Api, r: ReportToliq): Promise<boolean> {
 
 /** Joriy holatga mos faol klaviatura — guruhga yetmagan bo'lsa qayta urinish tugmasi bilan. */
 function faolKlaviatura(r: ReportToliq): InlineKeyboardType {
-  const guruhgaYetmadi = !r.guruh_msg_id;
+  const guruhgaYetmadi = !r.guruh_msg_id && !guruhdanUshlanadimi(r);
   if (r.holat === "kutilmoqda") return shikoyatAdminKeyboard(r.id, guruhgaYetmadi);
   if (r.holat === "tuzatilmoqda") return shikoyatTekshiruvKeyboard(r.id, guruhgaYetmadi);
   return new InlineKeyboard();
@@ -325,7 +329,9 @@ function faolKlaviatura(r: ReportToliq): InlineKeyboardType {
 
 /** Har bir bog'langan adminga to'liq DM qiladi, xabar id'larini saqlaydi. */
 async function adminlargaYubor(api: Api, r: ReportToliq): Promise<void> {
-  const adminlar = await adminlarRoyxati();
+  // Ushlab turilgan shikoyat FAQAT Jamshidbekning o'ziga — boshqa adminlarga ham emas.
+  const ushlab = guruhdanUshlanadimi(r);
+  const adminlar = (await adminlarRoyxati()).filter((a) => !ushlab || a.id === SHAXSIY_KORIB_CHIQUVCHI_ID);
 
   const matn = shikoyatAdminXabari(r);
   const kb = faolKlaviatura(r);
@@ -426,7 +432,11 @@ export async function javobgarIzohiSaqlandi(ctx: Context, reportId: number, izoh
 
 /** /shikoyatlar buyrug'i uchun ham ishlatiladi — bir xil ko'rinish, ikkinchi nusxa yo'q. */
 export async function kutayotganlarniJonat(ctx: Context): Promise<void> {
-  const royxat = await kutayotganShikoyatlar();
+  // Ushlab turilganlarini boshqa admin /shikoyatlar orqali ham ko'rmaydi.
+  const men = await kim(ctx.from?.id);
+  const royxat = (await kutayotganShikoyatlar()).filter(
+    (r) => !guruhdanUshlanadimi(r) || men?.id === SHAXSIY_KORIB_CHIQUVCHI_ID,
+  );
   if (royxat.length === 0) {
     await ctx.reply("✅ Tasdiq kutayotgan shikoyat yo'q.");
     return;
@@ -477,6 +487,13 @@ async function boshlangichQaror(
 ): Promise<void> {
   const admin = await faqatAdmin(ctx);
   if (!admin) {
+    await ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
+    return;
+  }
+
+  // Ushlab turilgan shikoyat bo'yicha qarorni faqat Jamshidbekning o'zi qiladi.
+  const oldin = await shikoyatniOl(reportId);
+  if (oldin && guruhdanUshlanadimi(oldin) && admin.id !== SHAXSIY_KORIB_CHIQUVCHI_ID) {
     await ctx.answerCallbackQuery({ text: "Sizda ruxsat yo'q.", show_alert: true }).catch(() => {});
     return;
   }
@@ -633,7 +650,7 @@ export function register(bot: Bot) {
     await holatOrnat(ctx.from.id, yangi);
 
     const xabar = await ctx
-      .editMessageText(`👤 <b>Kimni nazarda tutyapsiz?</b>`, {
+      .editMessageText(`👤 <b>Kimni nazarda tutyapsiz?</b>\n\n${ADMIN_SHIKOYATI_IZOH}`, {
         parse_mode: "HTML",
         reply_markup: shikoyatKimKeyboard(odamlar),
       })

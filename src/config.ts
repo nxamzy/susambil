@@ -227,6 +227,15 @@ export const SHIKOYAT_JOYLARI = {
 export type ShikoyatJoyi = keyof typeof SHIKOYAT_JOYLARI;
 
 /**
+ * Shu odam (`users.id`, Jamshidbek) HAQIDAGI shikoyat guruhga darrov
+ * chiqmaydi: faqat uning o'z DM'iga boradi (boshqa adminlarga ham emas) va
+ * u "✅ Tasdiqlash" bosgandagina guruhga chiqadi. Rad etsa — hech qachon.
+ * Boshqa hamma haqidagi shikoyat avvalgidek darrov guruhga chiqadi.
+ * Qoidaning o'zi: `core/reports.ts` `guruhdanUshlanadimi`.
+ */
+export const SHAXSIY_KORIB_CHIQUVCHI_ID = 8;
+
+/**
  * Kvartira to'lovi — standart qiymatlar. Haqiqiy qiymat har doim
  * `settings` jadvalidan o'qiladi (`core/tolov.ts`), bu yerdagi faqat hali
  * hech kim o'zgartirmagan holatdagi standart — xuddi `guruhId()` .env

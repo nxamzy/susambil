@@ -21,8 +21,26 @@
  * berilmaganini bildiradi.
  */
 import { sql, type JavobgarJavobi, type Report } from "../db/index.js";
-import { type Ishonch, type ShikoyatJoyi } from "../config.js";
+import { SHAXSIY_KORIB_CHIQUVCHI_ID, type Ishonch, type ShikoyatJoyi } from "../config.js";
 import { faollikYoz } from "./faollik.js";
+
+/**
+ * Shikoyat hozircha guruhdan ushlab turiladimi (`SHAXSIY_KORIB_CHIQUVCHI_ID`
+ * haqida bo'lsa). Faqat hali guruhga CHIQMAGAN yozuvga taalluqli: guruh
+ * xabari bor bo'lsa (masalan admin keyinroq "👤 Boshqa odam" bilan
+ * belgilagan) u avvalgidek tahrirlanaveradi — chiqqan xabarni yashirib
+ * bo'lmaydi. "rad" ham ushlanadi: rad etilgan shikoyat guruhga umuman
+ * chiqmasligi kerak, aks holda rad etish uni birinchi marta e'lon qilardi.
+ */
+export function guruhdanUshlanadimi(
+  r: Pick<Report, "reported_id" | "guruh_msg_id" | "holat">,
+): boolean {
+  return (
+    r.reported_id === SHAXSIY_KORIB_CHIQUVCHI_ID &&
+    !r.guruh_msg_id &&
+    (r.holat === "kutilmoqda" || r.holat === "rad")
+  );
+}
 
 /** Bir kishi bir odam haqida shuncha vaqt ichida qayta yoza olmaydi. */
 export const TAKROR_MS = 30 * 60_000;

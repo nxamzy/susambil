@@ -10,7 +10,7 @@ import type { OdamFaollik } from "../core/faollik.js";
 import { MAJBURIY_DOIM_OCHIQ, type NavbatSozlamalari } from "../core/rotation.js";
 import type { Sozlamalar } from "../core/sozlamalar.js";
 import type { XabarKimi } from "./state.js";
-import type { ReportToliq } from "../core/reports.js";
+import { guruhdanUshlanadimi, type ReportToliq } from "../core/reports.js";
 import type {
   EslatmaNomzodi, MuddatNatija, MuddatSurati, SiklOdam, SiklXulosa,
   TolovDashboard, TolovDaraja, TolovHolatMalumoti, TolovTarix, TolovToliq, Uzr,
@@ -546,6 +546,17 @@ function shikoyatHolatNomi(h: Report["holat"]): string {
 }
 
 /**
+ * Shikoyat yozuvchiga ochiq aytiladi: guruh admini haqidagi shikoyat
+ * darrov guruhga chiqmaydi (`core/reports.ts` `guruhdanUshlanadimi`).
+ * Yashirin qoida bo'lmasin — odam buni bilib turib yozsin.
+ */
+export const ADMIN_SHIKOYATI_IZOH = [
+  `ℹ️ <i>Guruh admini (Jamshidbek) ustidan shikoyat</i>`,
+  `<i>qilsangiz, avval uni admin o'zi ko'radi va</i>`,
+  `<i>tasdiqlagandan keyingina guruhda hammaga ko'rinadi.</i>`,
+].join("\n");
+
+/**
  * Adminga DM qilinadigan to'liq shikoyat kartasi — bosqichlar davomida
  * qayta-qayta shu funksiya bilan tahrirlanadi (yaratilganda, tasdiqlanganda,
  * tekshirilganda). Reporter va sababchi ismi shu yerda ko'rinadi, chunki bu
@@ -589,7 +600,15 @@ export function shikoyatAdminXabari(r: ReportToliq): string {
         : `<i>Sababchi noma'lum.</i>`,
     );
   }
-  if (!r.guruh_msg_id) {
+  if (guruhdanUshlanadimi(r)) {
+    s.push(
+      ``,
+      r.holat === "rad"
+        ? `🔕 Guruhga chiqmadi — rad etildi.`
+        : `⏸ <b>Guruhga hali chiqmagan.</b> Faqat siz tasdiqlasangiz chiqadi,`,
+    );
+    if (r.holat !== "rad") s.push(`rad etsangiz — hech kim ko'rmaydi.`);
+  } else if (!r.guruh_msg_id) {
     s.push(
       ``,
       `⚠️ <b>Guruhga yuborib bo'lmadi!</b> Guruh sozlanganini (/id)`,
