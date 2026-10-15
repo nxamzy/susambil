@@ -20,6 +20,7 @@ import { InlineKeyboard } from "grammy";
 import { sql, type Room, type Turn, type User } from "../../db/index.js";
 import { config } from "../../config.js";
 import { sozlamalarOl } from "../../core/sozlamalar.js";
+import { musorToldi as kunlikMusorToldi } from "./musor.js";
 import {
   barchaIshlarBajarildimi,
   faolNavbat,
@@ -51,12 +52,9 @@ import {
 import { faolVazifaKodBoyicha, faolVazifalar, type NavbatVazifasi } from "../../core/vazifalar.js";
 import {
   MUSOR_KOD,
-  ochiqSignal,
   ochiqSignalKodlari,
-  signalEslatildi,
   signalniOl,
   signalniYop,
-  signalYarat,
   type SignalToliq,
 } from "../../core/signal.js";
 import { tasdiqlovchilar } from "../../core/topshiriq.js";
@@ -80,11 +78,6 @@ import {
   esc,
   majburiyQulfMatni,
   muddatOzgardiGuruhXabari,
-  musorNavbatSizda,
-  musorSignalGuruh,
-  musorSignalMavjud,
-  musorSignalNavbatchiga,
-  musorSignalQabul,
   musorTashlandiGuruh,
   musorTashlandiXabarchiga,
   navbatAdminPaneli,
@@ -467,74 +460,25 @@ export async function navbatKelganiniXabarQil(api: Api, room: Room, azolar: User
 // ---------------------------------------------------------------------------
 
 /**
- * Javobni qayerda ko'rsatish: shaxsiy chatda — oddiy xabar; guruh
- * panelidagi tugmada esa alert (guruh har bosishda yangi xabar bilan
- * to'lib ketmasin — e'lonning o'zi `guruhgaYubor` bilan alohida chiqadi).
- */
-async function signalJavobi(ctx: Context, html: string, alert: string, kb?: InlineKeyboard): Promise<void> {
-  if (ctx.callbackQuery && ctx.chat?.type !== "private") {
-    await ctx.answerCallbackQuery({ text: alert, show_alert: true }).catch(() => {});
-    return;
-  }
-  if (ctx.callbackQuery) await ctx.answerCallbackQuery().catch(() => {});
-  await ctx.reply(html, { parse_mode: "HTML", reply_markup: kb });
-}
-
-/**
- * "🗑 Musor to'ldi" — pastki menyudan, guruh panelidan yoki admin
- * navbat panelidan. Navbatdagi xonaga DM, guruhga bitta qator, xabar
- * bergan odamga javob; keyingi eslatmalar `jobs/reminders.ts` da.
+ * "🗑 Musor to'ldi" — pastki menyudan, guruh panelidan yoki admin navbat
+ * panelidan. Endi xona navbatiga emas, BUGUNGI NAVBATCHIga turtki:
+ * musor har kuni bitta odamga tushadi (`core/musor.ts`), shuning uchun
+ * kim tashlashi aniq. Eski xona-signali (`core/signal.ts`) faqat
+ * allaqachon ochilgan signallarni yopish uchun qoldi — yangisi yaratilmaydi.
  */
 export async function musorToldi(ctx: Context): Promise<void> {
   if (!ctx.from) return;
   const u = await kim(ctx.from.id);
   if (!u) {
-    return signalJavobi(ctx, "Avval /start bosib ro'yxatdan o'ting.", "Avval botga /start bosing.");
+    const matn = "Avval /start bosib ro'yxatdan o'ting.";
+    if (ctx.callbackQuery) {
+      await ctx.answerCallbackQuery({ text: "Avval botga /start bosing.", show_alert: true }).catch(() => {});
+      return;
+    }
+    await ctx.reply(matn);
+    return;
   }
-
-  const n = await faolNavbat();
-  if (!n) return signalJavobi(ctx, "🧹 Hozir navbat yo'q.", "Hozir navbat yo'q.");
-
-  const vazifa = await faolVazifaKodBoyicha(MUSOR_KOD);
-  if (!vazifa) {
-    return signalJavobi(ctx, "Musor vazifasi ro'yxatda yo'q.", "Musor vazifasi ro'yxatda yo'q.");
-  }
-
-  // Navbatdagi xonaning o'zi — xabar berishning keragi yo'q, o'zi tashlaydi.
-  if (u.room_id === n.room.id) {
-    return signalJavobi(
-      ctx,
-      musorNavbatSizda(vazifa),
-      "Navbat sizning xonangizda — musorni tashlab, botda belgilang.",
-      new InlineKeyboard().text("👤 Mening Navbatim", "navbat_panel"),
-    );
-  }
-
-  const { eslatmaOraligiSoat } = await sozlamalarOl();
-  const yangi = await signalYarat(n.turn.id, vazifa.kod, u.id);
-  if (!yangi) {
-    const mavjud = await ochiqSignal(n.turn.id, vazifa.kod);
-    return signalJavobi(
-      ctx,
-      mavjud ? musorSignalMavjud(vazifa, n.room.raqam, mavjud, eslatmaOraligiSoat) : "🗑 Allaqachon xabar berilgan.",
-      `Allaqachon xabar berilgan${mavjud ? ` (${mavjud.ism})` : ""} — ${n.room.raqam}-xonaga eslatib turibman.`,
-    );
-  }
-
-  const matn = musorSignalNavbatchiga(vazifa, u.ism);
-  const kb = new InlineKeyboard().text("🗑 Tashladim — rasm yuborish", `musor_tashla:${yangi.id}`);
-  const natijalar = await Promise.all(n.azolar.map((a) => shaxsiy(ctx.api, a, matn, { reply_markup: kb })));
-  const yetdi = natijalar.filter(Boolean).length;
-  // Birinchi DM ham eslatma — yetgan bo'lsagina belgilaymiz, aks holda
-  // navbatdagi eslatma sikli uni darrov qayta urinadi.
-  if (yetdi > 0) await signalEslatildi(yangi.id);
-
-  await guruhgaYubor(ctx.api, musorSignalGuruh(vazifa, n.room.raqam, u.ism));
-  await signalJavobi(
-    ctx,
-    musorSignalQabul(n.room.raqam, yetdi, n.azolar.length, eslatmaOraligiSoat),
-    `✅ ${n.room.raqam}-xona navbatchilariga xabar berildi (${yetdi}/${n.azolar.length}). Tashlanmaguncha eslatib turaman.`,
-  );
+  await kunlikMusorToldi(ctx, u);
 }
 
 /** Signal yopilgach: guruhga bitta qator, xabar bergan odamga DM. */

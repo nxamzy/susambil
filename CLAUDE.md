@@ -439,6 +439,64 @@ Ochiq signal navbat+vazifa bo'yicha BITTA (qisman UNIQUE +
 vazifaga `oraliqVazifaEslatmalari` yubormaydi (bir soatda ikkita DM
 kelmasin). Kod `MUSOR_KOD = "musor"` — `kod` o'zgarmas.
 
+## Kunlik musor navbati — har kuni BITTA odam, tasodifiy, tasdiqsiz
+
+`core/musor.ts` + `musor_kunlari` + `bot/handlers/musor.ts`. Xona navbatidagi
+"Musor" vazifasi (5 kun × 3 rasm × 2 marta × boshqa xonalardan 3 tasdiq) uyga
+yaramadi: idish har kuni to'ladi, uni xona emas bitta odam tashlaydi va
+tasdiq kutish navbatni kunlab osib qo'yardi. `db/schema.sql`
+`musor_kunlik_seed` eski vazifani BIR MARTA `faol = false` qildi (admin
+"⚙️ Vazifalar"dan qayta yoqishi mumkin, `db:setup` ustidan yozmaydi).
+
+**Nega `submissions` kengaytirilmadi** ("parallel oqim yaratmang" qoidasi):
+u `turn_id` va uch kishilik tasdiq tizimiga bog'langan, aynan shu talab
+rad etilgan edi ("qolganlar tasdiqlashi shart emas"). Bu yerda tasdiq yo'q,
+navbatchi xona emas odam — shu sababli ataylab kichik alohida jadval.
+
+Qoidalar:
+
+- **Ertalab** (`MUSOR_ERTALAB_SOAT`, 8:00 Toshkent) `bugungiMusorniTayinla`
+  bitta odamni tanlaydi, `sana` UNIQUE — parallel chaqiruv ikkinchisini
+  yarata olmaydi (`ON CONFLICT DO NOTHING`). Nomzod: `faol` va botga ulangan
+  (`telegram_id` bor). Ertalabgacha kechagi kun OCHIQ turadi: yarim tundan
+  keyin "Tashladim" bosgan odam o'tkazgan hisoblanmaydi.
+- **Tasodifiy, lekin adolatli** — `musorchiTanla` (sof, testlangan): hamma
+  faol a'zo bir martadan navbat olmaguncha raund (`sikl`) tugamaydi; yangi
+  raundning birinchi kunida kechagi odam tushmaydi. Raund o'rtasida qo'shilgan
+  a'zo darrov nomzod, ketgani raundni to'xtatmaydi.
+- **E'lon**: guruhga "bugun kim" (mention) + navbatchiga DM, ikkalasida ham
+  "✅ Tashladim". "Qilaman" deyish bosqichi YO'Q — navbat o'zi tushadi.
+  `elonniEgalla` — `eslatmalarniTekshir` har Telegram yangilanishida ham
+  chaqiriladi, egallamasdan e'lon ikki marta ketardi (2 daqiqalik egallash).
+- **Ikki eslatma** faqat navbatchining o'ziga (`MUSOR_ESLATMA_SOATLARI`, 15
+  va 20 soat), `musorEslatmasiKerakmi` HOLATDAN hisoblaydi (`eslatma_soni`,
+  `oxirgi_eslatma`) — bayroq yo'q. Eslatmalar orasi kamida
+  `MUSOR_ESLATMA_ORALIQ_SOAT`: bot kech yoqilsa ikkalasi bir daqiqada
+  kelmasin. Yetmagan eslatma hisobga kirmaydi (`eslatmaniQaytar`).
+- **Bajarish**: faqat O'Z kuni, faqat ochiq bo'lsa (`musorniBajar`).
+  Boshqalarning tasdig'i yo'q. Rasm IXTIYORIY va ikki yo'l bilan: tugma
+  bosgach 30 daqiqa ichida kelgan rasm shu kunga qo'shiladi; ochiq kuni bor
+  odam rasm tashlasa o'sha rasm BILAN bajariladi (`photos.ts` oxirgi
+  tarmog'i, faqat hech qanday `flow_state` yo'q bo'lganda). Rasm guruhga
+  e'longa javob sifatida chiqadi, e'lonning o'zi esa TAHRIRLANADI
+  (yangi xabar yozilmaydi — guruh to'lib ketmasin).
+- **Bosilmagan kun** keyingi kun e'loni tayinlanayotganda "o'tkazildi" ga
+  o'tadi va ORQAGA qaytmaydi. Kechagi o'tkazgan odam bugungi e'longa bitta
+  qator bo'lib chiqadi (hisobga yozilgani aytiladi, ayblov yo'q).
+- **Hisob** (`/musor`, `musorHisobi`) — navbat tushgan / tashlagan / o'tkazgan.
+  REYTING EMAS: tartib ism bo'yicha, o'rin/ball/medal/jarima yo'q
+  (`musorText.test.ts` tekshiradi). Hammasi qatorlardan qayta
+  hisoblanadi, agregat ustun yo'q. Bajarilish `faollik`ka ham "musor" bo'lib
+  yoziladi (kuniga bir marta, `musorniBajar` ichida).
+- **"🗑 Musor to'ldi"** endi xona signali emas: bugungi navbatchiga turtki
+  (`MUSOR_TURTKI_ORALIQ_SOAT` ichida bir marta). Eski `core/signal.ts` va
+  `navbat_signallari` faqat allaqachon ochilgan signallarni yopish uchun
+  qoldi — yangisi yaratilmaydi ("tarix hech qachon o'chmaydi").
+
+Qo'lda o'zgartirish kerak bo'lsa (masalan navbatchi safarda): hozircha
+`users.faol = false` qilinadi — keyingi tayinlashdan tushadi; bugungi
+qatorni admin paneldan almashtirish yo'q.
+
 ## "🙁 To'lay olmayapman" — `tolov_uzrlari`, faqat adminlarga
 
 Kvartira puli ham, yig'im ham bitta tugma (`uzr:<siklId>` — sikl id

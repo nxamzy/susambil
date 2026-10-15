@@ -11,6 +11,16 @@ import {
 } from "../core/rotation.js";
 import { faolVazifalar } from "../core/vazifalar.js";
 import {
+  bugungiMusorniTayinla,
+  elonniEgalla,
+  elonniQaytar,
+  elonYetdi,
+  eslatmaniEgalla,
+  eslatmaniQaytar,
+  musorEslatmasiKerakmi,
+  type MusorKuniToliq,
+} from "../core/musor.js";
+import {
   navbatSignallari,
   ochiqSignalKodlari,
   signalEslatildi,
@@ -33,7 +43,7 @@ import {
   yigimEslatmasiKerakmi,
   type MuddatSurati,
 } from "../core/tolov.js";
-import { bugungiSana, kunFarqi, kunOxirigachaSoat } from "../core/vaqt.js";
+import { bugungiSana, kunFarqi, kunOxirigachaSoat, toshkentSoat } from "../core/vaqt.js";
 import { adminAloqasi } from "../core/users.js";
 import { adminlarRoyxati, guruhgaYubor, shaxsiy } from "../bot/group.js";
 import {
@@ -52,6 +62,9 @@ import {
   davomiylik,
   esc,
   ismlar,
+  kunlikMusorEslatma,
+  kunlikMusorGuruh,
+  kunlikMusorShaxsiy,
   navbatHisobotiMatni,
   oylikHisobotMatni,
   musorSignalEslatmasi,
@@ -64,7 +77,7 @@ import {
   tolovMuddatXabari,
   yigimEslatmaXabari,
 } from "../bot/text.js";
-import { UZR_TUGMA, yigimTolashKeyboard } from "../bot/keyboards.js";
+import { musorTashladimKeyboard, UZR_TUGMA, yigimTolashKeyboard } from "../bot/keyboards.js";
 
 const SOAT_MS = 60 * 60_000;
 const KUN_MS = 24 * SOAT_MS;
@@ -113,6 +126,7 @@ function tolovTugmasi(siklId: number): InlineKeyboard {
  * mustaqil: biri xato bersa, ikkinchisi baribir ishlaydi.
  */
 export async function eslatmalarniTekshir(api: Api): Promise<void> {
+  await kunlikMusor(api).catch((e) => console.error("[eslatma] kunlik musor xatosi:", e));
   await navbatEslatmalari(api).catch((e) => console.error("[eslatma] navbat xatosi:", e));
   await oraliqVazifaEslatmalari(api).catch((e) => console.error("[eslatma] oraliq vazifa xatosi:", e));
   await signalEslatmalari(api).catch((e) => console.error("[eslatma] musor signali xatosi:", e));
@@ -293,6 +307,72 @@ async function tasdiqEslatmalari(api: Api): Promise<void> {
       await sql`UPDATE submissions SET tasdiq_eslatma = now() WHERE id = ${sub.id}`;
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// KUNLIK MUSOR NAVBATI
+// ---------------------------------------------------------------------------
+
+/**
+ * Har kuni bitta odam musorni tashlaydi (`core/musor.ts`). Bu funksiya
+ * uch ish qiladi, har biri holatdan qayta hisoblanadi — necha marta
+ * chaqirilsa ham xavfsiz:
+ *
+ *  1) ertalab (`MUSOR_ERTALAB_SOAT`dan keyin) bugungi navbatchini TAYINLAYDI
+ *     — o'tgan kunning bosilmagan qatori shu paytda "o'tkazildi" bo'ladi;
+ *  2) tayinlangach e'lon: guruhga "bugun kim" + navbatchining o'ziga DM.
+ *     `elon_ts` bo'lmaguncha takrorlanadi (hech yerga yetmasa qayta urinadi);
+ *  3) navbatchi tashlamagan bo'lsa kun davomida IKKI marta unga eslatma
+ *     (`musorEslatmasiKerakmi`). Tugma bosilgach `holat` o'zgaradi va
+ *     eslatma o'zidan to'xtaydi — alohida bayroq yo'q.
+ *
+ * Birinchi chaqiruv arzon: ertalabgacha hech narsa qilinmaydi, keyin bitta
+ * indeksli so'rov (`sana` UNIQUE).
+ */
+async function kunlikMusor(api: Api): Promise<void> {
+  const b = await bugungiMusorniTayinla();
+  if (!b) return;
+  const { kun, kechaOtkazilgan } = b;
+
+  const navbatchi = musorOdami(kun);
+  const kb = musorTashladimKeyboard(kun.id);
+
+  // E'lon — kamida bir joyga yetgach belgilanadi, aks holda bloklangan
+  // hisob butun kunning e'lonini yeb qo'ymasin.
+  if (!kun.elon_ts) {
+    if (!(await elonniEgalla(kun.id))) return;
+    const [guruh, shaxsan] = await Promise.all([
+      guruhgaYubor(api, kunlikMusorGuruh(kun, kechaOtkazilgan), { reply_markup: kb }),
+      shaxsiy(api, navbatchi, kunlikMusorShaxsiy(), { reply_markup: kb }),
+    ]);
+    if (guruh || shaxsan) await elonYetdi(kun.id, guruh?.message_id ?? null);
+    else await elonniQaytar(kun.id);
+    return; // eslatma navbatdagi chaqiruvda: e'lon bilan birga ikki xabar bo'lmasin
+  }
+
+  const hozir = new Date();
+  const n = musorEslatmasiKerakmi({
+    holat: kun.holat,
+    sana: kun.sana,
+    bugun: bugungiSana(hozir),
+    soat: toshkentSoat(hozir),
+    eslatmaSoni: kun.eslatma_soni,
+    elonTs: kun.elon_ts ? new Date(kun.elon_ts).getTime() : null,
+    oxirgiEslatma: kun.oxirgi_eslatma ? new Date(kun.oxirgi_eslatma).getTime() : null,
+    hozir: hozir.getTime(),
+  });
+  if (n === null) return;
+
+  // Egallash AVVAL: ikki chaqiruv bir vaqtda kelsa bitta DM ketadi.
+  if (!(await eslatmaniEgalla(kun.id, kun.eslatma_soni))) return;
+  const yetdi = await shaxsiy(api, navbatchi, kunlikMusorEslatma(n), { reply_markup: kb });
+  // Yetmagan eslatma hisobga kirmasin — navbatdagi chaqiruv qayta urinadi.
+  if (!yetdi) await eslatmaniQaytar(kun.id, kun.eslatma_soni, kun.oxirgi_eslatma);
+}
+
+/** `shaxsiy()` faqat `telegram_id` va log uchun `id`/`ism` ni o'qiydi. */
+function musorOdami(k: MusorKuniToliq): User {
+  return { id: k.user_id, ism: k.ism, telegram_id: k.telegram_id, username: null, room_id: null, admin: false, faol: true };
 }
 
 // ---------------------------------------------------------------------------

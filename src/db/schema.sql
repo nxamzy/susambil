@@ -1101,3 +1101,65 @@ UPDATE tolov_sikllari s SET
     WHERE char_length(x.q) >= 2
   )
 WHERE s.tur = 'yigim' AND s.narsalar IS NULL AND position(E'\n' in s.nom) > 0;
+
+-- ---------------------------------------------------------------------------
+-- KUNLIK MUSOR NAVBATI — har kuni BITTA odam, tasodifiy, tasdiqsiz
+-- ---------------------------------------------------------------------------
+--
+-- NEGA ALOHIDA JADVAL (submissions emas): xona navbatidagi musor vazifasi
+-- "xona × 5 kunlik navbat × 3 rasm × boshqa xonalardan 3 tasdiq" edi va
+-- uyga yaramadi — musor idishi har kuni to'ladi, uni xona emas bitta
+-- ODAM tashlaydi va boshqalarning tasdig'i kerak emas. `submissions` esa
+-- `turn_id` va tasdiq tizimiga bog'langan; shu oqimni egib ishlatish
+-- o'rniga bu yerda ataylab kichik, o'z-o'zini tushuntiradigan jadval.
+--
+--   sana         — Toshkent kalendari bo'yicha kun. UNIQUE: bir kunda bitta
+--                  navbatchi, va parallel chaqiruvlar ikkinchisini yarata
+--                  olmaydi (`ON CONFLICT (sana) DO NOTHING`).
+--   sikl         — tasodifiy aylanma raundi. Hamma faol a'zo bir martadan
+--                  navbat olmaguncha shu raund davom etadi, keyin keyingisi.
+--                  "Tasodifiy" bo'lsa-da ketma-ket yoki haddan tashqari
+--                  takror tushmasligi shundan.
+--   holat        — kutilmoqda → bajarildi (odam "✅ Tashladim" bosdi) yoki
+--                  otkazildi (keyingi kun e'lonidan oldin bosilmagan).
+--                  Hisob (necha marta tushdi/tashladi/o'tkazdi) shu
+--                  qatorlardan qayta hisoblanadi, agregat ustun yo'q.
+--   rasm_id      — IXTIYORIY: odam xohlasa rasm yuboradi.
+--   elon_ts      — e'lon (guruhga + shaxsiyga) yetkazilgan payt;
+--                  elon_olindi — bir vaqtda ikkinchi chaqiruv yubormasin deb
+--                  qisqa muddatli egallash (`hisobot_yuborildi` kabi).
+--   eslatma_soni — shu kuni odamga necha eslatma ketgan (0..2).
+--   oxirgi_signal — "🗑 Musor to'ldi" turtkisi oxirgi marta qachon ketgan.
+CREATE TABLE IF NOT EXISTS musor_kunlari (
+  id             SERIAL PRIMARY KEY,
+  sana           DATE NOT NULL UNIQUE,
+  user_id        INT NOT NULL REFERENCES users(id),
+  sikl           INT NOT NULL CHECK (sikl >= 1),
+  holat          TEXT NOT NULL DEFAULT 'kutilmoqda'
+                  CHECK (holat IN ('kutilmoqda', 'bajarildi', 'otkazildi')),
+  bajarildi_ts   TIMESTAMPTZ,
+  rasm_id        TEXT,
+  guruh_msg_id   INT,
+  elon_ts        TIMESTAMPTZ,
+  elon_olindi    TIMESTAMPTZ,
+  eslatma_soni   INT NOT NULL DEFAULT 0 CHECK (eslatma_soni >= 0),
+  oxirgi_eslatma TIMESTAMPTZ,
+  oxirgi_signal  TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS musor_kunlari_user_idx ON musor_kunlari (user_id, sana DESC);
+CREATE INDEX IF NOT EXISTS musor_kunlari_sikl_idx ON musor_kunlari (sikl);
+
+-- Eski xona-navbatidagi "Musor" vazifasi BIR MARTA o'chiriladi (faol =
+-- false, ro'yxatdan CHIQARILADI, tarixi qoladi): aks holda har xona
+-- musorni ikki marta, uch rasm bilan tasdiqlatib tashlashi kerak bo'lib,
+-- bot esa bir vaqtda ikki joyda musor so'rab turardi. Admin istasa
+-- "⚙️ Vazifalar" dan qayta yoqadi — `db:setup` keyin ustidan yozmaydi.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM settings WHERE kalit = 'musor_kunlik_seed') THEN
+    UPDATE navbat_vazifalari SET faol = FALSE WHERE kod = 'musor';
+    INSERT INTO settings (kalit, qiymat) VALUES ('musor_kunlik_seed', '1')
+      ON CONFLICT (kalit) DO NOTHING;
+  END IF;
+END $$;

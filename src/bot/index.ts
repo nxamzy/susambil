@@ -9,6 +9,7 @@ import * as tolov from "./handlers/tolov.js";
 import * as yigim from "./handlers/yigim.js";
 import * as narsalar from "./handlers/narsalar.js";
 import * as navbat from "./handlers/navbat.js";
+import * as musor from "./handlers/musor.js";
 import * as adminUsers from "./handlers/adminUsers.js";
 import * as vazifalar from "./handlers/vazifalar.js";
 import * as sozlamalar from "./handlers/sozlamalar.js";
@@ -52,6 +53,7 @@ export function botYarat(): Bot {
   tolov.register(bot);
   yigim.register(bot);
   narsalar.register(bot);
+  musor.register(bot);
   navbat.register(bot);
   adminUsers.register(bot);
   vazifalar.register(bot);
@@ -87,6 +89,7 @@ export async function buyruqlarniOrnat(bot: Bot): Promise<void> {
   await bot.api.setMyCommands([
     { command: "start", description: "Boshlash — asosiy panel va menyu" },
     { command: "navbat", description: "Kim navbatda" },
+    { command: "musor", description: "Bugun musorni kim tashlaydi — va hisob" },
     { command: "tarix", description: "Oxirgi navbatlar" },
     { command: "faollik", description: "Kim botda ko'proq harakat qilyapti" },
     { command: "yigim", description: "Pul yig'imi — holati va to'lash" },

@@ -1,6 +1,6 @@
 import type { Report, Room, SubTur, Tolov, Turn, TurnIshlar, User } from "../db/index.js";
 import {
-  config, ISH_TURLARI, ISHONCH_DARAJASI, RASM_MAX, SHIKOYAT_JOYLARI,
+  config, ISH_TURLARI, ISHONCH_DARAJASI, MUSOR_ERTALAB_SOAT, RASM_MAX, SHIKOYAT_JOYLARI,
   type IshTuri, type Ishonch, type ShikoyatJoyi,
 } from "../config.js";
 import { bajarilganMarta, ishRasmlari, vazifaBajarildimi } from "../core/rotation.js";
@@ -772,12 +772,19 @@ export function tanishtirish(
     `⏰ Oxirgi kun boshlanganda har ${s0.eslatmaOraligiSoat} soatda eslataman —`,
     `   navbatni tugatmaguningizcha to'xtamaydi.`,
     ``,
-    `<b>🗑 MUSOR TO'LDIMI?</b>`,
+    `<b>🗑 MUSOR — HAR KUNI BITTA ODAM</b>`,
     AJRATGICH,
-    `<b>"🗑 Musor to'ldi"</b> tugmasini bosing (pastki menyuda`,
-    `yoki guruh panelida). Navbatdagi xonaga darrov xabar`,
-    `boradi va musor tashlanmaguncha har ${s0.eslatmaOraligiSoat} soatda`,
-    `eslatib turaman. Tashlangach sizga ham xabar keladi.`,
+    `Har kuni ertalab musorni tashlaydigan odam <b>tasodifiy</b>`,
+    `tanlanadi (hamma bir martadan olmaguncha takrorlanmaydi).`,
+    `Unga shaxsiy xabar boradi, guruhga "bugun kim" chiqadi.`,
+    ``,
+    `Navbatchi tashlagach <b>«✅ Tashladim»</b> ni bosishi SHART —`,
+    `boshqalar tasdiqlamaydi. Rasm yuborsa bo'ladi, majburiy emas.`,
+    `Kun davomida unga ikki marta eslatiladi; bosmasa kun`,
+    `"o'tkazildi" deb sanaladi. Hisob: <b>/musor</b>.`,
+    ``,
+    `Idish erta to'lib qolsa <b>"🗑 Musor to'ldi"</b> tugmasi`,
+    `bugungi navbatchiga darrov xabar beradi.`,
     ``,
     `<b>💰 PUL YIG'IMI</b>`,
     AJRATGICH,
@@ -2971,4 +2978,168 @@ export function hisobotMenyuMatni(): string {
     ``,
     `Qo'lda ochish uchun pastdagi tugmalar.`,
   ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// KUNLIK MUSOR NAVBATI (`core/musor.ts`)
+// ---------------------------------------------------------------------------
+//
+// Matnlar sof: ma'lumot parametr bilan keladi. Baho/jarima so'zlari ATAYLAB
+// yo'q — hisob faqat sanoq (`musorHisobiMatni`), `musor.test.ts` tekshiradi.
+
+/**
+ * Guruhda odamni bosiladigan havola qilib ko'rsatadi — Telegram uni
+ * belgilab (mention) xabar beradi. `telegram_id` bo'lmasa oddiy ism.
+ */
+function musorOdam(ism: string, telegramId: string | null): string {
+  return telegramId
+    ? `<a href="tg://user?id=${esc(String(telegramId))}">${esc(ism)}</a>`
+    : `<b>${esc(ism)}</b>`;
+}
+
+/** Soat:daqiqa (Toshkent) — "14:32". */
+function soatDaqiqa(d: Date | string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: TZ,
+  }).format(new Date(d));
+}
+
+/**
+ * Ertalabki guruh e'loni. `kecha` — kechagi navbatchi tashlamagan bo'lsa
+ * bitta qator (hisobga yozilgani aytiladi, ayblov yo'q); bajarilgan kunga
+ * tegishli qator chiqmaydi.
+ */
+export function kunlikMusorGuruh(
+  navbatchi: { ism: string; telegram_id: string | null },
+  kechaOtkazgan: { ism: string } | null,
+): string {
+  const s = [
+    `🗑 <b>BUGUN MUSORNI TASHLAYDI</b>`,
+    AJRATGICH,
+    `👤 ${musorOdam(navbatchi.ism, navbatchi.telegram_id)}`,
+    ``,
+    `Tashlagach pastdagi <b>«✅ Tashladim»</b> tugmasini bosadi.`,
+    `<i>Boshqalar tasdiqlashi shart emas. Rasm yuborsa bo'ladi — majburiy emas.</i>`,
+  ];
+  if (kechaOtkazgan) {
+    s.push(``, `<i>Kecha (${esc(kechaOtkazgan.ism)}) musor tashlanmadi — hisobga yozildi.</i>`);
+  }
+  return s.join("\n");
+}
+
+/** E'lon xabari tashlangach shunday yangilanadi (tugma olinadi). */
+export function kunlikMusorBajarildiGuruh(
+  navbatchi: { ism: string; telegram_id: string | null },
+  vaqt: Date | string,
+  rasmBor: boolean,
+): string {
+  return [
+    `✅ <b>MUSOR TASHLANDI</b>`,
+    AJRATGICH,
+    `👤 ${musorOdam(navbatchi.ism, navbatchi.telegram_id)} · ${soatDaqiqa(vaqt)}${rasmBor ? " · 📸" : ""}`,
+  ].join("\n");
+}
+
+/** Navbatchining o'ziga — kunning birinchi xabari (ogohlantirish). */
+export function kunlikMusorShaxsiy(): string {
+  return [
+    `🗑 <b>BUGUN MUSORNI SIZ TASHLAYSIZ</b>`,
+    AJRATGICH,
+    ``,
+    `Bugungi navbat sizga tushdi. Idishni tashlab kelgach`,
+    `pastdagi <b>«✅ Tashladim»</b> tugmasini bosing.`,
+    ``,
+    `<i>Rasm yuborsangiz ham bo'ladi, lekin shart emas.</i>`,
+    `<i>Bosmasangiz bugungi kun o'tkazib yuborilgan deb sanaladi.</i>`,
+  ].join("\n");
+}
+
+/** `n` — nechanchi eslatma (1 yoki 2). Ikkinchisi oxirgisi ekanini aytadi. */
+export function kunlikMusorEslatma(n: number): string {
+  if (n >= 2) {
+    return [
+      `⚠️ <b>MUSOR HALI TASHLANMADI — OXIRGI ESLATMA</b>`,
+      ``,
+      `Bugun navbat sizda. Tashlab, pastdagi tugmani bosing —`,
+      `aks holda kun o'tkazib yuborilgan deb hisobga yoziladi.`,
+    ].join("\n");
+  }
+  return [
+    `⏰ <b>MUSOR HALI TASHLANMADI</b>`,
+    ``,
+    `Bugun navbat sizda. Tashlab kelgach «✅ Tashladim» ni bosing.`,
+  ].join("\n");
+}
+
+/** Kimdir "🗑 Musor to'ldi" bosdi — navbatchiga turtki. */
+export function kunlikMusorTurtki(xabarchi: string): string {
+  return [
+    `🗑 <b>MUSOR TO'LDI</b>`,
+    ``,
+    `<b>${esc(xabarchi)}</b> xabar berdi: idish to'lib ketibdi.`,
+    `Bugun navbat sizda — iltimos, hozir tashlab, tugmani bosing.`,
+  ].join("\n");
+}
+
+/** "Musor to'ldi" bosgan odamga javob. Holatga qarab bittasi tanlanadi. */
+export function kunlikMusorTurtkiJavobi(
+  holat: "yuborildi" | "yaqinda" | "bajarilgan" | "ertalabgacha" | "sizda",
+  navbatchi?: string,
+): string {
+  switch (holat) {
+    case "yuborildi":
+      return `✅ Bugungi navbatchi <b>${esc(navbatchi ?? "—")}</b> ga xabar yuborildi.`;
+    case "yaqinda":
+      return `🔔 <b>${esc(navbatchi ?? "—")}</b> ga yaqinda allaqachon eslatilgan — biroz kuting.`;
+    case "bajarilgan":
+      return [
+        `✅ Bugungi musorni <b>${esc(navbatchi ?? "—")}</b> allaqachon tashlagan.`,
+        `<i>Idish yana to'lgan bo'lsa, o'zingiz tashlang yoki guruhda ayting.</i>`,
+      ].join("\n");
+    case "ertalabgacha":
+      return `🌙 Bugungi navbatchi hali tayinlanmagan — har kuni ertalab ${String(MUSOR_ERTALAB_SOAT).padStart(2, "0")}:00 da tanlanadi.`;
+    case "sizda":
+      return `🧹 <b>Bugun navbat sizda</b> — musorni tashlab, «✅ Tashladim» ni bosing.`;
+  }
+}
+
+/**
+ * `/musor` — bugungi navbatchi va hisob. Hisob REYTING EMAS: tartib ism
+ * bo'yicha, o'rin/ball/medal yo'q, o'tkazganlar ajratib ko'rsatilmaydi —
+ * har kimning yonida shunchaki uch raqam.
+ */
+export function musorHisobiMatni(
+  bugun: { ism: string; holat: "kutilmoqda" | "bajarildi" | "otkazildi"; bajarildi_ts: Date | null } | null,
+  royxat: { ism: string; tushgan: number; tashlagan: number; otkazgan: number }[],
+): string {
+  const s = [`🗑 <b>KUNLIK MUSOR NAVBATI</b>`, AJRATGICH, ``];
+
+  if (!bugun) {
+    s.push(`📅 Bugun: <i>navbatchi hali tayinlanmagan</i>`);
+  } else if (bugun.holat === "bajarildi") {
+    s.push(`📅 Bugun: <b>${esc(bugun.ism)}</b> — ✅ tashladi${bugun.bajarildi_ts ? ` (${soatDaqiqa(bugun.bajarildi_ts)})` : ""}`);
+  } else if (bugun.holat === "otkazildi") {
+    s.push(`📅 Bugun: <b>${esc(bugun.ism)}</b> — o'tkazib yuborildi`);
+  } else {
+    s.push(`📅 Bugun: <b>${esc(bugun.ism)}</b> — ⏳ hali tashlamadi`);
+  }
+
+  const bor = royxat.filter((o) => o.tushgan > 0);
+  const hali = royxat.filter((o) => o.tushgan === 0);
+  if (bor.length > 0) {
+    s.push(``, `<b>Hisob</b> <i>(navbat · tashladi · o'tkazdi)</i>`);
+    for (const o of bor) {
+      s.push(`   ${esc(o.ism)} — ${o.tushgan} · ${o.tashlagan} · ${o.otkazgan}`);
+    }
+  }
+  if (hali.length > 0) {
+    s.push(``, `<i>Hali navbat tushmagan: ${esc(hali.map((o) => o.ism).join(", "))}</i>`);
+  }
+
+  s.push(
+    ``,
+    `<i>Har kuni bitta odam tasodifiy tanlanadi; hamma bir martadan</i>`,
+    `<i>olmaguncha takrorlanmaydi. Bu baho emas — shunchaki sanoq.</i>`,
+  );
+  return s.join("\n");
 }

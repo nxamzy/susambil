@@ -177,6 +177,36 @@ export const RASM_SONI_MAX = 10;
 export const TAKROR_MAX = 10;
 
 /**
+ * KUNLIK MUSOR NAVBATI (`core/musor.ts`) — vaqtlar Toshkent bo'yicha.
+ *
+ * Ataylab `settings` jadvalida EMAS: bular uyning kelishuvi emas, kunning
+ * ritmi (ertalab e'lon, kunduzi va kechqurun eslatma) va ularni o'zgartirish
+ * kam kerak bo'ladi. Kerak bo'lsa shu yerda tahrirlanadi.
+ */
+export const MUSOR_ERTALAB_SOAT = 8;
+
+/**
+ * Navbatdagi odamga BOSHQA HECH KIM emas, aynan o'ziga ikki marta eslatma
+ * boradi — shu soatlarda (tashlamagan bo'lsa). Ertalabki e'lonning o'zi
+ * birinchi xabar, bular uning ustiga.
+ */
+export const MUSOR_ESLATMA_SOATLARI = [15, 20] as const;
+
+/**
+ * Ikki eslatma (yoki e'lon bilan birinchi eslatma) orasidagi eng kam
+ * masofa, soat. Bot soatlab o'chiq qolib keyin yoqilsa ikkala eslatma
+ * ketma-ket, bir daqiqada kelib qolmasin.
+ */
+export const MUSOR_ESLATMA_ORALIQ_SOAT = 3;
+
+/**
+ * "🗑 Musor to'ldi" bosilganda navbatdagi odamga turtki shuncha soatda
+ * bir martadan ko'p yuborilmaydi — bir necha kishi ketma-ket bossa ham
+ * bitta odam DM bilan bosib ketilmasin.
+ */
+export const MUSOR_TURTKI_ORALIQ_SOAT = 1;
+
+/**
  * Vazifaning "oraliq eslatma" boshlanish kuni (navbat boshlanganidan).
  * 0 = o'chiq. Bazadagi CHECK (`oraliq_kun BETWEEN 0 AND 30`) bilan bir xil.
  */

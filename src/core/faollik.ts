@@ -45,7 +45,9 @@ export type FaollikTuri =
   /** Anonim shikoyat yozdi */
   | "shikoyat"
   /** "🗑 Musor to'ldi" deb navbatchiga xabar berdi (faqat YANGI signal) */
-  | "signal";
+  | "signal"
+  /** Kunlik musor navbatida "✅ Tashladim" bosdi (kuniga bir marta) */
+  | "musor";
 
 /**
  * Bitta harakatni yozadi.

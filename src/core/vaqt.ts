@@ -55,6 +55,18 @@ export function kunOxirigachaSoat(d: Date = new Date()): number {
   return 24 - soat;
 }
 
+/**
+ * Toshkent bo'yicha hozirgi soat (0..23).
+ *
+ * `hourCycle: "h23"` ataylab: `hour12: false` ba'zi muhitlarda yarim tunni
+ * "24" deb qaytaradi va "soat >= 8" kabi solishtirish kechasi buziladi.
+ */
+export function toshkentSoat(d: Date = new Date()): number {
+  return Number(
+    new Intl.DateTimeFormat("en-GB", { hour: "2-digit", hourCycle: "h23", timeZone: TZ }).format(d),
+  );
+}
+
 /** Shu oyda nechta kun bor — muddat kuni oy uzunligidan oshib ketmasligi uchun. */
 export function oyKunlari(yil: number, oy: number): number {
   return new Date(Date.UTC(yil, oy, 0)).getUTCDate();

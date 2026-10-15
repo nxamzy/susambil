@@ -4,6 +4,7 @@ import { holatOl } from "../state.js";
 import { shikoyatDalilKeldi } from "./reports.js";
 import { tolovDalilKeldi } from "./tolov.js";
 import { vazifaRasmiKeldi } from "./navbat.js";
+import { rasmKeldi as musorRasmiKeldi } from "./musor.js";
 
 /**
  * Rasm uch xil maqsadda kelishi mumkin — tartib muhim, har biri holat
@@ -13,6 +14,8 @@ import { vazifaRasmiKeldi } from "./navbat.js";
  *   2) to'lov cheki (kvartira puli yoki pul yig'imi) — faqat shaxsiy chatda
  *   3) navbat vazifasi dalili — faqat shaxsiy chatda, "Mening Navbatim"
  *      panelida tugma bosilgandan keyin (`navbat_ish` holati)
+ *   4) kunlik musor navbatchisining ixtiyoriy rasmi — hech qanday holat
+ *      yo'q bo'lganda, faqat shaxsiy chatda (`handlers/musor.ts`)
  *
  * Video faqat shikoyat dalili sifatida, PDF esa faqat to'lov dalili
  * sifatida ishlatiladi — boshqa hech qanday oqim ularni kutmaydi, shuning
@@ -54,6 +57,14 @@ export function register(bot: Bot) {
     // navbatga hisoblanmaydi (aniq vazifa tugmasi bosilishi shart).
     if (holat?.tur === "navbat_ish" && ctx.chat.type === "private") {
       return vazifaRasmiKeldi(ctx, holat.kod, holat.turnId, eng.file_id);
+    }
+
+    // Hech qanday oqim kutmayotgan bo'lsa — kunlik musor navbatchisining
+    // ixtiyoriy rasmi: ochiq kuni bor bo'lsa rasm bilan BAJARILADI (tugma
+    // bosish shart emas), yaqinda tugma bosgan bo'lsa rasm shu kunga
+    // qo'shiladi. Aks holda jim — rasm hech nimaga bog'lanmaydi.
+    if (!holat && ctx.chat.type === "private") {
+      return musorRasmiKeldi(ctx, u, eng.file_id);
     }
   });
 

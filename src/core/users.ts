@@ -228,6 +228,8 @@ export async function foydalanuvchiTarixiBormi(userId: number): Promise<boolean>
       SELECT 1 FROM tolov_uzrlari WHERE user_id = ${userId}
       UNION ALL
       SELECT 1 FROM navbat_signallari WHERE user_id = ${userId} OR hal_qildi = ${userId}
+      UNION ALL
+      SELECT 1 FROM musor_kunlari WHERE user_id = ${userId}
     ) AS bor
   `;
   return r?.bor ?? false;

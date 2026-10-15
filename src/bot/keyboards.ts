@@ -64,6 +64,15 @@ export const MENING_NAVBATIM_TUGMA = "🧹 Mening navbatim";
 export const MUSOR_TUGMA = "🗑 Musor to'ldi";
 
 /**
+ * Kunlik musor navbatchisining "✅ Tashladim" tugmasi. `id` — `musor_kunlari.id`:
+ * callback'da kun id'si turadi, shuning uchun eski xabardagi tugma
+ * bosilsa ham aynan o'sha kunga tushadi (bugunga emas).
+ */
+export function musorTashladimKeyboard(kunId: number): InlineKeyboard {
+  return new InlineKeyboard().text("✅ Tashladim", `musor_qildim:${kunId}`);
+}
+
+/**
  * Shaxsiy chatdagi menyu tugmalari — yozish maydonining ostida turadi.
  * Guruhda ishlatilmaydi: u yerda tugmalar hammaga ko'rinib, chatni bosib
  * qo'yardi — guruh uchun `panelKeyboard()` bor.
