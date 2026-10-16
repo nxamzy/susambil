@@ -16,6 +16,7 @@ import * as sozlamalar from "./handlers/sozlamalar.js";
 import * as xabar from "./handlers/xabar.js";
 import * as hisobot from "./handlers/hisobot.js";
 import * as messages from "./handlers/messages.js";
+import { chatTozalash } from "./tozalash.js";
 
 /** Xatoni qisqa ko'rinishda yozadi — butun ctx ni dump qilmaydi,
  *  chunki unda bot tokeni ham bo'ladi. */
@@ -44,6 +45,11 @@ export function botYarat(): Bot {
       xatoniYoz(e);
     }
   });
+
+  // Shaxsiy chatda bo'lim almashganda eski xabarlar o'chadi. Xato chegarasi
+  // ICHIDA (xato baribir ushlanadi), hamma handlerdan OLDIN (ularning har
+  // bir yuborgan xabari qamraladi).
+  bot.use(chatTozalash());
 
   // Tartib muhim: buyruqlar va tugmalar avval, umumiy xabar ushlagichlar oxirida
   commands.register(bot);
@@ -89,7 +95,7 @@ export async function buyruqlarniOrnat(bot: Bot): Promise<void> {
   await bot.api.setMyCommands([
     { command: "start", description: "Boshlash — asosiy panel va menyu" },
     { command: "navbat", description: "Kim navbatda" },
-    { command: "musor", description: "Bugun musorni kim tashlaydi — va hisob" },
+    { command: "musor", description: "Musor navbati kimda — va hisob" },
     { command: "tarix", description: "Oxirgi navbatlar" },
     { command: "faollik", description: "Kim botda ko'proq harakat qilyapti" },
     { command: "yigim", description: "Pul yig'imi — holati va to'lash" },

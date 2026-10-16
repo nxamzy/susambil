@@ -2,6 +2,7 @@ import type { Api } from "grammy";
 import type { InputMediaPhoto } from "grammy/types";
 import { sql, type User } from "../db/index.js";
 import { ALBOM_MAX, config, GURUH_ALBOM_MAX } from "../config.js";
+import { eslatmaniAlmashtir, tozalanmasin } from "./tozalash.js";
 
 let keshlanganGuruh: number | null | undefined;
 
@@ -131,6 +132,13 @@ export async function adminlarRoyxati(): Promise<User[]> {
  * qilinadi va kim ekani (`ism`/`id`) ko'rsatiladi, aks holda muammoni
  * hech kim payqamas edi.
  *
+ * Bu — BILDIRISHNOMA: odam menyuda boshqa bo'limga o'tganda o'chmaydi
+ * (`tozalanmasin`), hatto yangilanishni yuborgan odamning o'ziga ketsa ham
+ * (to'lov qilgan admin o'ziga kelgan tasdiq so'rovini yo'qotmasin).
+ *
+ * `almashtir` — eslatma turi (`"tolov"`, `"musor"` ...): berilsa shu odamga
+ * shu turda yuborilgan OLDINGI xabar o'chadi, chatda faqat oxirgisi qoladi.
+ *
  * @returns true — yetkazildi, false — ulanmagan yoki muvaffaqiyatsiz
  */
 export async function shaxsiy(
@@ -138,10 +146,14 @@ export async function shaxsiy(
   u: User,
   matn: string,
   extra: object = {},
+  almashtir?: string,
 ): Promise<boolean> {
   if (!u.telegram_id) return false;
   try {
-    await api.sendMessage(Number(u.telegram_id), matn, { parse_mode: "HTML", ...extra });
+    const m = await tozalanmasin(() =>
+      api.sendMessage(Number(u.telegram_id), matn, { parse_mode: "HTML", ...extra }),
+    );
+    if (almashtir) await eslatmaniAlmashtir(api, m.chat.id, almashtir, m.message_id);
     return true;
   } catch (e) {
     console.error(`[shaxsiy] ${u.ism} (id=${u.id}) ga xabar yuborib bo'lmadi:`, e);

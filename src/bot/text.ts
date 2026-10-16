@@ -1,6 +1,7 @@
 import type { Report, Room, SubTur, Tolov, Turn, TurnIshlar, User } from "../db/index.js";
 import {
-  config, ISH_TURLARI, ISHONCH_DARAJASI, MUSOR_ERTALAB_SOAT, RASM_MAX, SHIKOYAT_JOYLARI,
+  config, ISH_TURLARI, ISHONCH_DARAJASI, MUSOR_ERTALAB_SOAT, MUSOR_ESLATMA_SOATLARI,
+  MUSOR_NAVBAT_KUNI, RASM_MAX, SHIKOYAT_JOYLARI,
   type IshTuri, type Ishonch, type ShikoyatJoyi,
 } from "../config.js";
 import { bajarilganMarta, ishRasmlari, vazifaBajarildimi } from "../core/rotation.js";
@@ -772,19 +773,20 @@ export function tanishtirish(
     `⏰ Oxirgi kun boshlanganda har ${s0.eslatmaOraligiSoat} soatda eslataman —`,
     `   navbatni tugatmaguningizcha to'xtamaydi.`,
     ``,
-    `<b>🗑 MUSOR — HAR KUNI BITTA ODAM</b>`,
+    `<b>🗑 MUSOR — BITTA ODAM, ${MUSOR_NAVBAT_KUNI} KUN</b>`,
     AJRATGICH,
-    `Har kuni ertalab musorni tashlaydigan odam <b>tasodifiy</b>`,
-    `tanlanadi (hamma bir martadan olmaguncha takrorlanmaydi).`,
-    `Unga shaxsiy xabar boradi, guruhga "bugun kim" chiqadi.`,
+    `Musorni ${MUSOR_NAVBAT_KUNI} kun davomida bitta odam tashlaydi. Navbat`,
+    `tugagan kuni ertalab keyingisi <b>tasodifiy</b> tanlanadi (hamma bir`,
+    `martadan olmaguncha takrorlanmaydi). Unga shaxsiy xabar boradi,`,
+    `guruhga "navbat kimda" chiqadi.`,
     ``,
     `Navbatchi tashlagach <b>«✅ Tashladim»</b> ni bosishi SHART —`,
     `boshqalar tasdiqlamaydi. Rasm yuborsa bo'ladi, majburiy emas.`,
-    `Kun davomida unga ikki marta eslatiladi; bosmasa kun`,
-    `"o'tkazildi" deb sanaladi. Hisob: <b>/musor</b>.`,
+    `Navbatning oxirgi kuni ertalabdan unga eslatiladi; bosmasa`,
+    `navbat "o'tkazildi" deb sanaladi. Hisob: <b>/musor</b>.`,
     ``,
     `Idish erta to'lib qolsa <b>"🗑 Musor to'ldi"</b> tugmasi`,
-    `bugungi navbatchiga darrov xabar beradi.`,
+    `navbatchiga darrov xabar beradi.`,
     ``,
     `<b>💰 PUL YIG'IMI</b>`,
     AJRATGICH,
@@ -3004,25 +3006,44 @@ function soatDaqiqa(d: Date | string): string {
   }).format(new Date(d));
 }
 
+/** Musor navbatining davri: `sana`..`tugash` (ikkalasi ham ichida). */
+export type MusorDavr = { sana: string; tugash: string };
+
 /**
- * Ertalabki guruh e'loni. `kecha` — kechagi navbatchi tashlamagan bo'lsa
- * bitta qator (hisobga yozilgani aytiladi, ayblov yo'q); bajarilgan kunga
- * tegishli qator chiqmaydi.
+ * "16–17-oktabr · 2 kun" (bir kunlik eski navbatda "16-oktabr"). Kalendar
+ * MATNLARI `sanaQatori` bilan o'qiladi — mintaqa hisobi qayta qo'llanmaydi.
+ */
+export function musorDavri(d: MusorDavr): string {
+  if (d.sana === d.tugash) return sanaQatori(d.sana);
+  const kunlar = kunFarqi(d.sana, d.tugash) + 1;
+  const birOy = d.sana.slice(0, 7) === d.tugash.slice(0, 7);
+  const oraliq = birOy
+    ? `${Number(d.sana.slice(8))}–${sanaQatori(d.tugash)}`
+    : `${sanaQatori(d.sana)} – ${sanaQatori(d.tugash)}`;
+  return `${oraliq} · ${kunlar} kun`;
+}
+
+/**
+ * Navbat boshidagi guruh e'loni. `oldingiOtkazgan` — oldingi navbatchi
+ * tashlamagan bo'lsa bitta qator (hisobga yozilgani aytiladi, ayblov yo'q);
+ * bajarilgan navbatga tegishli qator chiqmaydi.
  */
 export function kunlikMusorGuruh(
   navbatchi: { ism: string; telegram_id: string | null },
-  kechaOtkazgan: { ism: string } | null,
+  oldingiOtkazgan: { ism: string } | null,
+  davr: MusorDavr,
 ): string {
   const s = [
-    `🗑 <b>BUGUN MUSORNI TASHLAYDI</b>`,
+    `🗑 <b>MUSOR NAVBATI</b>`,
     AJRATGICH,
     `👤 ${musorOdam(navbatchi.ism, navbatchi.telegram_id)}`,
+    `📅 ${musorDavri(davr)}`,
     ``,
-    `Tashlagach pastdagi <b>«✅ Tashladim»</b> tugmasini bosadi.`,
+    `Musor to'lganda tashlab, pastdagi <b>«✅ Tashladim»</b> tugmasini bosadi.`,
     `<i>Boshqalar tasdiqlashi shart emas. Rasm yuborsa bo'ladi — majburiy emas.</i>`,
   ];
-  if (kechaOtkazgan) {
-    s.push(``, `<i>Kecha (${esc(kechaOtkazgan.ism)}) musor tashlanmadi — hisobga yozildi.</i>`);
+  if (oldingiOtkazgan) {
+    s.push(``, `<i>Oldingi navbatchi (${esc(oldingiOtkazgan.ism)}) musorni tashlamadi — hisobga yozildi.</i>`);
   }
   return s.join("\n");
 }
@@ -3040,34 +3061,44 @@ export function kunlikMusorBajarildiGuruh(
   ].join("\n");
 }
 
-/** Navbatchining o'ziga — kunning birinchi xabari (ogohlantirish). */
-export function kunlikMusorShaxsiy(): string {
+/** Navbatchining o'ziga — navbatning birinchi xabari (ogohlantirish). */
+export function kunlikMusorShaxsiy(davr: MusorDavr): string {
+  const eslatma =
+    davr.sana === davr.tugash
+      ? `Tashlamaguningizcha kun davomida eslatib turaman.`
+      : `Oxirgi kuni (${sanaQatori(davr.tugash)}) ertalabdan eslatib turaman.`;
   return [
-    `🗑 <b>BUGUN MUSORNI SIZ TASHLAYSIZ</b>`,
+    `🗑 <b>MUSOR NAVBATI SIZDA</b>`,
     AJRATGICH,
+    `📅 ${musorDavri(davr)}`,
     ``,
-    `Bugungi navbat sizga tushdi. Idishni tashlab kelgach`,
-    `pastdagi <b>«✅ Tashladim»</b> tugmasini bosing.`,
+    `Musor to'lganda tashlab kelib, pastdagi`,
+    `<b>«✅ Tashladim»</b> tugmasini bosing. ${eslatma}`,
     ``,
     `<i>Rasm yuborsangiz ham bo'ladi, lekin shart emas.</i>`,
-    `<i>Bosmasangiz bugungi kun o'tkazib yuborilgan deb sanaladi.</i>`,
+    `<i>Bosmasangiz navbat o'tkazib yuborilgan deb sanaladi.</i>`,
   ].join("\n");
 }
 
-/** `n` — nechanchi eslatma (1 yoki 2). Ikkinchisi oxirgisi ekanini aytadi. */
-export function kunlikMusorEslatma(n: number): string {
-  if (n >= 2) {
+/**
+ * `n` — nechanchi eslatma, `jami` — navbatda nechta eslatma bor. Eslatma
+ * faqat navbatning oxirgi kunida keladi, shuning uchun matn "bugun oxirgi
+ * kun" deydi; oxirgisi buni alohida aytadi.
+ */
+export function kunlikMusorEslatma(n: number, jami: number = MUSOR_ESLATMA_SOATLARI.length): string {
+  if (n >= jami) {
     return [
       `⚠️ <b>MUSOR HALI TASHLANMADI — OXIRGI ESLATMA</b>`,
       ``,
-      `Bugun navbat sizda. Tashlab, pastdagi tugmani bosing —`,
-      `aks holda kun o'tkazib yuborilgan deb hisobga yoziladi.`,
+      `Bugun musor navbatingizning oxirgi kuni. Tashlab, pastdagi tugmani`,
+      `bosing — aks holda navbat o'tkazib yuborilgan deb hisobga yoziladi.`,
     ].join("\n");
   }
   return [
     `⏰ <b>MUSOR HALI TASHLANMADI</b>`,
     ``,
-    `Bugun navbat sizda. Tashlab kelgach «✅ Tashladim» ni bosing.`,
+    `Bugun musor navbatingizning oxirgi kuni.`,
+    `Tashlab kelgach «✅ Tashladim» ni bosing.`,
   ].join("\n");
 }
 
@@ -3077,7 +3108,7 @@ export function kunlikMusorTurtki(xabarchi: string): string {
     `🗑 <b>MUSOR TO'LDI</b>`,
     ``,
     `<b>${esc(xabarchi)}</b> xabar berdi: idish to'lib ketibdi.`,
-    `Bugun navbat sizda — iltimos, hozir tashlab, tugmani bosing.`,
+    `Musor navbati sizda — iltimos, hozir tashlab, tugmani bosing.`,
   ].join("\n");
 }
 
@@ -3088,40 +3119,44 @@ export function kunlikMusorTurtkiJavobi(
 ): string {
   switch (holat) {
     case "yuborildi":
-      return `✅ Bugungi navbatchi <b>${esc(navbatchi ?? "—")}</b> ga xabar yuborildi.`;
+      return `✅ Musor navbatchisi <b>${esc(navbatchi ?? "—")}</b> ga xabar yuborildi.`;
     case "yaqinda":
       return `🔔 <b>${esc(navbatchi ?? "—")}</b> ga yaqinda allaqachon eslatilgan — biroz kuting.`;
     case "bajarilgan":
       return [
-        `✅ Bugungi musorni <b>${esc(navbatchi ?? "—")}</b> allaqachon tashlagan.`,
+        `✅ Bu navbatda musorni <b>${esc(navbatchi ?? "—")}</b> allaqachon tashlagan.`,
         `<i>Idish yana to'lgan bo'lsa, o'zingiz tashlang yoki guruhda ayting.</i>`,
       ].join("\n");
     case "ertalabgacha":
-      return `🌙 Bugungi navbatchi hali tayinlanmagan — har kuni ertalab ${String(MUSOR_ERTALAB_SOAT).padStart(2, "0")}:00 da tanlanadi.`;
+      return `🌙 Yangi navbatchi hali tayinlanmagan — ertalab ${String(MUSOR_ERTALAB_SOAT).padStart(2, "0")}:00 da tanlanadi.`;
     case "sizda":
-      return `🧹 <b>Bugun navbat sizda</b> — musorni tashlab, «✅ Tashladim» ni bosing.`;
+      return `🧹 <b>Musor navbati sizda</b> — musorni tashlab, «✅ Tashladim» ni bosing.`;
   }
 }
 
 /**
- * `/musor` — bugungi navbatchi va hisob. Hisob REYTING EMAS: tartib ism
+ * `/musor` — joriy navbatchi va hisob. Hisob REYTING EMAS: tartib ism
  * bo'yicha, o'rin/ball/medal yo'q, o'tkazganlar ajratib ko'rsatilmaydi —
  * har kimning yonida shunchaki uch raqam.
  */
 export function musorHisobiMatni(
-  bugun: { ism: string; holat: "kutilmoqda" | "bajarildi" | "otkazildi"; bajarildi_ts: Date | null } | null,
+  joriy:
+    | (MusorDavr & { ism: string; holat: "kutilmoqda" | "bajarildi" | "otkazildi"; bajarildi_ts: Date | null })
+    | null,
   royxat: { ism: string; tushgan: number; tashlagan: number; otkazgan: number }[],
 ): string {
-  const s = [`🗑 <b>KUNLIK MUSOR NAVBATI</b>`, AJRATGICH, ``];
+  const s = [`🗑 <b>MUSOR NAVBATI</b>`, AJRATGICH, ``];
 
-  if (!bugun) {
-    s.push(`📅 Bugun: <i>navbatchi hali tayinlanmagan</i>`);
-  } else if (bugun.holat === "bajarildi") {
-    s.push(`📅 Bugun: <b>${esc(bugun.ism)}</b> — ✅ tashladi${bugun.bajarildi_ts ? ` (${soatDaqiqa(bugun.bajarildi_ts)})` : ""}`);
-  } else if (bugun.holat === "otkazildi") {
-    s.push(`📅 Bugun: <b>${esc(bugun.ism)}</b> — o'tkazib yuborildi`);
+  if (!joriy) {
+    s.push(`📅 Navbatchi: <i>hali tayinlanmagan</i>`);
   } else {
-    s.push(`📅 Bugun: <b>${esc(bugun.ism)}</b> — ⏳ hali tashlamadi`);
+    const holat =
+      joriy.holat === "bajarildi"
+        ? `✅ tashladi${joriy.bajarildi_ts ? ` (${soatDaqiqa(joriy.bajarildi_ts)})` : ""}`
+        : joriy.holat === "otkazildi"
+          ? `o'tkazib yuborildi`
+          : `⏳ hali tashlamadi`;
+    s.push(`👤 Navbatchi: <b>${esc(joriy.ism)}</b> — ${holat}`, `📅 ${musorDavri(joriy)}`);
   }
 
   const bor = royxat.filter((o) => o.tushgan > 0);
@@ -3138,8 +3173,8 @@ export function musorHisobiMatni(
 
   s.push(
     ``,
-    `<i>Har kuni bitta odam tasodifiy tanlanadi; hamma bir martadan</i>`,
-    `<i>olmaguncha takrorlanmaydi. Bu baho emas — shunchaki sanoq.</i>`,
+    `<i>Har ${MUSOR_NAVBAT_KUNI} kunda bitta odam tasodifiy tanlanadi; hamma bir</i>`,
+    `<i>martadan olmaguncha takrorlanmaydi. Bu baho emas — shunchaki sanoq.</i>`,
   );
   return s.join("\n");
 }

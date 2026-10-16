@@ -63,6 +63,25 @@ export const MENING_NAVBATIM_TUGMA = "🧹 Mening navbatim";
  */
 export const MUSOR_TUGMA = "🗑 Musor to'ldi";
 
+const PASTKI_MENYU: ReadonlySet<string> = new Set([
+  ...Object.values(MENYU),
+  SHIKOYAT_TUGMA,
+  ADMIN_PANEL_TUGMA,
+  MENING_NAVBATIM_TUGMA,
+  MUSOR_TUGMA,
+]);
+
+/**
+ * Matn — BOSHQA BO'LIMGA o'tishmi: pastki menyu tugmasi yoki buyruq.
+ * Shunda `bot/tozalash.ts` oldingi bo'limning xabarlarini o'chiradi. Inline
+ * tugmalar bu yerda yo'q: ular o'z xabarini tahrirlaydi yoki shu bo'lim
+ * ichida qoladi.
+ */
+export function bolimTugmasimi(matn: string): boolean {
+  const m = matn.trim();
+  return m.startsWith("/") || PASTKI_MENYU.has(m);
+}
+
 /**
  * Kunlik musor navbatchisining "✅ Tashladim" tugmasi. `id` — `musor_kunlari.id`:
  * callback'da kun id'si turadi, shuning uchun eski xabardagi tugma

@@ -37,6 +37,7 @@ import {
   type ReportToliq,
 } from "../../core/reports.js";
 import { adminlarRoyxati, guruhAzosimi, guruhId, kim, shaxsiy } from "../group.js";
+import { tozalanmasin } from "../tozalash.js";
 import {
   bekorKeyboard,
   ishonchKeyboard,
@@ -339,7 +340,8 @@ async function adminlargaYubor(api: Api, r: ReportToliq): Promise<void> {
 
   for (const a of adminlar) {
     try {
-      const msg = await mediaXabarYubor(api, Number(a.telegram_id), matn, r, { reply_markup: kb });
+      // Bildirishnoma — shikoyat yozgan admin o'zi bo'lsa ham bo'lim almashganda o'chmasin.
+      const msg = await tozalanmasin(() => mediaXabarYubor(api, Number(a.telegram_id), matn, r, { reply_markup: kb }));
       yuborilganlar.push({ chat_id: msg.chat.id, message_id: msg.message_id });
     } catch {
       /* admin botni bloklagan yoki hali /start bosmagan */

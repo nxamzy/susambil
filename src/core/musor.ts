@@ -1,20 +1,26 @@
 /**
- * KUNLIK MUSOR NAVBATI — har kuni BITTA odam, tasodifiy, tasdiqsiz.
+ * MUSOR NAVBATI — BITTA odam, `MUSOR_NAVBAT_KUNI` (2) kun, tasodifiy, tasdiqsiz.
  *
  * NEGA YANGI TIZIM (xona navbati emas): xona navbatidagi musor vazifasi
- * "5 kunlik navbat × 3 rasm × boshqa xonalardan 3 tasdiq" edi. Musor idishi
- * esa har kuni to'ladi, uni xona emas bitta ODAM tashlaydi va boshqalarning
- * tasdig'i hech kimga kerak emas — tasdiq kutish navbatni kunlab osib
- * qo'yardi (`jobs/reminders.ts` `tasdiqEslatmalari` shundan tug'ilgan).
+ * "5 kunlik navbat × 3 rasm × boshqa xonalardan 3 tasdiq" edi. Musorni esa
+ * xona emas bitta ODAM tashlaydi va boshqalarning tasdig'i hech kimga kerak
+ * emas — tasdiq kutish navbatni kunlab osib qo'yardi
+ * (`jobs/reminders.ts` `tasdiqEslatmalari` shundan tug'ilgan).
+ *
+ * NEGA IKKI KUN: dastlab har kuni yangi odam tayinlanardi, idish esa bir
+ * kunda to'lmaydi — odam bo'sh idish uchun ikki marta eslatma olar va
+ * tashlamasa "o'tkazdi" deb yozilardi.
  *
  * Qoidalar (uyning talabi, shu tartibda):
- *  1. Har kuni ertalab (`MUSOR_ERTALAB_SOAT`) bitta odam TASODIFIY tanlanadi.
- *  2. Unga shaxsiy xabar boradi, guruhga "bugun kim" e'lon qilinadi.
+ *  1. Navbat tugagan kuni ertalab (`MUSOR_ERTALAB_SOAT`) keyingi odam
+ *     TASODIFIY tanlanadi. Navbat qatorda `sana`..`tugash` (ikkalasi ham
+ *     ichida) bo'lib, `tugash` yaratilganda muzlatiladi.
+ *  2. Unga shaxsiy xabar boradi, guruhga "navbat kimda" e'lon qilinadi.
  *     "Qilaman" deyish shart emas — navbat o'zi tushadi.
- *  3. O'sha odamga kun davomida IKKI marta eslatiladi (faqat unga).
+ *  3. Eslatma faqat navbatning OXIRGI kunida, ertalabdan (faqat unga).
  *  4. U "✅ Tashladim" bosishi SHART. Boshqalarning tasdig'i kerak emas;
  *     rasm yuborsa bo'ladi, majburiy emas.
- *  5. Bosmagan kun "o'tkazildi" deb SANALIB boriladi (baho yoki jarima
+ *  5. Bosilmagan navbat "o'tkazildi" deb SANALIB boriladi (baho yoki jarima
  *     emas — faqat hisob, xuddi `core/faollik.ts` kabi).
  *
  * "Tasodifiy" lekin adolatli: hamma faol a'zo bir martadan navbat
@@ -28,7 +34,12 @@
  */
 import { randomInt } from "node:crypto";
 import { sql } from "../db/index.js";
-import { MUSOR_ERTALAB_SOAT, MUSOR_ESLATMA_ORALIQ_SOAT, MUSOR_ESLATMA_SOATLARI } from "../config.js";
+import {
+  MUSOR_ERTALAB_SOAT,
+  MUSOR_ESLATMA_ORALIQ_SOAT,
+  MUSOR_ESLATMA_SOATLARI,
+  MUSOR_NAVBAT_KUNI,
+} from "../config.js";
 import { bugungiSana, kunQosh, toshkentSoat } from "./vaqt.js";
 import { faollikYoz } from "./faollik.js";
 
@@ -36,8 +47,10 @@ export type MusorHolati = "kutilmoqda" | "bajarildi" | "otkazildi";
 
 export type MusorKuni = {
   id: number;
-  /** `YYYY-MM-DD` — Toshkent kalendari (`core/vaqt.ts` intizomi: MATN). */
+  /** Navbatning birinchi kuni, `YYYY-MM-DD` — Toshkent kalendari (`core/vaqt.ts` intizomi: MATN). */
   sana: string;
+  /** Navbatning oxirgi kuni (ichida), `YYYY-MM-DD`. Eski bir kunlik qatorlarda `= sana`. */
+  tugash: string;
   user_id: number;
   sikl: number;
   holat: MusorHolati;
@@ -56,7 +69,8 @@ export type MusorKuniToliq = MusorKuni & { ism: string; telegram_id: string | nu
 // Qayta ishlatiladigan SQL bo'lagi FUNKSIYA — postgres.js Query obyektini
 // fragment sifatida ichiga qo'yganda uni o'zgartiradi (CLAUDE.md).
 const ustunlar = () => sql`
-  m.id, to_char(m.sana, 'YYYY-MM-DD') AS sana, m.user_id, m.sikl, m.holat,
+  m.id, to_char(m.sana, 'YYYY-MM-DD') AS sana, to_char(m.tugash, 'YYYY-MM-DD') AS tugash,
+  m.user_id, m.sikl, m.holat,
   m.bajarildi_ts, m.rasm_id, m.guruh_msg_id, m.elon_ts, m.eslatma_soni,
   m.oxirgi_eslatma, m.oxirgi_signal, u.ism, u.telegram_id
 `;
@@ -68,13 +82,13 @@ const ustunlar = () => sql`
 export type MusorchiTanlovi = { userId: number; sikl: number };
 
 /**
- * Bugungi navbatchini tanlaydi.
+ * Keyingi navbatchini tanlaydi.
  *
  * Raund (`sikl`) ichida kimdir navbat olgan bo'lsa u qolganlar olmaguncha
  * qaytib tushmaydi; hamma olib bo'lgach yangi raund boshlanadi. Yangi
- * raundning birinchi kunida KECHAGI odam tushmaydi (bittadan ortiq nomzod
- * bo'lsa) — aks holda raund chegarasida ketma-ket ikki kun bir odamga
- * tushib qolishi mumkin edi.
+ * raundning birinchi navbatida OLDINGI navbatchi tushmaydi (bittadan ortiq
+ * nomzod bo'lsa) — aks holda raund chegarasida ketma-ket ikki navbat bir
+ * odamga tushib qolishi mumkin edi.
  *
  * Yangi qo'shilgan a'zo raund o'rtasida ham darrov nomzod: unga hali
  * navbat tushmagan. Ketgan (nofaol) a'zo `nomzodlar`da yo'q, ya'ni raundni
@@ -112,17 +126,19 @@ export function musorchiTanla(p: {
 }
 
 /**
- * Odamga hozir QAYSI eslatma (1 yoki 2) ketishi kerakligi, kerak bo'lmasa
- * `null`. Sof funksiya.
+ * Odamga hozir NECHANCHI eslatma (1, 2, ...) ketishi kerakligi, kerak
+ * bo'lmasa `null`. Sof funksiya.
  *
- *  - faqat bugungi, hali bajarilmagan va e'loni yetkazilgan kun uchun;
+ *  - faqat hali bajarilmagan va e'loni yetkazilgan navbat uchun;
+ *  - faqat navbatning OXIRGI kunida (`tugash`) — oldingi kunlarda idish hali
+ *    to'lmagan, odam bo'sh idish uchun bezovta qilinmaydi;
  *  - eslatma soatiga (`MUSOR_ESLATMA_SOATLARI`) yetgan bo'lishi kerak;
  *  - e'lon yoki oldingi eslatmadan `oraliqSoat` o'tgan bo'lishi kerak —
- *    bot kech yoqilsa ikkala eslatma bir daqiqada kelib qolmasin.
+ *    bot kech yoqilsa hamma eslatma bir daqiqada kelib qolmasin.
  */
 export function musorEslatmasiKerakmi(p: {
   holat: MusorHolati;
-  sana: string;
+  tugash: string;
   bugun: string;
   soat: number;
   eslatmaSoni: number;
@@ -132,7 +148,7 @@ export function musorEslatmasiKerakmi(p: {
   soatlar?: readonly number[];
   oraliqSoat?: number;
 }): number | null {
-  if (p.holat !== "kutilmoqda" || p.sana !== p.bugun) return null;
+  if (p.holat !== "kutilmoqda" || p.tugash !== p.bugun) return null;
   if (p.elonTs === null) return null;
 
   const soatlar = p.soatlar ?? MUSOR_ESLATMA_SOATLARI;
@@ -159,11 +175,16 @@ export async function musorniOl(id: number): Promise<MusorKuniToliq | null> {
   return k ?? null;
 }
 
-/** Berilgan kunning navbatchisi (`YYYY-MM-DD`) — yo'q bo'lsa `null`. */
-export async function kunniOl(sana: string): Promise<MusorKuniToliq | null> {
+/**
+ * Berilgan kunni (`YYYY-MM-DD`) qamragan navbat — yo'q bo'lsa `null`.
+ * Ikki navbat bir kunni qamray olmaydi (`musor_kunlari_davr_kesishmaydi`).
+ */
+export async function navbatniOl(sana: string): Promise<MusorKuniToliq | null> {
   const [k] = await sql<MusorKuniToliq[]>`
     SELECT ${ustunlar()} FROM musor_kunlari m JOIN users u ON u.id = m.user_id
-    WHERE m.sana = ${sana}::date
+    WHERE m.sana <= ${sana}::date AND m.tugash >= ${sana}::date
+    ORDER BY m.sana DESC
+    LIMIT 1
   `;
   return k ?? null;
 }
@@ -174,33 +195,38 @@ export async function kunniOl(sana: string): Promise<MusorKuniToliq | null> {
 
 export type BugungiMusor = {
   kun: MusorKuniToliq;
-  /** Aynan kechagi kun, faqat o'tkazib yuborilgan bo'lsa (e'longa qator qo'shiladi). */
-  kechaOtkazilgan: MusorKuniToliq | null;
+  /** Shu navbatdan bevosita oldingisi, faqat o'tkazib yuborilgan bo'lsa (e'longa qator qo'shiladi). */
+  oldingiOtkazilgan: MusorKuniToliq | null;
 };
 
 /**
- * Bugungi navbatchi — bo'lmasa tayinlaydi. Ertalabgacha (`MUSOR_ERTALAB_SOAT`)
- * HECH NARSA qilmaydi: kechagi kun o'shanda ham ochiq turadi, ya'ni
- * yarim tundan keyin "Tashladim" bosgan odam o'tkazib yuborgan hisoblanmaydi.
+ * Bugunni qamragan navbat — bo'lmasa (oldingisi tugagan) yangisini
+ * tayinlaydi. Yangi navbat faqat ertalabdan (`MUSOR_ERTALAB_SOAT`) keyin
+ * tayinlanadi: o'shangacha tugagan navbat ham ochiq turadi, ya'ni yarim
+ * tundan keyin "Tashladim" bosgan odam o'tkazib yuborgan hisoblanmaydi.
+ * Navbat o'rtasidagi kunda esa ertalabgacha ham joriy navbat qaytadi —
+ * "🗑 Musor to'ldi" tunda ham navbatchini topadi.
  *
- * Parallel chaqiruvlardan xavfsiz: kun kaliti UNIQUE (`sana`), yutqazgan
- * chaqiruv `ON CONFLICT DO NOTHING` dan keyin g'olibning qatorini o'qiydi.
+ * Parallel chaqiruvlardan xavfsiz: davrlar kesishmaydi (EXCLUDE cheklovi),
+ * yutqazgan chaqiruv `ON CONFLICT DO NOTHING` dan keyin g'olibning
+ * qatorini o'qiydi.
  *
- * Bosilmagan o'tgan kunlar AYNAN yangi navbatchi tayinlanayotganda
- * "o'tkazildi" ga o'tadi: kun chegarasi — yangi e'lon.
+ * Bosilmagan o'tgan navbatlar AYNAN yangi navbatchi tayinlanayotganda
+ * "o'tkazildi" ga o'tadi: navbat chegarasi — yangi e'lon.
  */
 export async function bugungiMusorniTayinla(hozir: Date = new Date()): Promise<BugungiMusor | null> {
-  if (toshkentSoat(hozir) < MUSOR_ERTALAB_SOAT) return null;
-
   const bugun = bugungiSana(hozir);
-  const mavjud = await kunniOl(bugun);
-  // Kechagi qator faqat e'longa kerak — e'lon ketib bo'lgan bo'lsa ortiqcha so'rov yo'q
+  const mavjud = await navbatniOl(bugun);
+  // Oldingi qator faqat e'longa kerak — e'lon ketib bo'lgan bo'lsa ortiqcha so'rov yo'q
   // (bu funksiya har Telegram yangilanishida chaqiriladi).
-  if (mavjud) return { kun: mavjud, kechaOtkazilgan: mavjud.elon_ts ? null : await kechaOtkazilgan(bugun) };
+  if (mavjud) {
+    return { kun: mavjud, oldingiOtkazilgan: mavjud.elon_ts ? null : await oldingiOtkazilgan(mavjud.sana) };
+  }
+  if (toshkentSoat(hozir) < MUSOR_ERTALAB_SOAT) return null;
 
   await sql`
     UPDATE musor_kunlari SET holat = 'otkazildi'
-    WHERE holat = 'kutilmoqda' AND sana < ${bugun}::date
+    WHERE holat = 'kutilmoqda' AND tugash < ${bugun}::date
   `;
 
   const nomzodlar = await sql<{ id: number }[]>`
@@ -225,19 +251,22 @@ export async function bugungiMusorniTayinla(hozir: Date = new Date()): Promise<B
   });
   if (!tanlov) return null; // hali hech kim botga ulanmagan
 
+  // Nishonsiz `ON CONFLICT`: `sana` UNIQUE ham, davr kesishmasligi (EXCLUDE)
+  // ham shu yerda jim to'xtatadi — parallel chaqiruv ikkinchi navbat ocholmaydi.
   await sql`
-    INSERT INTO musor_kunlari (sana, user_id, sikl)
-    VALUES (${bugun}::date, ${tanlov.userId}, ${tanlov.sikl})
-    ON CONFLICT (sana) DO NOTHING
+    INSERT INTO musor_kunlari (sana, tugash, user_id, sikl)
+    VALUES (${bugun}::date, ${kunQosh(bugun, MUSOR_NAVBAT_KUNI - 1)}::date, ${tanlov.userId}, ${tanlov.sikl})
+    ON CONFLICT DO NOTHING
   `;
 
-  const kun = await kunniOl(bugun);
-  return kun ? { kun, kechaOtkazilgan: await kechaOtkazilgan(bugun) } : null;
+  const kun = await navbatniOl(bugun);
+  return kun ? { kun, oldingiOtkazilgan: await oldingiOtkazilgan(kun.sana) } : null;
 }
 
-async function kechaOtkazilgan(bugun: string): Promise<MusorKuniToliq | null> {
-  const kecha = await kunniOl(kunQosh(bugun, -1));
-  return kecha && kecha.holat === "otkazildi" ? kecha : null;
+/** Navbatdan bevosita oldingisi (`sana` dan bir kun oldin tugagan), faqat o'tkazilgan bo'lsa. */
+async function oldingiOtkazilgan(sana: string): Promise<MusorKuniToliq | null> {
+  const oldingi = await navbatniOl(kunQosh(sana, -1));
+  return oldingi && oldingi.holat === "otkazildi" ? oldingi : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -391,7 +420,7 @@ export async function musorRasmiKeldi(userId: number, rasmId: string): Promise<M
 export type MusorHisobi = {
   userId: number;
   ism: string;
-  /** Navbat tushgan kunlar jami (bugungi ochiq kun ham) */
+  /** Tushgan navbatlar jami (joriy ochiq navbat ham) */
   tushgan: number;
   tashlagan: number;
   otkazgan: number;

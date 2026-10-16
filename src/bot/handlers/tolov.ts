@@ -46,6 +46,7 @@ import {
 } from "../../core/tolov.js";
 import type { TolovSikl } from "../../db/index.js";
 import { adminlarRoyxati, guruhgaYubor, kim, shaxsiy } from "../group.js";
+import { tozalanmasin } from "../tozalash.js";
 import {
   bekorKeyboard,
   tolovAdminKeyboard,
@@ -184,7 +185,8 @@ async function adminlargaYubor(
 
   for (const a of adminlar) {
     try {
-      const msg = await dalilXabarYubor(api, Number(a.telegram_id), matn, t, { reply_markup: kb });
+      // Bildirishnoma — to'lov qilgan admin o'zi bo'lsa ham bo'lim almashganda o'chmasin.
+      const msg = await tozalanmasin(() => dalilXabarYubor(api, Number(a.telegram_id), matn, t, { reply_markup: kb }));
       yuborilganlar.push({ chat_id: msg.chat.id, message_id: msg.message_id });
     } catch {
       /* admin botni bloklagan yoki hali /start bosmagan */

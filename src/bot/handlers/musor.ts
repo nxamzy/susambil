@@ -1,5 +1,5 @@
 /**
- * Kunlik musor navbati — Telegram tomoni (`core/musor.ts` mantig'i).
+ * Musor navbati — Telegram tomoni (`core/musor.ts` mantig'i).
  *
  * Bu yerda faqat ulash: tugma, `/musor`, rasm va "🗑 Musor to'ldi". Qaror
  * `core/musor.ts` da, matnlar `bot/text.ts` da, eslatma va ertalabki e'lon
@@ -11,7 +11,7 @@ import type { User } from "../../db/index.js";
 import { MUSOR_TURTKI_ORALIQ_SOAT } from "../../config.js";
 import {
   bugungiMusorniTayinla,
-  kunniOl,
+  navbatniOl,
   musorHisobi,
   musorniBajar,
   musorRasmiKeldi,
@@ -21,6 +21,7 @@ import {
 import { bugungiSana } from "../../core/vaqt.js";
 import { guruhId, guruhgaYubor, kim, shaxsiy } from "../group.js";
 import { musorTashladimKeyboard } from "../keyboards.js";
+import { ESLATMA } from "../tozalash.js";
 import {
   esc,
   kunlikMusorBajarildiGuruh,
@@ -74,11 +75,11 @@ export function register(bot: Bot) {
     if (!n.ok) {
       const matn =
         n.sabab === "boshqa_odam"
-          ? "Bu kun sizning navbatingiz emas."
+          ? "Bu musor navbati sizniki emas."
           : n.sabab === "allaqachon"
             ? "✅ Allaqachon tashlangan deb belgilangan."
             : n.sabab === "otkazildi"
-              ? "Bu kun o'tib ketgan — o'tkazib yuborilgan deb hisoblandi."
+              ? "Bu navbat o'tib ketgan — o'tkazib yuborilgan deb hisoblandi."
               : "Bu navbat topilmadi.";
       return ctx.answerCallbackQuery({ text: matn, show_alert: true });
     }
@@ -89,8 +90,8 @@ export function register(bot: Bot) {
   });
 
   bot.command("musor", async (ctx) => {
-    const bugun = await kunniOl(bugungiSana());
-    await ctx.reply(musorHisobiMatni(bugun, await musorHisobi()), { parse_mode: "HTML" });
+    const joriy = await navbatniOl(bugungiSana());
+    await ctx.reply(musorHisobiMatni(joriy, await musorHisobi()), { parse_mode: "HTML" });
   });
 }
 
@@ -113,10 +114,10 @@ export async function rasmKeldi(ctx: Context, u: User, fileId: string): Promise<
 }
 
 /**
- * "🗑 Musor to'ldi" — endi bugungi navbatchiga turtki. Xona navbati
+ * "🗑 Musor to'ldi" — endi joriy musor navbatchisiga turtki. Xona navbati
  * emas: kim tashlashi bugun ma'lum (`musor_kunlari`), shuning uchun xabar
  * bevosita o'sha odamga boradi. Eslatib turish `jobs/reminders.ts` da,
- * kunlik ikkita eslatma bilan.
+ * navbatning oxirgi kunidagi eslatmalar bilan.
  *
  * @returns javob ko'rsatildi (har doim `true`; eski signal yo'liga
  *          tushishning keragi yo'q)
@@ -134,23 +135,27 @@ export async function musorToldi(ctx: Context, u: User): Promise<void> {
 
   const b = await bugungiMusorniTayinla();
   if (!b) {
-    return javob(kunlikMusorTurtkiJavobi("ertalabgacha"), "Bugungi navbatchi hali tayinlanmagan.");
+    return javob(kunlikMusorTurtkiJavobi("ertalabgacha"), "Yangi navbatchi hali tayinlanmagan.");
   }
   const kun = b.kun;
 
   if (kun.holat === "bajarildi") {
-    return javob(kunlikMusorTurtkiJavobi("bajarilgan", kun.ism), `Bugungi musorni ${kun.ism} allaqachon tashlagan.`);
+    return javob(kunlikMusorTurtkiJavobi("bajarilgan", kun.ism), `Bu navbatda musorni ${kun.ism} allaqachon tashlagan.`);
   }
   if (kun.user_id === u.id) {
-    return javob(kunlikMusorTurtkiJavobi("sizda"), "Bugun navbat sizda — tashlab, «✅ Tashladim» ni bosing.");
+    return javob(kunlikMusorTurtkiJavobi("sizda"), "Musor navbati sizda — tashlab, «✅ Tashladim» ni bosing.");
   }
   if (!(await turtkiniEgalla(kun.id, MUSOR_TURTKI_ORALIQ_SOAT))) {
     return javob(kunlikMusorTurtkiJavobi("yaqinda", kun.ism), `${kun.ism} ga yaqinda eslatilgan — biroz kuting.`);
   }
 
-  const yetdi = await shaxsiy(ctx.api, navbatchiUser(kun), kunlikMusorTurtki(u.ism), {
-    reply_markup: musorTashladimKeyboard(kun.id),
-  });
+  const yetdi = await shaxsiy(
+    ctx.api,
+    navbatchiUser(kun),
+    kunlikMusorTurtki(u.ism),
+    { reply_markup: musorTashladimKeyboard(kun.id) },
+    ESLATMA.musor,
+  );
   // Yetmasa ham javob "yuborildi" deyilmaydi: yolg'on va'da bermaymiz.
   return javob(
     yetdi

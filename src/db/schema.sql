@@ -1163,3 +1163,68 @@ DO $$ BEGIN
       ON CONFLICT (kalit) DO NOTHING;
   END IF;
 END $$;
+
+-- ---------------------------------------------------------------------------
+-- Musor navbati endi IKKI KUNLIK: bitta odamga `MUSOR_NAVBAT_KUNI` (2) kun.
+-- Idish bir kunda to'lmaydi — har kuni yangi odam tayinlash, birinchi
+-- kunning o'zidayoq ikki marta eslatish va "tashlamadi" deb hisobga yozish
+-- odamni bo'sh idish uchun bezovta qilardi.
+--
+-- `tugash` — navbatning oxirgi kuni (shu kun ham ichida). Qator yaratilganda
+-- MUZLATILADI (`tolov_sikllari.talab` bilan bir xil qoida): kod konstantasi
+-- keyin o'zgarsa ham davom etayotgan navbat qayta yozilmaydi, eski bir
+-- kunlik qatorlar esa `tugash = sana` bo'lib to'g'ri qoladi.
+ALTER TABLE musor_kunlari ADD COLUMN IF NOT EXISTS tugash DATE;
+UPDATE musor_kunlari SET tugash = sana WHERE tugash IS NULL;
+ALTER TABLE musor_kunlari ALTER COLUMN tugash SET NOT NULL;
+
+DO $$ BEGIN
+  ALTER TABLE musor_kunlari ADD CONSTRAINT musor_kunlari_tugash_chk CHECK (tugash >= sana);
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+-- Ikki navbat bir kunni qamramasin. Ilgari `sana` UNIQUE buni o'zi
+-- kafolatlardi; davr ikki kunlik bo'lgach u yetmaydi (16-17 va 17-18
+-- "sana"si har xil). Parallel tayinlash `ON CONFLICT DO NOTHING` bilan shu
+-- cheklovga urilib jim qaytadi.
+--
+-- `duplicate_table` ham ushlanadi: EXCLUDE cheklovi o'z INDEKSini yaratadi,
+-- qayta ishga tushirilganda Postgres `duplicate_object` emas, "relation
+-- already exists" (42P07) qaytaradi — faqat birinchisi ushlansa ikkinchi
+-- `db:setup` butun migratsiyani orqaga qaytarardi.
+DO $$ BEGIN
+  ALTER TABLE musor_kunlari ADD CONSTRAINT musor_kunlari_davr_kesishmaydi
+    EXCLUDE USING gist (daterange(sana, tugash, '[]') WITH &&);
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL; END $$;
+
+-- Deploy kuni ochiq turgan BUGUNGI navbat BIR MARTA ertagacha uzaytiriladi:
+-- yangi qoida darrov ishlasin, bugungi odam bo'sh idish uchun kechqurun
+-- eslatma olmasin (eslatma endi navbatning oxirgi kunida).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM settings WHERE kalit = 'musor_ikki_kun_seed') THEN
+    UPDATE musor_kunlari SET tugash = sana + 1
+    WHERE holat = 'kutilmoqda' AND tugash = sana
+      AND sana = (now() AT TIME ZONE 'Asia/Tashkent')::date;
+    INSERT INTO settings (kalit, qiymat) VALUES ('musor_ikki_kun_seed', '1')
+      ON CONFLICT (kalit) DO NOTHING;
+  END IF;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- Bot shaxsiy chatda yuborgan, keyin O'CHIRILADIGAN xabarlar
+-- (`bot/tozalash.ts`). Chat bo'limdan bo'limga o'tilgan sari to'lib
+-- ketardi: `korishXabar` faqat menyudagi ko'rinishlarni almashtirardi,
+-- "Mening navbatim", admin panel, buyruqlar javobi va inline tugmalardan
+-- kelgan xabarlar esa qolib ketardi; har 5 soatlik eslatma ham eskisi
+-- ustiga yangi xabar bo'lib yig'ilardi.
+--
+-- `kalit`: 'ekran' — joriy bo'limda yuborilganlar (keyingi bo'limga
+-- o'tilganda o'chadi); 'menyu' — pastki menyu tugmalarini olib yurgan
+-- xabar (faqat YANGISI yuborilgach eskisi o'chadi); 'eslatma:<tur>' — bir
+-- turdagi eslatmaning oxirgisi (yangisi kelganda eskisi o'chadi).
+CREATE TABLE IF NOT EXISTS bot_xabarlari (
+  chat_id    BIGINT NOT NULL,
+  kalit      TEXT NOT NULL,
+  xabarlar   INT[] NOT NULL DEFAULT '{}',
+  yangilandi TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (chat_id, kalit)
+);
