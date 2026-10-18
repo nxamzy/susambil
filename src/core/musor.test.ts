@@ -106,90 +106,83 @@ test("musorchi: uzoq muddatda adolat — har raundda hamma AYNAN bir martadan", 
 // ---------------------------------------------------------------------------
 
 const SOAT = 3_600_000;
-const BUGUN = "2026-10-15";
+// Navbat 15-oktabrda tayinlangan: 15-kun = 1-kun, 16-kun = 2-kun.
+const SANA = "2026-10-15";
 const asos = {
   holat: "kutilmoqda" as const,
-  tugash: BUGUN,
-  bugun: BUGUN,
-  eslatmaSoni: 0,
+  sana: SANA,
   elonTs: new Date("2026-10-15T08:00:00+05:00").getTime(),
   oxirgiEslatma: null,
-  soatlar: [15, 20],
+  soatlar: [8, 14, 20],
   oraliqSoat: 3,
 };
-const soat = (s: number) => new Date(`2026-10-15T${String(s).padStart(2, "0")}:05:00+05:00`).getTime();
+const vaqt = (kun: string, s: number) => new Date(`${kun}T${String(s).padStart(2, "0")}:05:00+05:00`).getTime();
+/** `kun` sanasi, `s` soatda: eslatma tekshiruviga beriladigan bugun/soat/hozir. */
+const payt = (kun: string, s: number) => ({ bugun: kun, soat: s, hozir: vaqt(kun, s) });
 
-test("eslatma: soatiga yetmaguncha kerak emas", () => {
-  assert.equal(musorEslatmasiKerakmi({ ...asos, soat: 14, hozir: soat(14) }), null);
-});
-
-test("eslatma: birinchi eslatma 15:00 dan keyin", () => {
-  assert.equal(musorEslatmasiKerakmi({ ...asos, soat: 15, hozir: soat(15) }), 1);
-});
-
-test("eslatma: ikkinchi eslatma 20:00 dan keyin, undan oldin yo'q", () => {
-  const p = { ...asos, eslatmaSoni: 1, oxirgiEslatma: soat(15) };
-  assert.equal(musorEslatmasiKerakmi({ ...p, soat: 18, hozir: soat(18) }), null);
-  assert.equal(musorEslatmasiKerakmi({ ...p, soat: 20, hozir: soat(20) }), 2);
-});
-
-test("eslatma: ikkitadan ko'p bo'lmaydi", () => {
-  const p = { ...asos, eslatmaSoni: 2, oxirgiEslatma: soat(20) };
-  assert.equal(musorEslatmasiKerakmi({ ...p, soat: 23, hozir: soat(23) }), null);
-});
-
-test("eslatma: bajarilgan yoki o'tkazilgan kunga ketmaydi", () => {
-  for (const holat of ["bajarildi", "otkazildi"] as const) {
-    assert.equal(musorEslatmasiKerakmi({ ...asos, holat, soat: 21, hozir: soat(21) }), null);
-  }
-});
-
-test("eslatma: navbatning oxirgi kunidan boshqa kunda ketmaydi", () => {
-  // Navbat ertaga tugaydi (bugun 1-kun) — idish hali to'lmagan.
-  assert.equal(musorEslatmasiKerakmi({ ...asos, tugash: "2026-10-16", soat: 21, hozir: soat(21) }), null);
-  // Navbat kecha tugagan, yangisi ertalab hali tayinlanmagan — eskisiga ham ketmaydi.
-  assert.equal(musorEslatmasiKerakmi({ ...asos, tugash: "2026-10-14", soat: 21, hozir: soat(21) }), null);
-});
-
-test("eslatma: 2 kunlik navbat — 1-kun jim, 2-kun ertalabdan boshlanadi", () => {
-  const ikkiKun = {
-    holat: "kutilmoqda" as const,
-    tugash: "2026-10-16",
-    eslatmaSoni: 0,
-    elonTs: new Date("2026-10-15T08:00:00+05:00").getTime(),
-    oxirgiEslatma: null,
-    soatlar: [8, 14, 20],
-    oraliqSoat: 3,
-  };
-  const vaqt = (kun: string, s: number) => new Date(`${kun}T${String(s).padStart(2, "0")}:05:00+05:00`).getTime();
-
-  // 1-kun kun bo'yi — hech narsa.
+test("eslatma: 1-kun kun bo'yi jim — idish hali to'lmagan", () => {
   for (const s of [8, 14, 20, 23]) {
-    assert.equal(musorEslatmasiKerakmi({ ...ikkiKun, bugun: "2026-10-15", soat: s, hozir: vaqt("2026-10-15", s) }), null);
+    assert.equal(musorEslatmasiKerakmi({ ...asos, ...payt("2026-10-15", s) }), null);
   }
-  // 2-kun tunda hali erta, ertalab 8:00 da birinchisi.
-  assert.equal(musorEslatmasiKerakmi({ ...ikkiKun, bugun: "2026-10-16", soat: 7, hozir: vaqt("2026-10-16", 7) }), null);
-  assert.equal(musorEslatmasiKerakmi({ ...ikkiKun, bugun: "2026-10-16", soat: 8, hozir: vaqt("2026-10-16", 8) }), 1);
-  // Keyin 14:00 va 20:00, uchinchisi oxirgi.
-  const ikkinchi = { ...ikkiKun, bugun: "2026-10-16", eslatmaSoni: 1, oxirgiEslatma: vaqt("2026-10-16", 8) };
-  assert.equal(musorEslatmasiKerakmi({ ...ikkinchi, soat: 13, hozir: vaqt("2026-10-16", 13) }), null);
-  assert.equal(musorEslatmasiKerakmi({ ...ikkinchi, soat: 14, hozir: vaqt("2026-10-16", 14) }), 2);
-  const uchinchi = { ...ikkinchi, eslatmaSoni: 2, oxirgiEslatma: vaqt("2026-10-16", 14) };
-  assert.equal(musorEslatmasiKerakmi({ ...uchinchi, soat: 20, hozir: vaqt("2026-10-16", 20) }), 3);
-  const tugadi = { ...uchinchi, eslatmaSoni: 3, oxirgiEslatma: vaqt("2026-10-16", 20) };
-  assert.equal(musorEslatmasiKerakmi({ ...tugadi, soat: 23, hozir: vaqt("2026-10-16", 23) }), null);
+});
+
+test("eslatma: 2-kun ertalab 8:00 dan boshlanadi, undan oldin yo'q", () => {
+  assert.equal(musorEslatmasiKerakmi({ ...asos, ...payt("2026-10-16", 7) }), null);
+  assert.equal(musorEslatmasiKerakmi({ ...asos, ...payt("2026-10-16", 8) }), 2);
+});
+
+test("eslatma: 2-kun 8:00, 14:00, 20:00 da bittadan, oralarida yo'q", () => {
+  const sakkiz = { ...asos, oxirgiEslatma: vaqt("2026-10-16", 8) };
+  assert.equal(musorEslatmasiKerakmi({ ...sakkiz, ...payt("2026-10-16", 13) }), null);
+  assert.equal(musorEslatmasiKerakmi({ ...sakkiz, ...payt("2026-10-16", 14) }), 2);
+  const ongTort = { ...asos, oxirgiEslatma: vaqt("2026-10-16", 14) };
+  assert.equal(musorEslatmasiKerakmi({ ...ongTort, ...payt("2026-10-16", 19) }), null);
+  assert.equal(musorEslatmasiKerakmi({ ...ongTort, ...payt("2026-10-16", 20) }), 2);
+});
+
+test("eslatma: kun tugagach to'xtamaydi — navbat o'tmagan, ertasiga ham davom etadi", () => {
+  const kecha = { ...asos, oxirgiEslatma: vaqt("2026-10-16", 20) };
+  // Tunda hali erta: bugungi birinchi soat (8:00) kelmagan.
+  assert.equal(musorEslatmasiKerakmi({ ...kecha, ...payt("2026-10-17", 3) }), null);
+  // 3-kun ertalab yana, kun raqami bilan.
+  assert.equal(musorEslatmasiKerakmi({ ...kecha, ...payt("2026-10-17", 8) }), 3);
+  // Bir hafta o'tsa ham.
+  assert.equal(musorEslatmasiKerakmi({ ...kecha, ...payt("2026-10-22", 8) }), 8);
+});
+
+test("eslatma: bir soat uchun bitta — oxirgisi shu soatdan keyin ketgan bo'lsa qaytarilmaydi", () => {
+  const p = { ...asos, oxirgiEslatma: vaqt("2026-10-16", 8) };
+  assert.equal(musorEslatmasiKerakmi({ ...p, ...payt("2026-10-16", 8) }), null);
+  assert.equal(musorEslatmasiKerakmi({ ...p, ...payt("2026-10-16", 11) }), null);
+});
+
+test("eslatma: bajarilgan yoki o'tkazilgan navbatga ketmaydi", () => {
+  for (const holat of ["bajarildi", "otkazildi"] as const) {
+    assert.equal(musorEslatmasiKerakmi({ ...asos, holat, ...payt("2026-10-16", 21) }), null);
+  }
 });
 
 test("eslatma: e'lon yetkazilmagan bo'lsa avval e'lon", () => {
-  assert.equal(musorEslatmasiKerakmi({ ...asos, elonTs: null, soat: 21, hozir: soat(21) }), null);
+  assert.equal(musorEslatmasiKerakmi({ ...asos, elonTs: null, ...payt("2026-10-16", 21) }), null);
 });
 
-test("eslatma: bot kech yoqilsa ikkala eslatma bir zumda ketmaydi", () => {
-  // E'lon 20:30 da chiqdi: 15:00 va 20:00 soatlari o'tgan, lekin e'londan 3 soat o'tmagan.
-  const elon = new Date("2026-10-15T20:30:00+05:00").getTime();
-  const p = { ...asos, elonTs: elon, soat: 20, hozir: elon + 5 * 60_000 };
+test("eslatma: bot soatlab o'chiq turib yoqilsa o'tgan soatlar uchun BITTA xabar", () => {
+  // 2-kun 21:00 da bot yoqildi: 8, 14, 20 uchala soat o'tgan — bitta eslatma, uchta emas.
+  const birinchi = musorEslatmasiKerakmi({ ...asos, ...payt("2026-10-16", 21) });
+  assert.equal(birinchi, 2);
+  const keyin = { ...asos, oxirgiEslatma: vaqt("2026-10-16", 21) };
+  assert.equal(musorEslatmasiKerakmi({ ...keyin, ...payt("2026-10-16", 23) }), null);
+});
+
+test("eslatma: e'londan keyin oraliq o'tmaguncha ketmaydi", () => {
+  // Navbat kech e'lon qilindi: 2-kun ertalab 8:05 da e'longa atigi 5 daqiqa bo'ldi.
+  const elon = new Date("2026-10-16T08:00:00+05:00").getTime();
+  const p = { ...asos, elonTs: elon, ...payt("2026-10-16", 8), hozir: elon + 5 * 60_000 };
   assert.equal(musorEslatmasiKerakmi(p), null);
-  // Birinchisi ketgach ikkinchisi darrov emas, oraliqdan keyin:
-  const keyin = { ...p, eslatmaSoni: 1, oxirgiEslatma: p.hozir, hozir: p.hozir + SOAT, soat: 21 };
-  assert.equal(musorEslatmasiKerakmi(keyin), null);
+  assert.equal(musorEslatmasiKerakmi({ ...p, hozir: elon + 3 * SOAT }), 2);
+});
+
+test("eslatma: boshlash kuni sozlanadi", () => {
+  assert.equal(musorEslatmasiKerakmi({ ...asos, boshlashKuni: 3, ...payt("2026-10-16", 21) }), null);
+  assert.equal(musorEslatmasiKerakmi({ ...asos, boshlashKuni: 3, ...payt("2026-10-17", 9) }), 3);
 });

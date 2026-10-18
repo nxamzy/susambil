@@ -186,19 +186,21 @@ export const TAKROR_MAX = 10;
 export const MUSOR_ERTALAB_SOAT = 8;
 
 /**
- * Bitta odamning musor navbati shuncha kun davom etadi. Ilgari 1 edi —
- * idish esa bir kunda to'lmaydi, ya'ni odam bo'sh idish uchun eslatma
- * olardi va tashlamasa "o'tkazdi" deb hisobga yozilardi. Qiymat qatorga
- * (`musor_kunlari.tugash`) yaratilganda muzlatiladi: bu yerda o'zgartirish
- * davom etayotgan navbatga ta'sir qilmaydi.
+ * Musor navbati MUDDATSIZ: odam "✅ Tashladim" bosmaguncha keyingisiga
+ * o'tmaydi. Ilgari bitta odamga qat'iy 2 kun berilardi va bosilmasa
+ * "o'tkazdi" deb navbat o'zi o'tib ketardi — musor esa tashlanmay qolardi.
+ *
+ * Eslatma navbatning shu kunidan boshlanadi (1 = tayinlangan kun). Birinchi
+ * kun faqat e'lon bilan o'tadi: idish hali to'lmagan. Uyning talabi:
+ * "2-kuni ertalabdan eslatsin".
  */
-export const MUSOR_NAVBAT_KUNI = 2;
+export const MUSOR_ESLATMA_KUNI = 2;
 
 /**
  * Navbatdagi odamga BOSHQA HECH KIM emas, aynan o'ziga eslatma boradi —
- * navbatning OXIRGI kunida, shu soatlarda (tashlamagan bo'lsa). Birinchi
- * kunlar faqat e'lon bilan o'tadi: idish hali to'lmagan. Ertalabki
- * eslatma (8:00) — uyning talabi: "2-kuni ertalabdan eslatsin".
+ * `MUSOR_ESLATMA_KUNI`-kundan boshlab HAR KUNI shu soatlarda, tashlamaguncha
+ * (navbat o'tmagani uchun boshqalar ham shunga qaram). Ertalabki eslatma
+ * (8:00) — uyning talabi.
  */
 export const MUSOR_ESLATMA_SOATLARI = [8, 14, 20] as const;
 

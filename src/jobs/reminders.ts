@@ -11,15 +11,12 @@ import {
 } from "../core/rotation.js";
 import { faolVazifalar } from "../core/vazifalar.js";
 import {
-  bugungiMusorniTayinla,
-  elonniEgalla,
-  elonniQaytar,
-  elonYetdi,
   eslatmaniEgalla,
   eslatmaniQaytar,
+  joriyMusorniTayinla,
   musorEslatmasiKerakmi,
-  type MusorKuniToliq,
 } from "../core/musor.js";
+import { navbatchiUser, navbatniElonQil } from "../bot/handlers/musor.js";
 import {
   navbatSignallari,
   ochiqSignalKodlari,
@@ -65,8 +62,6 @@ import {
   esc,
   ismlar,
   kunlikMusorEslatma,
-  kunlikMusorGuruh,
-  kunlikMusorShaxsiy,
   navbatHisobotiMatni,
   oylikHisobotMatni,
   musorSignalEslatmasi,
@@ -316,54 +311,46 @@ async function tasdiqEslatmalari(api: Api): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Bitta odam `MUSOR_NAVBAT_KUNI` kun musorni tashlaydi (`core/musor.ts`).
- * Bu funksiya uch ish qiladi, har biri holatdan qayta hisoblanadi — necha
- * marta chaqirilsa ham xavfsiz:
+ * Musor navbati MUDDATSIZ: odam "✅ Tashladim" bosmaguncha keyingisiga
+ * o'tmaydi (`core/musor.ts`). Keyingi odam bosish paytida darrov
+ * tayinlanadi va e'lon qilinadi (`bot/handlers/musor.ts`), shuning uchun
+ * bu funksiya ikki ish qiladi, ikkalasi ham holatdan qayta hisoblanadi —
+ * necha marta chaqirilsa ham xavfsiz:
  *
- *  1) navbat tugagan kuni ertalab (`MUSOR_ERTALAB_SOAT`dan keyin) keyingi
- *     navbatchini TAYINLAYDI — bosilmagan oldingi navbat shu paytda
- *     "o'tkazildi" bo'ladi;
- *  2) tayinlangach e'lon: guruhga "navbat kimda" + navbatchining o'ziga DM.
- *     `elon_ts` bo'lmaguncha takrorlanadi (hech yerga yetmasa qayta urinadi);
- *  3) navbatchi tashlamagan bo'lsa navbatning OXIRGI kunida ertalabdan unga
- *     eslatma (`musorEslatmasiKerakmi`). Tugma bosilgach `holat` o'zgaradi
- *     va eslatma o'zidan to'xtaydi — alohida bayroq yo'q.
+ *  1) ZAXIRA: ochiq navbat bo'lmasa (birinchi ishga tushish, tayinlash
+ *     yiqilgan, navbatchi botdan ketgan) tayinlaydi; e'loni yetmagan
+ *     navbatning e'lonini qayta urinadi. `elon_ts` bo'lmaguncha takrorlanadi;
+ *  2) navbatchi tashlamagan bo'lsa `MUSOR_ESLATMA_KUNI`-kundan boshlab HAR
+ *     KUNI unga eslatma (`musorEslatmasiKerakmi`). Tugma bosilgach `holat`
+ *     o'zgaradi va eslatma o'zidan to'xtaydi — alohida bayroq yo'q.
  *
  * Navbatchiga DM'lar bitta tur (`"musor"`): har yangi eslatma eskisining
  * O'RNIGA keladi, chatda ustma-ust yig'ilmaydi.
  *
- * Har chaqiruv arzon: bitta indeksli so'rov (joriy navbat).
+ * Har chaqiruv arzon: bitta so'rov (joriy ochiq navbat).
  */
 async function kunlikMusor(api: Api): Promise<void> {
-  const b = await bugungiMusorniTayinla();
-  if (!b) return;
-  const { kun, oldingiOtkazilgan } = b;
+  const kun = await joriyMusorniTayinla();
+  if (!kun) return;
 
-  const navbatchi = musorOdami(kun);
-  const kb = musorTashladimKeyboard(kun.id);
   const hozir = new Date();
 
   // E'lon — kamida bir joyga yetgach belgilanadi, aks holda bloklangan
   // hisob butun navbatning e'lonini yeb qo'ymasin. Tunda emas: yetmagan
-  // e'lon navbat o'rtasidagi kecha qayta urinib, guruhni uyg'otmasin.
+  // e'lon navbat o'rtasidagi kecha qayta urinib, guruhni uyg'otmasin
+  // ("Tashladim" bosilgandagi darrov e'lon bundan mustasno — u odamning
+  // o'z harakati).
   if (!kun.elon_ts) {
     if (toshkentSoat(hozir) < MUSOR_ERTALAB_SOAT) return;
-    if (!(await elonniEgalla(kun.id))) return;
-    const [guruh, shaxsan] = await Promise.all([
-      guruhgaYubor(api, kunlikMusorGuruh(kun, oldingiOtkazilgan, kun), { reply_markup: kb }),
-      shaxsiy(api, navbatchi, kunlikMusorShaxsiy(kun), { reply_markup: kb }, ESLATMA.musor),
-    ]);
-    if (guruh || shaxsan) await elonYetdi(kun.id, guruh?.message_id ?? null);
-    else await elonniQaytar(kun.id);
+    await navbatniElonQil(api, kun);
     return; // eslatma navbatdagi chaqiruvda: e'lon bilan birga ikki xabar bo'lmasin
   }
 
   const n = musorEslatmasiKerakmi({
     holat: kun.holat,
-    tugash: kun.tugash,
+    sana: kun.sana,
     bugun: bugungiSana(hozir),
     soat: toshkentSoat(hozir),
-    eslatmaSoni: kun.eslatma_soni,
     elonTs: kun.elon_ts ? new Date(kun.elon_ts).getTime() : null,
     oxirgiEslatma: kun.oxirgi_eslatma ? new Date(kun.oxirgi_eslatma).getTime() : null,
     hozir: hozir.getTime(),
@@ -372,14 +359,15 @@ async function kunlikMusor(api: Api): Promise<void> {
 
   // Egallash AVVAL: ikki chaqiruv bir vaqtda kelsa bitta DM ketadi.
   if (!(await eslatmaniEgalla(kun.id, kun.eslatma_soni))) return;
-  const yetdi = await shaxsiy(api, navbatchi, kunlikMusorEslatma(n), { reply_markup: kb }, ESLATMA.musor);
+  const yetdi = await shaxsiy(
+    api,
+    navbatchiUser(kun),
+    kunlikMusorEslatma(n),
+    { reply_markup: musorTashladimKeyboard(kun.id) },
+    ESLATMA.musor,
+  );
   // Yetmagan eslatma hisobga kirmasin — navbatdagi chaqiruv qayta urinadi.
   if (!yetdi) await eslatmaniQaytar(kun.id, kun.eslatma_soni, kun.oxirgi_eslatma);
-}
-
-/** `shaxsiy()` faqat `telegram_id` va log uchun `id`/`ism` ni o'qiydi. */
-function musorOdami(k: MusorKuniToliq): User {
-  return { id: k.user_id, ism: k.ism, telegram_id: k.telegram_id, username: null, room_id: null, admin: false, faol: true };
 }
 
 // ---------------------------------------------------------------------------

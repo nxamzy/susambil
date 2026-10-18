@@ -439,7 +439,7 @@ Ochiq signal navbat+vazifa bo'yicha BITTA (qisman UNIQUE +
 vazifaga `oraliqVazifaEslatmalari` yubormaydi (bir soatda ikkita DM
 kelmasin). Kod `MUSOR_KOD = "musor"` — `kod` o'zgarmas.
 
-## Musor navbati — BITTA odam, 2 kun, tasodifiy, tasdiqsiz
+## Musor navbati — BITTA odam, MUDDATSIZ, tasodifiy, tasdiqsiz
 
 `core/musor.ts` + `musor_kunlari` + `bot/handlers/musor.ts`. Xona navbatidagi
 "Musor" vazifasi (5 kun × 3 rasm × 2 marta × boshqa xonalardan 3 tasdiq) uyga
@@ -448,9 +448,12 @@ osib qo'yardi. `db/schema.sql` `musor_kunlik_seed` eski vazifani BIR MARTA
 `faol = false` qildi (admin "⚙️ Vazifalar"dan qayta yoqishi mumkin, `db:setup`
 ustidan yozmaydi).
 
-Dastlab har kuni yangi odam tayinlanardi. Idish esa bir kunda to'lmaydi —
-odam bo'sh idish uchun ikki marta eslatma olar, tashlamasa "o'tkazdi" deb
-yozilardi. Endi navbat `config.MUSOR_NAVBAT_KUNI` (2) kun.
+Tarixi: avval har kuni yangi odam, keyin har ikki kunda (`MUSOR_NAVBAT_KUNI`).
+Ikkalasida ham muddat tugagach bosilmagan navbat "o'tkazildi" bo'lib o'zi
+keyingisiga o'tardi — musor esa tashlanmay qolardi. Uyning talabi: **navbat
+odam "✅ Tashladim" bosmaguncha keyingisiga O'TMAYDI**, bosishi bilan esa
+keyingi odamga DARROV xabar boradi. `MUSOR_NAVBAT_KUNI` va `tugash` shundan
+olib tashlandi.
 
 **Nega `submissions` kengaytirilmadi** ("parallel oqim yaratmang" qoidasi):
 u `turn_id` va uch kishilik tasdiq tizimiga bog'langan, aynan shu talab
@@ -459,44 +462,54 @@ navbatchi xona emas odam — shu sababli ataylab kichik alohida jadval.
 
 Qoidalar:
 
-- **Qator = navbat davri**, `sana`..`tugash` (ikkalasi ham ichida). `tugash`
-  yaratilganda MUZLATILADI (`tolov_sikllari.talab` qoidasi): konstanta
-  o'zgarsa ham davom etayotgan navbat qayta yozilmaydi, eski bir kunlik
-  qatorlar `tugash = sana`. Ikki davr bir kunni qamray olmaydi —
-  `musor_kunlari_davr_kesishmaydi` (EXCLUDE, `daterange && `), INSERT
-  nishonsiz `ON CONFLICT DO NOTHING` bilan parallel chaqiruvda jim qaytadi.
-  "Bugungi navbat" = `navbatniOl(bugun)` (bugunni qamragan qator), `sana`
-  tengligi EMAS.
-- **Tayinlash** (`bugungiMusorniTayinla`): joriy navbat bo'lsa o'sha qaytadi
-  (navbat o'rtasida tunda ham — "Musor to'ldi" navbatchini topadi). Bo'lmasa,
-  faqat ertalabdan (`MUSOR_ERTALAB_SOAT`, 8:00) keyin yangisi tayinlanadi:
-  tugagan navbat ertalabgacha OCHIQ turadi, yarim tundan keyin "Tashladim"
-  bosgan odam o'tkazgan hisoblanmaydi. Nomzod: `faol` va botga ulangan.
+- **Qator = bitta odamning navbati.** `sana` — TAYINLANGAN kun; tugash sanasi
+  yo'q (`tugash` ustuni faqat eski qatorlar tarixi uchun bazada qoldi, kod
+  o'qimaydi ham, yozmaydi ham). Bir kunda bir necha qator bo'lishi mumkin
+  (Sorabek 10:00 da tashladi → Ali o'sha kuni tayinlandi), shuning uchun
+  `sana UNIQUE` va davr kesishmasligi (EXCLUDE) cheklovlari tushirilgan —
+  ularning o'rniga bitta ishonchli cheklov: **bir vaqtda ko'pi bilan BITTA
+  ochiq (`kutilmoqda`) navbat** (`musor_kunlari_bitta_ochiq`, qisman UNIQUE
+  indeks). INSERT nishonsiz `ON CONFLICT DO NOTHING` bilan parallel
+  chaqiruvda jim qaytadi. "Hozirgi navbat" = `ochiqNavbatniOl()`.
+- **Keyingisini tayinlash bosish paytida** (`musorniBajar` → `keyingisiniTayinla`),
+  vaqt bilan emas. Natijada `keyingi` qaytadi va handler `navbatniElonQil`
+  bilan darrov guruhga e'lon + o'ziga DM yuboradi (kechasi ham — bu odamning
+  o'z harakati). Tayinlash yiqilsa bosish yo'qolmaydi (u allaqachon yozilgan,
+  xato log qilinadi), zaxira yo'l keyin tayinlaydi.
+- **Zaxira yo'l** (`joriyMusorniTayinla`, eslatma tekshiruvidan har
+  yangilanishda): ochiq navbat yo'q bo'lsa (birinchi ishga tushish, tayinlash
+  yiqilgan) yoki navbatchi botdan ketgan (`users.faol = false` → navbat
+  "o'tkazildi" ga o'tadi, aks holda u hech kim bosa olmaydigan tugmada abadiy
+  osilib qolardi). Faqat ertalabdan (`MUSOR_ERTALAB_SOAT`, 8:00) keyin: o'zi
+  bosmagan tayinlash tunda odamni uyg'otmasin. Navbat bor bo'lsa ertalabgacha
+  ham qaytadi — "Musor to'ldi" tunda ham navbatchini topadi.
 - **Tasodifiy, lekin adolatli** — `musorchiTanla` (sof, testlangan): hamma
   faol a'zo bir martadan navbat olmaguncha raund (`sikl`) tugamaydi; yangi
-  raundning birinchi navbatida oldingi navbatchi tushmaydi. Raund o'rtasida
-  qo'shilgan a'zo darrov nomzod, ketgani raundni to'xtatmaydi.
-- **E'lon**: guruhga "navbat kimda" (mention, davr bilan) + navbatchiga DM,
-  ikkalasida ham "✅ Tashladim". "Qilaman" deyish bosqichi YO'Q.
-  `elonniEgalla` — `eslatmalarniTekshir` har Telegram yangilanishida ham
-  chaqiriladi, egallamasdan e'lon ikki marta ketardi. Yetmagan e'lon TUNDA
-  qayta urinilmaydi (navbat o'rtasidagi kecha guruhni uyg'otmasin).
-- **Eslatma faqat navbatning OXIRGI kunida** (`musorEslatmasiKerakmi`,
-  `tugash === bugun`), `MUSOR_ESLATMA_SOATLARI` (8, 14, 20) da, faqat
-  navbatchining o'ziga — uy talabi: "2-kuni ertalabdan eslatsin". HOLATDAN
-  hisoblanadi (`eslatma_soni`, `oxirgi_eslatma`) — bayroq yo'q. Orasi kamida
-  `MUSOR_ESLATMA_ORALIQ_SOAT`: bot kech yoqilsa hammasi bir daqiqada
-  kelmasin. Yetmagan eslatma hisobga kirmaydi (`eslatmaniQaytar`). DM'lar
-  bitta tur (`ESLATMA.musor`) — har yangisi eskisining o'rniga keladi.
+  raundning birinchi navbatida oldingi navbatchi tushmaydi ("oldingi" =
+  `ORDER BY id DESC`, `sana` emas — bir kunda bir necha qator bo'ladi).
+- **E'lon** (`navbatniElonQil`): guruhga "navbat kimda" (mention) + navbatchiga
+  DM, ikkalasida "✅ Tashladim". `elonniEgalla` — tugma bosish va
+  `eslatmalarniTekshir` bir vaqtda e'lon qilmasin. Yetmagan e'lon eslatma
+  tekshiruvi orqali TUNDA qayta urinilmaydi.
+- **Eslatma** (`musorEslatmasiKerakmi`, sof): navbatning
+  `MUSOR_ESLATMA_KUNI` (2)-kunidan boshlab HAR KUNI, `MUSOR_ESLATMA_SOATLARI`
+  (8, 14, 20) da, faqat navbatchining o'ziga, tashlamaguncha — navbat
+  o'tmagani uchun boshqalar shunga qaram. Matn kun raqamini aytadi (3-kundan
+  qattiqroq). HOLATDAN hisoblanadi: bugun yetib kelgan eng so'nggi soat
+  uchun eslatma `oxirgi_eslatma` dan keyin ketmagan bo'lsa — ya'ni bot
+  soatlab o'chiq turib yoqilsa o'tgan uch soat uchun BITTA xabar. Orasi
+  kamida `MUSOR_ESLATMA_ORALIQ_SOAT`. Yetmagan eslatma hisobga kirmaydi
+  (`eslatmaniQaytar`). DM'lar bitta tur (`ESLATMA.musor`) — yangisi
+  eskisining o'rniga keladi.
 - **Bajarish**: faqat O'Z navbati, faqat ochiq bo'lsa (`musorniBajar`).
   Boshqalarning tasdig'i yo'q. Rasm IXTIYORIY va ikki yo'l bilan: tugma
-  bosgach 30 daqiqa ichida kelgan rasm shu navbatga qo'shiladi; ochiq navbati
-  bor odam rasm tashlasa o'sha rasm BILAN bajariladi (`photos.ts` oxirgi
-  tarmog'i, faqat hech qanday `flow_state` yo'q bo'lganda). Rasm guruhga
-  e'longa javob sifatida chiqadi, e'lonning o'zi esa TAHRIRLANADI.
-- **Bosilmagan navbat** keyingisi tayinlanayotganda "o'tkazildi" ga o'tadi va
-  ORQAGA qaytmaydi. Oldingi o'tkazgan odam yangi e'longa bitta qator bo'lib
-  chiqadi (hisobga yozilgani aytiladi, ayblov yo'q).
+  bosgach 30 daqiqa ichida kelgan rasm shu navbatga qo'shiladi (navbat
+  qayta o'tmaydi); ochiq navbati bor odam rasm tashlasa o'sha rasm BILAN
+  bajariladi va navbat o'tadi (`photos.ts` oxirgi tarmog'i, faqat hech qanday
+  `flow_state` yo'q bo'lganda). Rasm guruhga e'longa javob sifatida chiqadi,
+  e'lonning o'zi esa TAHRIRLANADI.
+- **"O'tkazildi"** endi faqat navbatchi botdan ketganda (yuqorida) paydo
+  bo'ladi va ORQAGA qaytmaydi; eski qatorlarda ham saqlanadi. Ayblov yo'q.
 - **Hisob** (`/musor`, `musorHisobi`) — navbat tushgan / tashlagan / o'tkazgan.
   REYTING EMAS: tartib ism bo'yicha, o'rin/ball/medal/jarima yo'q
   (`musorText.test.ts` tekshiradi). Hammasi qatorlardan qayta
@@ -507,12 +520,18 @@ Qoidalar:
   `navbat_signallari` faqat allaqachon ochilgan signallarni yopish uchun
   qoldi — yangisi yaratilmaydi ("tarix hech qachon o'chmaydi").
 
-Migratsiya deploy kuni ochiq turgan bugungi navbatni BIR MARTA ertagacha
-uzaytirgan (`musor_ikki_kun_seed`) — yangi qoida darrov ishlasin.
+Migratsiya: `db/schema.sql` oxiridagi "MUDDATSIZ MUSOR NAVBATI" bo'limi
+(`sana_key`, `davr_kesishmaydi`, `tugash_chk` tushiriladi, `tugash` nullable,
+`bitta_ochiq` indeksi). Bu "faqat oxiriga qo'shing" qoidasidan BIR MARTALIK
+istisno: oldingi blokdagi `tugash SET NOT NULL`, `tugash = sana` to'ldirish va
+EXCLUDE qo'shuvchi bayonotlar olib tashlandi — aks holda har `db:setup` ularni
+qaytarib, bir kunda ikki qator bo'lgan bazani yiqitardi. Eski sxemadan o'tish
+va idempotentlik lokal PGlite'da sinalgan (haqiqiy bazada emas).
 
-Qo'lda o'zgartirish kerak bo'lsa (masalan navbatchi safarda): hozircha
-`users.faol = false` qilinadi — keyingi tayinlashdan tushadi; joriy
-qatorni admin paneldan almashtirish yo'q.
+Qo'lda o'zgartirish kerak bo'lsa (masalan navbatchi safarda): `users.faol =
+false` qilinadi — navbat keyingi zaxira tekshiruvda (ertalab 8:00 dan keyin)
+o'tkazilib, keyingisi tayinlanadi. Joriy qatorni admin paneldan almashtirish
+yo'q.
 
 ## Shaxsiy chat tozaligi — `bot/tozalash.ts`, `bot_xabarlari`
 
