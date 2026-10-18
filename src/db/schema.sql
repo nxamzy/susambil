@@ -1175,26 +1175,16 @@ END $$;
 -- keyin o'zgarsa ham davom etayotgan navbat qayta yozilmaydi, eski bir
 -- kunlik qatorlar esa `tugash = sana` bo'lib to'g'ri qoladi.
 ALTER TABLE musor_kunlari ADD COLUMN IF NOT EXISTS tugash DATE;
-UPDATE musor_kunlari SET tugash = sana WHERE tugash IS NULL;
-ALTER TABLE musor_kunlari ALTER COLUMN tugash SET NOT NULL;
 
 DO $$ BEGIN
   ALTER TABLE musor_kunlari ADD CONSTRAINT musor_kunlari_tugash_chk CHECK (tugash >= sana);
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
--- Ikki navbat bir kunni qamramasin. Ilgari `sana` UNIQUE buni o'zi
--- kafolatlardi; davr ikki kunlik bo'lgach u yetmaydi (16-17 va 17-18
--- "sana"si har xil). Parallel tayinlash `ON CONFLICT DO NOTHING` bilan shu
--- cheklovga urilib jim qaytadi.
---
--- `duplicate_table` ham ushlanadi: EXCLUDE cheklovi o'z INDEKSini yaratadi,
--- qayta ishga tushirilganda Postgres `duplicate_object` emas, "relation
--- already exists" (42P07) qaytaradi — faqat birinchisi ushlansa ikkinchi
--- `db:setup` butun migratsiyani orqaga qaytarardi.
-DO $$ BEGIN
-  ALTER TABLE musor_kunlari ADD CONSTRAINT musor_kunlari_davr_kesishmaydi
-    EXCLUDE USING gist (daterange(sana, tugash, '[]') WITH &&);
-EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL; END $$;
+-- (Bu yerdagi `tugash SET NOT NULL`, `tugash = sana` to'ldirish va
+-- `musor_kunlari_davr_kesishmaydi` EXCLUDE cheklovi QAYTA YOZILMASDAN olib
+-- tashlandi: navbat muddatsiz bo'lgach ular har `db:setup`da qaytib
+-- qo'shilib, bir kunda ikki qator bo'lgan bazani yiqitardi. Ular fayl
+-- oxiridagi "MUDDATSIZ MUSOR NAVBATI" bo'limida BIR MARTA tushiriladi.)
 
 -- Deploy kuni ochiq turgan BUGUNGI navbat BIR MARTA ertagacha uzaytiriladi:
 -- yangi qoida darrov ishlasin, bugungi odam bo'sh idish uchun kechqurun
@@ -1228,3 +1218,34 @@ CREATE TABLE IF NOT EXISTS bot_xabarlari (
   yangilandi TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (chat_id, kalit)
 );
+
+-- ---------------------------------------------------------------------------
+-- MUDDATSIZ MUSOR NAVBATI — "✅ Tashladim" bosilmaguncha keyingi odamga o'tmaydi
+-- ---------------------------------------------------------------------------
+--
+-- Qat'iy ikki kunlik davr (`sana`..`tugash`) o'rniga navbat ODAM tashlab
+-- "Tashladim" bosguncha shu odamda turadi. Bosilishi bilan keyingi odam
+-- DARROV tayinlanadi — ya'ni ayni shu kuni yangi qator ochiladi, va eski
+-- qator bilan bir kunni "qamraydi". Shu sababli endi QATOR = BIR ODAM NAVBATI,
+-- davr emas, va quyidagilar tushiriladi:
+--
+--   musor_kunlari_sana_key          — bir kunda bitta qator (UNIQUE sana)
+--   musor_kunlari_davr_kesishmaydi  — davrlar kesishmasin (EXCLUDE)
+--   musor_kunlari_tugash_chk        — tugash >= sana
+--   tugash NOT NULL                 — yangi qatorlarda `tugash` yo'q
+--
+-- `tugash` ustuni eski qatorlar tarixi uchun QOLADI ("tarix o'chmaydi"),
+-- lekin kod uni endi o'qimaydi ham, yozmaydi ham. `sana` — navbat
+-- TAYINLANGAN kun.
+--
+-- O'rniga bitta ishonchli cheklov: bir vaqtda ko'pi bilan BITTA ochiq
+-- (`kutilmoqda`) navbat. Parallel tayinlash (`ON CONFLICT DO NOTHING`)
+-- shu indeksga urilib jim qaytadi — ikki odamga bir vaqtda navbat tushmaydi.
+-- Hamma tushirishlar `IF EXISTS`: qayta ishga tushirish xavfsiz.
+ALTER TABLE musor_kunlari DROP CONSTRAINT IF EXISTS musor_kunlari_davr_kesishmaydi;
+ALTER TABLE musor_kunlari DROP CONSTRAINT IF EXISTS musor_kunlari_sana_key;
+ALTER TABLE musor_kunlari DROP CONSTRAINT IF EXISTS musor_kunlari_tugash_chk;
+ALTER TABLE musor_kunlari ALTER COLUMN tugash DROP NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS musor_kunlari_bitta_ochiq
+  ON musor_kunlari ((TRUE)) WHERE holat = 'kutilmoqda';

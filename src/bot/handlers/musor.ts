@@ -10,11 +10,14 @@ import { InlineKeyboard } from "grammy";
 import type { User } from "../../db/index.js";
 import { MUSOR_TURTKI_ORALIQ_SOAT } from "../../config.js";
 import {
-  bugungiMusorniTayinla,
-  navbatniOl,
+  elonniEgalla,
+  elonniQaytar,
+  elonYetdi,
+  joriyMusorniTayinla,
   musorHisobi,
   musorniBajar,
   musorRasmiKeldi,
+  ochiqNavbatniOl,
   turtkiniEgalla,
   type MusorKuniToliq,
 } from "../../core/musor.js";
@@ -25,13 +28,15 @@ import { ESLATMA } from "../tozalash.js";
 import {
   esc,
   kunlikMusorBajarildiGuruh,
+  kunlikMusorGuruh,
+  kunlikMusorShaxsiy,
   kunlikMusorTurtki,
   kunlikMusorTurtkiJavobi,
   musorHisobiMatni,
 } from "../text.js";
 
 /**
- * Navbatchi tashlagach guruhdagi ertalabgi e'lon xabarini yangilaydi:
+ * Navbatchi tashlagach guruhdagi o'z e'loni xabarini yangilaydi:
  * yangi xabar yozilmaydi (guruh to'lib ketmasin), eski xabar o'zgaradi va
  * tugma olinadi. Tahrirlab bo'lmasa (xabar o'chirilgan yoki e'lon hech
  * qachon guruhga chiqmagan) bitta yangi qator yuboriladi.
@@ -61,6 +66,35 @@ async function rasmniGuruhga(api: Api, kun: MusorKuniToliq): Promise<void> {
     .catch((e) => console.error("[musor] rasm guruhga yuborilmadi:", e instanceof Error ? e.message : e));
 }
 
+/**
+ * Yangi navbatchining e'loni: guruhga "navbat kimda" + o'ziga DM, ikkalasida
+ * ham "✅ Tashladim". "Tashladim" bosilganda DARROV (`register`) va yetmagan
+ * e'lonni qayta urinish uchun `jobs/reminders.ts` dan chaqiriladi.
+ *
+ * `elonniEgalla` — bir vaqtda ikki joydan (tugma va eslatma tekshiruvi)
+ * kelsa e'lon ikki marta ketmasin. Kamida bir joyga yetgach `elon_ts`
+ * qo'yiladi; hech yerga yetmasa egallash bo'shatiladi va keyingi chaqiruv
+ * qayta urinadi.
+ *
+ * @returns e'lon kamida bir joyga yetdi (yoki oldin yetgan edi)
+ */
+export async function navbatniElonQil(api: Api, kun: MusorKuniToliq): Promise<boolean> {
+  if (kun.elon_ts) return true;
+  if (!(await elonniEgalla(kun.id))) return false;
+
+  const kb = musorTashladimKeyboard(kun.id);
+  const [guruh, shaxsan] = await Promise.all([
+    guruhgaYubor(api, kunlikMusorGuruh(kun, kun.sana), { reply_markup: kb }),
+    shaxsiy(api, navbatchiUser(kun), kunlikMusorShaxsiy(kun.sana), { reply_markup: kb }, ESLATMA.musor),
+  ]);
+  if (guruh || shaxsan) {
+    await elonYetdi(kun.id, guruh?.message_id ?? null);
+    return true;
+  }
+  await elonniQaytar(kun.id);
+  return false;
+}
+
 export function register(bot: Bot) {
   /**
    * "✅ Tashladim" — navbatchining shaxsiy xabarida ham, guruh e'lonida ham
@@ -84,14 +118,18 @@ export function register(bot: Bot) {
       return ctx.answerCallbackQuery({ text: matn, show_alert: true });
     }
 
-    await ctx.answerCallbackQuery({ text: "✅ Rahmat! Belgilandi." }).catch(() => {});
+    await ctx
+      .answerCallbackQuery({ text: n.keyingi ? `✅ Rahmat! Navbat ${n.keyingi.ism} ga o'tdi.` : "✅ Rahmat! Belgilandi." })
+      .catch(() => {});
     await ctx.editMessageReplyMarkup({ reply_markup: new InlineKeyboard() }).catch(() => {});
     await guruhniYangila(ctx.api, n.kun);
+    // Navbat shu zahoti keyingi odamga o'tadi — e'lon kutmasdan, hozir.
+    if (n.keyingi) await navbatniElonQil(ctx.api, n.keyingi);
   });
 
   bot.command("musor", async (ctx) => {
-    const joriy = await navbatniOl(bugungiSana());
-    await ctx.reply(musorHisobiMatni(joriy, await musorHisobi()), { parse_mode: "HTML" });
+    const joriy = await ochiqNavbatniOl();
+    await ctx.reply(musorHisobiMatni(joriy, await musorHisobi(), bugungiSana()), { parse_mode: "HTML" });
   });
 }
 
@@ -111,6 +149,7 @@ export async function rasmKeldi(ctx: Context, u: User, fileId: string): Promise<
   );
   if (n.yangiBajarildi) await guruhniYangila(ctx.api, n.kun);
   await rasmniGuruhga(ctx.api, n.kun);
+  if (n.keyingi) await navbatniElonQil(ctx.api, n.keyingi);
 }
 
 /**
@@ -133,15 +172,11 @@ export async function musorToldi(ctx: Context, u: User): Promise<void> {
     await ctx.reply(html, { parse_mode: "HTML" });
   };
 
-  const b = await bugungiMusorniTayinla();
-  if (!b) {
+  const kun = await joriyMusorniTayinla();
+  if (!kun) {
     return javob(kunlikMusorTurtkiJavobi("ertalabgacha"), "Yangi navbatchi hali tayinlanmagan.");
   }
-  const kun = b.kun;
 
-  if (kun.holat === "bajarildi") {
-    return javob(kunlikMusorTurtkiJavobi("bajarilgan", kun.ism), `Bu navbatda musorni ${kun.ism} allaqachon tashlagan.`);
-  }
   if (kun.user_id === u.id) {
     return javob(kunlikMusorTurtkiJavobi("sizda"), "Musor navbati sizda — tashlab, «✅ Tashladim» ni bosing.");
   }
@@ -166,6 +201,6 @@ export async function musorToldi(ctx: Context, u: User): Promise<void> {
 }
 
 /** `shaxsiy()` faqat `telegram_id` va log uchun `id`/`ism` ni o'qiydi — kun qatorining o'zi yetadi. */
-function navbatchiUser(k: MusorKuniToliq): User {
+export function navbatchiUser(k: MusorKuniToliq): User {
   return { id: k.user_id, ism: k.ism, telegram_id: k.telegram_id, username: null, room_id: null, admin: false, faol: true };
 }
