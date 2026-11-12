@@ -81,6 +81,18 @@ export async function tolovQabulQiluvchiniOrnat(ism: string, karta: string): Pro
   keshlanganQabul = { ism, karta };
 }
 
+/**
+ * Kartani olib tashlaydi — ism qoladi, karta bo'sh qatorga aylanadi.
+ * Qatorni O'CHIRMAYMIZ: o'chsa `TOLOV_STD.karta` standarti qaytib kelardi.
+ */
+export async function kartaniOchir(): Promise<void> {
+  await sql`
+    INSERT INTO settings (kalit, qiymat) VALUES ('tolov_qabul_karta', '')
+    ON CONFLICT (kalit) DO UPDATE SET qiymat = EXCLUDED.qiymat
+  `;
+  if (keshlanganQabul) keshlanganQabul = { ...keshlanganQabul, karta: "" };
+}
+
 export type TolovDaraja = "tolanmagan" | "qisman" | "tola";
 
 // ---------------------------------------------------------------------------

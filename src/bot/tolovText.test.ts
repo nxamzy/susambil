@@ -368,7 +368,7 @@ test("guruh eslatmasi ham kuchayadi va shaxsiy ma'lumot chiqarmaydi", () => {
 });
 
 test("kechikkan foydalanuvchi o'z ko'rinishida buni darhol ko'radi", () => {
-  const qabul = { ism: "Sorabek", karta: "9860350143875127" };
+  const qabul = { ism: "Sorabek", karta: "8600123412341234" };
   const holat = {
     talab: TALAB, tasdiqlangan: 400_000, qoldiq: 500_000, shaxsiy: false,
     daraja: "qisman" as const,
@@ -381,7 +381,7 @@ test("kechikkan foydalanuvchi o'z ko'rinishida buni darhol ko'radi", () => {
 
 test("kechikmagan foydalanuvchida ogohlantirish qatori chiqmaydi", () => {
   const m = tolovKorinishi(
-    { ism: "Sorabek", karta: "9860350143875127" },
+    { ism: "Sorabek", karta: "8600123412341234" },
     {
       talab: TALAB, tasdiqlangan: 400_000, qoldiq: 500_000, shaxsiy: false,
       daraja: "qisman" as const,
@@ -465,7 +465,7 @@ const YIGIM: TolovSikl = {
   created_at: new Date("2026-09-11T00:00:00Z"),
 };
 
-const KARTA = { ism: "Sorabek", karta: "9860350143875127" };
+const KARTA = { ism: "Sorabek", karta: "8600123412341234" };
 
 test("sikl sarlavhasi: oylik — oyi, yig'im — nomi", () => {
   assert.equal(siklSarlavhasi(AVGUST), "Avgust oyi");
@@ -476,7 +476,7 @@ test("sikl sarlavhasi: oylik — oyi, yig'im — nomi", () => {
 
 test("guruh e'loni kartani ATAYLAB ko'rsatadi — yig'imning butun ma'nosi shu", () => {
   const m = yigimGuruhElon(YIGIM, KARTA, 12);
-  assert.match(m, /9860350143875127/);
+  assert.match(m, /8600123412341234/);
   assert.match(m, /Internet puli/);
   assert.ok(m.includes(pul(30_000)));
   // 12 kishi × 30 000 = 360 000
@@ -522,7 +522,7 @@ test("eslatma qisqa va kartani takrorlaydi — chastotasi baland", () => {
     KARTA,
   );
   assert.ok(m.includes(pul(30_000)));
-  assert.match(m, /9860350143875127/);
+  assert.match(m, /8600123412341234/);
   assert.match(m, /Internet puli/);
 });
 
@@ -567,4 +567,10 @@ test("to'lov tarixida yig'im va oylik to'lov alohida guruhlanadi", () => {
   ]);
   assert.match(m, /INTERNET PULI/);
   assert.match(m, /AVGUST OYI/);
+});
+
+test("karta bo'sh bo'lsa raqam o'rniga 'pul tashlamang' chiqadi", () => {
+  const m = yigimGuruhElon(YIGIM, { ism: "Sorabek", karta: "" }, 12);
+  assert.doesNotMatch(m, /<code>/);
+  assert.match(m, /pul tashlamang/);
 });

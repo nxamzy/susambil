@@ -287,5 +287,6 @@ export const TOLOV_STD = {
   /** Har kishidan talab qilinadigan summa (so'm) */
   talab: 900_000,
   qabulQiluvchi: "Sorabek",
-  karta: "9860350143875127",
+  /** Bo'sh = karta yo'q (ataylab olib tashlangan, `/kartaochir`) */
+  karta: "",
 } as const;

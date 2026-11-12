@@ -936,6 +936,18 @@ function kutilmoqdaQatorlari(soni: number, summa: number): string[] {
 }
 
 /**
+ * Karta qatori. Karta bo'sh bo'lishi mumkin — admin `/kartaochir` bilan
+ * olib tashlagan bo'lsa. Shunda eski raqam o'rniga "pul tashlamang"
+ * deyiladi: aks holda kimdir xato/eskirgan kartaga bilmasdan pul
+ * o'tkazib yuborardi.
+ */
+export function kartaQatori(karta: string): string {
+  return karta.trim()
+    ? `💳 Karta: <code>${esc(karta)}</code>`
+    : `💳 Karta: <i>hozircha yo'q — pul tashlamang, adminga yozing</i>`;
+}
+
+/**
  * "💳 Kvartira to'lovi" ko'rinishi — talab, qabul qiluvchi va foydalanuvchining
  * SHU OYDAGI holati. Faqat TASDIQLANGAN summalar hisobga kiradi — buni
  * `foydalanuvchiTolovHolati` (core/tolov.ts) hisoblab beradi, bu yerda faqat
@@ -958,7 +970,7 @@ export function tolovKorinishi(qabul: { ism: string; karta: string }, h: TolovHo
     ...(h.shaxsiy ? [`<i>🧾 Siz bilan alohida kelishilgan summa.</i>`] : []),
     ``,
     `💳 Qabul qiluvchi: <b>${esc(qabul.ism)}</b>`,
-    `💳 Karta: <code>${esc(qabul.karta)}</code>`,
+    kartaQatori(qabul.karta),
     ``,
     AJRATGICH,
     `💵 To'landi: <b>${pul(h.tasdiqlangan)}</b>`,
@@ -2476,7 +2488,7 @@ export function yigimGuruhElon(
     muddatQatori(sikl),
     ``,
     AJRATGICH,
-    `💳 Karta: <code>${esc(qabul.karta)}</code>`,
+    kartaQatori(qabul.karta),
     `👤 Kimga: <b>${esc(qabul.ism)}</b>`,
     ``,
     AJRATGICH,
@@ -2503,7 +2515,7 @@ export function yigimShaxsiyElon(
     `💵 Sizdan: <b>${pul(sikl.talab)}</b>`,
     muddatQatori(sikl),
     ``,
-    `💳 Karta: <code>${esc(qabul.karta)}</code>`,
+    kartaQatori(qabul.karta),
     `👤 Kimga: <b>${esc(qabul.ism)}</b>`,
     ``,
     AJRATGICH,
@@ -2533,7 +2545,7 @@ export function yigimKorinishi(
     ``,
     `💵 Sizdan: <b>${pul(h.talab)}</b>`,
     ``,
-    `💳 Karta: <code>${esc(qabul.karta)}</code>`,
+    kartaQatori(qabul.karta),
     `👤 Kimga: <b>${esc(qabul.ism)}</b>`,
     ``,
     AJRATGICH,
@@ -2608,7 +2620,7 @@ export function yigimEslatmaXabari(
   s.push(
     muddatQatori(sikl),
     ``,
-    `💳 Karta: <code>${esc(qabul.karta)}</code>`,
+    kartaQatori(qabul.karta),
     `👤 Kimga: <b>${esc(qabul.ism)}</b>`,
   );
 

@@ -3,6 +3,7 @@ import { sql, type Room, type User } from "../../db/index.js";
 import { navbatniBoshlash, navbatniOzgartirish } from "../../core/rotation.js";
 import { summaTekshir } from "../../core/topshiriq.js";
 import {
+  kartaniOchir,
   tolovQabulQiluvchiniOrnat,
   tolovTalabiniOrnat,
 } from "../../core/tolov.js";
@@ -88,7 +89,8 @@ export function register(bot: Bot) {
         "/yigim — pul yig'imi paneli (boshlash, kim to'ladi, eslatma)",
         "/tolovtalab 900000 — har kishidan talab summasini o'zgartirish",
         "  (faqat kelgusi oylarga ta'sir qiladi, o'tgan oy tarixi o'zgarmaydi)",
-        "/tolovsozla Sorabek 9860350143875127 — qabul qiluvchi/karta",
+        "/tolovsozla Sorabek 8600123412341234 — qabul qiluvchi/karta",
+        "/kartaochir — kartani olib tashlash (hech kim pul tashlamasin)",
         "/adminpanel — 👑 Admin Panel'ni ochadi (bottom tugma bilan bir xil)",
       );
     }
@@ -271,7 +273,7 @@ export function register(bot: Bot) {
   bot.command("tolovsozla", async (ctx) => {
     if (!(await adminmi(ctx))) return;
     const [ism, karta] = ctx.match.trim().split(/\s+(?=\d+$)/);
-    if (!ism || !karta) return ctx.reply("Format: /tolovsozla Sorabek 9860350143875127");
+    if (!ism || !karta) return ctx.reply("Format: /tolovsozla Sorabek 8600123412341234");
 
     await tolovQabulQiluvchiniOrnat(ism, karta);
     await ctx.reply(
@@ -280,6 +282,14 @@ export function register(bot: Bot) {
     );
   });
 
+
+  // Kartani butunlay olib tashlash — barcha to'lov/yig'im xabarlarida
+  // raqam o'rniga "hozircha yo'q, pul tashlamang" chiqadi.
+  bot.command("kartaochir", async (ctx) => {
+    if (!(await adminmi(ctx))) return;
+    await kartaniOchir();
+    await ctx.reply("🗑 Karta olib tashlandi. Endi botda karta raqami ko'rinmaydi.\nQayta qo'shish: /tolovsozla Ism 8600…");
+  });
 
   /**
    * A'zolarga erkin xabar yuborish. Admin Panel → "📣 Xabar yuborish"
