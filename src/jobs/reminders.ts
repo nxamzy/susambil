@@ -35,6 +35,7 @@ import {
   ochiqYigim,
   siklMuddatiniHisobla,
   tolovDashboard,
+  tolovEslatmaOynasidami,
   tolovEslatmasiKerakmi,
   tolovQabulQiluvchi,
   yigimEslatmasiKerakmi,
@@ -44,7 +45,7 @@ import { bugungiSana, kunFarqi, kunOxirigachaSoat, toshkentSoat } from "../core/
 import { adminAloqasi } from "../core/users.js";
 import { adminlarRoyxati, guruhgaYubor, shaxsiy } from "../bot/group.js";
 import { ESLATMA } from "../bot/tozalash.js";
-import { MUSOR_ERTALAB_SOAT } from "../config.js";
+import { MUSOR_ERTALAB_SOAT, config } from "../config.js";
 import {
   hisobotiKutayotganNavbat,
   hisobotniEgalla,
@@ -687,9 +688,9 @@ async function shaxsiyTolovEslatmalari(
   // Oyna hali ochilmagan bo'lsa hech kimga kerak emas — bu tekshiruv
   // ataylab so'rovdan OLDIN: bu funksiya har bir Telegram yangilanishida
   // chaqiriladi, oyning ko'p kunida esa hech narsa qilmasligi kerak.
+  if (!tolovEslatmaOynasidami(bugun, sikl.muddat)) return;
   const qolganKun = kunFarqi(bugun, sikl.muddat);
-  const { tolovEslatmaKuni, tolovEslatmaSoat } = await sozlamalarOl();
-  if (qolganKun > tolovEslatmaKuni) return;
+  const { tolovEslatmaSoat } = await sozlamalarOl();
 
   const qolganSoat = qolganKun === 0 ? kunOxirigachaSoat() : undefined;
   const hozir = Date.now();
@@ -707,7 +708,6 @@ async function shaxsiyTolovEslatmalari(
       bugun,
       muddat: sikl.muddat,
       oxirgiTs: n.oxirgiEslatmaTs,
-      eslatmaKuni: tolovEslatmaKuni,
       oraliqSoat: tolovEslatmaSoat,
       hozir,
       uzrTs: n.oxirgiUzrTs,
@@ -730,7 +730,8 @@ async function shaxsiyTolovEslatmalari(
 
 /**
  * Guruhga umumiy eslatma. Ataylab kuniga bir martadan ham kam: oyna
- * ochilgan kuni, muddat kuni, va muddatdan keyin qarz qolgan har kuni.
+ * ochilgan kuni (13-kun), muddat kuni, va muddatdan keyin qarz qolgan har
+ * kuni — lekin faqat 18-kungacha, keyin to'xtaydi (`tolovEslatmaOynasidami`).
  * Oradagi kunlarda guruh bezovta qilinmaydi — shaxsiy eslatma bor.
  *
  * Guruhga hech qanday chek rasmi, karta yoki shaxsiy dalil chiqmaydi —
@@ -750,7 +751,6 @@ async function guruhTolovEslatmasi(
     bugun,
     muddat: sikl.muddat,
     oxirgiEslatma: sikl.guruh_eslatma,
-    eslatmaKuni: (await sozlamalarOl()).tolovEslatmaKuni,
     qarzdorBor: true,
   });
   if (!kunMos) return;
@@ -770,16 +770,16 @@ export function guruhEslatmasiKerakmi(p: {
   bugun: string;
   muddat: string;
   oxirgiEslatma: string | null;
-  eslatmaKuni: number;
   qarzdorBor: boolean;
 }): boolean {
   if (!p.qarzdorBor) return false;
   if (p.oxirgiEslatma === p.bugun) return false;
+  if (!tolovEslatmaOynasidami(p.bugun, p.muddat)) return false;
 
-  const qolgan = kunFarqi(p.bugun, p.muddat);
-  if (qolgan > p.eslatmaKuni) return false;
-  // Oyna ochilgan kun, muddat kuni, va muddatdan keyingi har kun.
-  return qolgan === p.eslatmaKuni || qolgan <= 0;
+  // Oyna ochilgan kun, muddat kuni, va muddatdan keyingi har kun (oyna
+  // ichida). Oyna boshlanishi `config`dan — sana satri bilan solishtiriladi.
+  const ochilish = `${p.muddat.slice(0, 7)}-${String(config.tolovEslatmaBoshiKuni).padStart(2, "0")}`;
+  return p.bugun === ochilish || kunFarqi(p.bugun, p.muddat) <= 0;
 }
 
 // ---------------------------------------------------------------------------

@@ -8,7 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  amaldagiTalab, hisoblaDaraja, kechikkanmi, muddatiOtdimi, muddatNatijasi,
+  amaldagiTalab, hisoblaDaraja, kechikkanmi, muddatiOtdimi, muddatNatijasi, tolovEslatmaOynasidami,
   tolovEslatmasiKerakmi,
 } from "./tolov.js";
 import { kunOxirigachaSoat } from "./vaqt.js";
@@ -97,23 +97,22 @@ test("da'vodan kam tasdiqlansa faqat tasdiqlangani hisobga olinadi", () => {
 // SHAXSIY ESLATMA
 // ---------------------------------------------------------------------------
 
-const HOZIR = new Date("2026-08-12T09:00:00+05:00").getTime();
+const HOZIR = new Date("2026-08-13T15:00:00+05:00").getTime();
 const SOAT = 3_600_000;
 
 function eslatma(over: Partial<Parameters<typeof tolovEslatmasiKerakmi>[0]> = {}) {
   return tolovEslatmasiKerakmi({
     qoldiq: 300_000,
-    bugun: "2026-08-12",
-    muddat: "2026-08-15",
+    bugun: "2026-08-13",
+    muddat: "2026-08-14",
     oxirgiTs: null,
-    eslatmaKuni: 5,
     oraliqSoat: 5,
     hozir: HOZIR,
     ...over,
   });
 }
 
-test("muddat yaqinlashganda qarzi borga eslatma yuboriladi", () => {
+test("oyna ichida qarzi borga eslatma yuboriladi", () => {
   assert.equal(eslatma(), true);
 });
 
@@ -142,38 +141,30 @@ test("oraliq sozlamasi hurmat qilinadi", () => {
   assert.equal(eslatma({ ...uchSoat, oraliqSoat: 12 }), false, "12 soatlik oraliqda hali erta");
 });
 
-test("oyna ochilmaguncha eslatma yuborilmaydi", () => {
-  // 15-avgust muddati, oyna 5 kun oldin (10-avgust) ochiladi.
-  assert.equal(eslatma({ bugun: "2026-08-09" }), false);
-  assert.equal(eslatma({ bugun: "2026-08-10" }), true, "aynan oyna ochilgan kun kiradi");
+test("eslatma FAQAT oyning 13–18-kunlari (uy talabi)", () => {
+  // "13 dan 18 gacha eslatsin bo'ldi, bersa bermasa keyin yopsin".
+  assert.equal(config.tolovEslatmaBoshiKuni, 13);
+  assert.equal(config.tolovEslatmaOxiriKuni, 18);
+  assert.equal(eslatma({ bugun: "2026-08-11" }), false, "11-kun — hali erta");
+  assert.equal(eslatma({ bugun: "2026-08-12" }), false, "12-kun — hali erta");
+  assert.equal(eslatma({ bugun: "2026-08-13" }), true, "13-kun boshlanadi");
+  assert.equal(eslatma({ bugun: "2026-08-14" }), true, "muddat kuni ham");
+  assert.equal(eslatma({ bugun: "2026-08-16" }), true, "muddatdan keyin ham 18-gacha");
+  assert.equal(eslatma({ bugun: "2026-08-18" }), true, "18-kun kiradi");
 });
 
-test("SOZLAMA bo'yicha ogohlantirish 11-kundan boshlanadi (14-kun muddati)", () => {
-  // Talab aynan shunday: ogohlantirish muddatdan 3 kun oldin boshlanadi.
-  // Shu sababli sinovda `eslatmaKuni` qo'lda emas, config'dan olinadi —
-  // sozlama o'zgarsa test yiqiladi.
-  const p = {
-    qoldiq: 500_000,
-    muddat: "2026-08-14",
-    oxirgiTs: null,
-    eslatmaKuni: config.tolovEslatmaKuni,
-    oraliqSoat: config.tolovEslatmaSoat,
-    hozir: HOZIR,
-  };
-  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-10" }), false, "10-kuni hali erta");
-  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-11" }), true, "11-kuni boshlanadi");
-  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-12" }), true);
-  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-13" }), true);
-  assert.equal(tolovEslatmasiKerakmi({ ...p, bugun: "2026-08-14" }), true, "muddat kuni ham");
+test("18-kundan keyin qarz qolgan bo'lsa ham eslatma TO'XTAYDI", () => {
+  assert.equal(eslatma({ bugun: "2026-08-19" }), false);
+  assert.equal(eslatma({ bugun: "2026-08-25" }), false);
+  // Keyingi oyning 1-kunida eski sikl bo'yicha ham hech narsa yo'q.
+  assert.equal(eslatma({ bugun: "2026-09-01" }), false);
 });
 
-test("muddat o'tib ketsa ham qarzdorga eslatma davom etadi", () => {
-  assert.equal(eslatma({ bugun: "2026-08-16" }), true);
-  assert.equal(eslatma({ bugun: "2026-08-25" }), true);
-});
-
-test("muddat o'tgan bo'lsa ham to'liq to'lagan odam eslatma olmaydi", () => {
-  assert.equal(eslatma({ bugun: "2026-08-25", qoldiq: 0 }), false);
+test("tolovEslatmaOynasidami oy chegarasini hurmat qiladi", () => {
+  assert.equal(tolovEslatmaOynasidami("2026-08-13", "2026-08-14"), true);
+  assert.equal(tolovEslatmaOynasidami("2026-08-18", "2026-08-14"), true);
+  assert.equal(tolovEslatmaOynasidami("2026-09-13", "2026-08-14"), false, "boshqa oy");
+  assert.equal(tolovEslatmaOynasidami("2026-08-19", "2026-08-14"), false);
 });
 
 // ---------------------------------------------------------------------------
@@ -182,39 +173,44 @@ test("muddat o'tgan bo'lsa ham to'liq to'lagan odam eslatma olmaydi", () => {
 
 function guruh(over: Partial<Parameters<typeof guruhEslatmasiKerakmi>[0]> = {}) {
   return guruhEslatmasiKerakmi({
-    bugun: "2026-08-10",
-    muddat: "2026-08-15",
+    bugun: "2026-08-13",
+    muddat: "2026-08-14",
     oxirgiEslatma: null,
-    eslatmaKuni: 5,
     qarzdorBor: true,
     ...over,
   });
 }
 
-test("guruhga oyna ochilgan kuni bir marta e'lon qilinadi", () => {
+test("guruhga oyna ochilgan kuni (13-kun) bir marta e'lon qilinadi", () => {
   assert.equal(guruh(), true);
+  assert.equal(guruh({ bugun: "2026-08-12" }), false, "oynadan oldin yo'q");
 });
 
 test("guruh oradagi kunlarda bezovta qilinmaydi", () => {
-  // 11–14-avgust: shaxsiy eslatma boradi, guruhga esa yo'q.
-  assert.equal(guruh({ bugun: "2026-08-11" }), false);
-  assert.equal(guruh({ bugun: "2026-08-14" }), false);
+  // Muddat 16-kun bo'lsa, 14–15-kunlar oradagi kunlar.
+  assert.equal(guruh({ bugun: "2026-08-14", muddat: "2026-08-16" }), false);
+  assert.equal(guruh({ bugun: "2026-08-15", muddat: "2026-08-16" }), false);
 });
 
-test("guruhga muddat kuni va undan keyingi har kuni e'lon qilinadi", () => {
+test("guruhga muddat kuni va undan keyin 18-kungacha e'lon qilinadi", () => {
+  assert.equal(guruh({ bugun: "2026-08-14" }), true);
   assert.equal(guruh({ bugun: "2026-08-15" }), true);
-  assert.equal(guruh({ bugun: "2026-08-16" }), true);
-  assert.equal(guruh({ bugun: "2026-08-20" }), true);
+  assert.equal(guruh({ bugun: "2026-08-18" }), true);
+});
+
+test("18-kundan keyin guruhga ham eslatma yo'q", () => {
+  assert.equal(guruh({ bugun: "2026-08-19" }), false);
+  assert.equal(guruh({ bugun: "2026-08-25" }), false);
 });
 
 test("hamma to'lagan bo'lsa guruhga eslatma yuborilmaydi", () => {
   assert.equal(guruh({ qarzdorBor: false }), false);
-  assert.equal(guruh({ bugun: "2026-08-20", qarzdorBor: false }), false);
+  assert.equal(guruh({ bugun: "2026-08-16", qarzdorBor: false }), false);
 });
 
 test("guruhga ham kuniga bir marta", () => {
   assert.equal(guruh({ bugun: "2026-08-15", oxirgiEslatma: "2026-08-15" }), false);
-  assert.equal(guruh({ bugun: "2026-08-15", oxirgiEslatma: "2026-08-10" }), true);
+  assert.equal(guruh({ bugun: "2026-08-15", oxirgiEslatma: "2026-08-13" }), true);
 });
 
 // ---------------------------------------------------------------------------
@@ -271,10 +267,9 @@ test("kelishilgan kam summani to'lagan odam TO'LIQ to'lagan hisoblanadi", () => 
   assert.equal(
     tolovEslatmasiKerakmi({
       qoldiq: 0,
-      bugun: "2026-08-12",
+      bugun: "2026-08-13",
       muddat: "2026-08-14",
       oxirgiTs: null,
-      eslatmaKuni: 5,
       oraliqSoat: 5,
       hozir: HOZIR,
     }),

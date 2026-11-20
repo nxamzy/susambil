@@ -25,8 +25,6 @@ export type Sozlamalar = {
   eslatmaOraligiSoat: number;
   /** Kvartira puli oyning shu kunигача yig'ilishi kerak (odatda 15) */
   tolovMuddatKuni: number;
-  /** To'lov eslatmasi muddatga necha kun qolganda boshlanadi */
-  tolovEslatmaKuni: number;
   /** Kvartira to'lovi eslatmasi necha soatda bir qaytariladi (oyna ichida) */
   tolovEslatmaSoat: number;
   /** Pul yig'imi eslatmasi necha soatda bir qaytariladi */
@@ -70,14 +68,6 @@ export const SOZLAMA_TAVSIF = {
     min: 1,
     max: 28,
   },
-  tolov_eslatma_kuni: {
-    maydon: "tolovEslatmaKuni",
-    nom: "To'lov eslatmasi",
-    izoh: "To'lov eslatmasi muddatga necha kun qolganda boshlanadi",
-    standart: config.tolovEslatmaKuni,
-    min: 1,
-    max: 10,
-  },
   tolov_eslatma_soat: {
     maydon: "tolovEslatmaSoat",
     nom: "To'lov eslatmasi (soat)",
@@ -104,7 +94,6 @@ export const SOZLAMA_VARIANT: Record<SozlamaKalit, number[]> = {
   eslatma_kuni: [1, 2, 3, 4, 5],
   eslatma_oraligi_soat: [1, 2, 3, 4, 5, 6, 8, 12, 24],
   tolov_muddat_kuni: [5, 10, 12, 14, 15, 18, 20, 25, 28],
-  tolov_eslatma_kuni: [1, 2, 3, 4, 5, 7, 10],
   tolov_eslatma_soat: [1, 2, 3, 4, 5, 6, 8, 12, 24, 48],
   yigim_eslatma_soat: [1, 2, 3, 4, 5, 6, 8, 12, 24, 48],
 };

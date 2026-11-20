@@ -29,10 +29,9 @@ test("yig'im eslatmasi sabab yozilgach to'xtaydi, tinimdan keyin qaytadi", () =>
 test("kvartira to'lovi eslatmasi ham sababdan keyin to'xtaydi", () => {
   const p = {
     qoldiq: 300_000,
-    bugun: "2026-09-12",
+    bugun: "2026-09-13",
     muddat: "2026-09-14",
     oxirgiTs: null,
-    eslatmaKuni: 3,
     oraliqSoat: 5,
     hozir: HOZIR,
   };

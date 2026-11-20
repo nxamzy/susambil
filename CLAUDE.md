@@ -781,9 +781,17 @@ bir xil: `tolov_holat.oxirgi_eslatma_ts` (LAHZA) va `tolovEslatmaSoat`
 (standart 5).
 
 Ikkalasining farqi BITTA bo'lib qoldi va u ataylab: oylik eslatma OYNAGA
-bog'liq (`kunFarqi(bugun, muddat) <= tolovEslatmaKuni`), yig'imniki esa
-muddatdan mustaqil. Oylikni ham oynasiz qilsak oyning 1-kunidan har 5
-soatda DM ketib, oyiga yetmishta xabar bo'lardi.
+bog'liq, yig'imniki esa muddatdan mustaqil. Oylikni ham oynasiz qilsak
+oyning 1-kunidan har 5 soatda DM ketib, oyiga yetmishta xabar bo'lardi.
+
+Oyna — oyning QAT'IY 13–18-kunlari (`config.tolovEslatmaBoshiKuni`/
+`tolovEslatmaOxiriKuni`, `core/tolov.ts` `tolovEslatmaOynasidami`), shaxsiy
+DM ham, guruh eslatmasi ham. Ilgari muddatdan 3 kun oldin ochilib, muddat
+o'tgach qarz turgan odamga CHEKSIZ davom etardi — naqd bergan, lekin admin
+hali belgilamagan odam ham haftalab "to'lamadi" eslatmasini olardi. Uy
+qarori: 18-kundan keyin to'lagan-to'lamaganidan qat'i nazar to'xtaydi.
+`tolov_eslatma_kuni` sozlamasi shu bilan olib tashlandi (bazadagi qatori
+o'qilmaydi).
 
 `eslatmaBelgila` (kunlik, DATE) olib tashlandi; `tolov_holat.oxirgi_eslatma`
 ustuni bazada qoldi. Ikkala tur `oxirgi_eslatma_ts` ni baham ko'radi —

@@ -23,7 +23,7 @@
  */
 import type postgres from "postgres";
 import { sql, type SiklTur, type Tolov, type TolovDalilTuri, type TolovSikl, type User } from "../db/index.js";
-import { TOLOV_STD } from "../config.js";
+import { TOLOV_STD, config } from "../config.js";
 import { sozlamalarOl } from "./sozlamalar.js";
 import { bugungiSana, kunFarqi, kunQosh, siklDavri } from "./vaqt.js";
 import { logla } from "./adminlog.js";
@@ -371,15 +371,17 @@ export function muddatNatijasi(p: {
  *    talabdan hisoblanadi, ya'ni kelishilgan kam summani to'lagan odam ham
  *    ro'yxatdan chiqadi;
  *  - oxirgi eslatmadan `oraliqSoat` o'tmagan bo'lsa — hali erta;
- *  - oyna ochilmagan bo'lsa — hali erta;
- *  - muddat o'tib ketgan bo'lsa DAVOM ETADI — qarz o'z-o'zidan yo'qolmaydi.
+ *  - bugun `tolovEslatmaOynasidami` dan tashqarida bo'lsa (oyning
+ *    13–18-kunlari) — yuborilmaydi;
+ *  - 18-kundan keyin qarz qolgan bo'lsa ham TO'XTAYDI. Ilgari muddat
+ *    o'tgach cheksiz davom etardi va naqd bergan, lekin admin hali
+ *    belgilamagan odamni ham "to'lamadi" deb haftalab eslatardi.
  */
 export function tolovEslatmasiKerakmi(p: {
   qoldiq: number;
   bugun: string;
   muddat: string;
   oxirgiTs: Date | null;
-  eslatmaKuni: number;
   oraliqSoat: number;
   hozir: number;
   /** Odam "🙁 To'lay olmayapman" deb sabab yozgan oxirgi lahza */
@@ -387,9 +389,23 @@ export function tolovEslatmasiKerakmi(p: {
 }): boolean {
   if (p.qoldiq <= 0) return false;
   if (uzrTinimidami(p.uzrTs, p.hozir)) return false;
-  if (kunFarqi(p.bugun, p.muddat) > p.eslatmaKuni) return false;
+  if (!tolovEslatmaOynasidami(p.bugun, p.muddat)) return false;
   if (!p.oxirgiTs) return true;
   return p.hozir - new Date(p.oxirgiTs).getTime() >= p.oraliqSoat * 3_600_000;
+}
+
+/**
+ * Bugun kvartira to'lovi eslatmasi oynasidami: sikl oyining
+ * `tolovEslatmaBoshiKuni`–`tolovEslatmaOxiriKuni` (13–18) kunlari.
+ *
+ * Oy `muddat`dan olinadi (sikl o'z oyining kunida tugaydi), shuning uchun
+ * oy almashgach eski sikl bo'yicha hech narsa yuborilmaydi. Sanalar
+ * `YYYY-MM-DD` satr — solishtirish leksikografik, vaqt zonasi siljimaydi.
+ */
+export function tolovEslatmaOynasidami(bugun: string, muddat: string): boolean {
+  const oy = muddat.slice(0, 7);
+  const kun = (n: number) => `${oy}-${String(n).padStart(2, "0")}`;
+  return bugun >= kun(config.tolovEslatmaBoshiKuni) && bugun <= kun(config.tolovEslatmaOxiriKuni);
 }
 
 // ---------------------------------------------------------------------------

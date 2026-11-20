@@ -48,28 +48,31 @@ export const config = {
   tolovMuddatKuni: 14,
 
   /**
-   * To'lov ogohlantirishi muddatga shuncha kun qolganda boshlanadi — ya'ni
-   * 14-kun muddati uchun oyning 11-kunidan.
+   * Kvartira to'lovi eslatmasi FAQAT oyning shu kunlari oralig'ida
+   * (ikkala chekka ham kiradi) — 13-dan 18-gacha.
    *
-   * Kuniga BIR MARTA yuboriladi (navbat eslatmasidagi 5 soatlik chastota bu
-   * yerga to'g'ri kelmaydi — pul masalasi kunlik ritmda bo'ladi), lekin
-   * xabarning KUCHI har kuni oshib boradi: 3 kun → 2 kun → 1 kun → bugun →
-   * kechikdi (`bot/text.ts` `eslatmaShoshilinchligi`). Ya'ni "bezovta
-   * qilmaslik" chastotani kamaytirish bilan, "e'tibordan qochmaslik" esa
-   * ohangni kuchaytirish bilan hal qilingan.
+   * Ilgari oyna muddatdan `tolovEslatmaKuni` (3) kun oldin ochilar va
+   * muddat o'tgach qarz yozilib turgan har kimga CHEKSIZ davom etardi.
+   * Amalda naqd yoki qo'lma-qo'l bergan odam ham botda "qarzdor" bo'lib
+   * qolar (admin belgilamaguncha) va bot uni haftalab "to'lamadi" deb
+   * eslatardi. Uyning qarori: "13 dan 18 gacha eslatsin bo'ldi, bersa
+   * bermasa keyin yopsin". 18-kundan keyin na shaxsiy, na guruh eslatmasi
+   * ketadi — qarz esa dashboard va hisobotda baribir ko'rinib turadi.
    *
-   * Muddat o'tib ketsa qarzi borlarga davom etadi, to'liq to'laganlarga esa
-   * darhol to'xtaydi.
+   * Sozlama emas, qat'iy qiymat: admin paneldagi "muddatga necha kun
+   * qolganda" sozlamasi (`tolov_eslatma_kuni`) shu bilan olib tashlandi.
    */
-  tolovEslatmaKuni: 3,
+  tolovEslatmaBoshiKuni: 13,
+  tolovEslatmaOxiriKuni: 18,
 
   /**
    * Oyna ochilgach kvartira to'lovi eslatmasi necha soatda bir qaytariladi.
    *
    * Ilgari KUNIGA BIR MARTA edi va qarzdorlar shunchaki e'tibor bermasdi.
    * Endi pul yig'imidagi bilan bir xil chastota (`yigimEslatmaSoat`) —
-   * farqi shundaki, bu OYNA ichida ishlaydi (muddatga `tolovEslatmaKuni`
-   * kun qolganda boshlanadi), yig'imniki esa muddatdan mustaqil.
+   * farqi shundaki, bu OYNA ichida ishlaydi (oyning
+   * `tolovEslatmaBoshiKuni`–`tolovEslatmaOxiriKuni` kunlari), yig'imniki
+   * esa muddatdan mustaqil.
    *
    * To'lagan odam ro'yxatga umuman tushmaydi, ya'ni eslatma o'zidan
    * to'xtaydi — alohida "o'chirish" bayrog'i yo'q.
@@ -83,7 +86,7 @@ export const config = {
    * ikkalasining standarti ham 5 bo'lsa-da: biri tozalash navbatiga, biri
    * pulga tegishli va admin ularni bir-biridan mustaqil sozlay olishi
    * kerak. Oylik kvartira to'lovi esa KUNLIK ritmda qoladi
-   * (`tolovEslatmaKuni`) — u yerda muddat oyning aniq kuni, bu yerda esa
+   * (13–18-kun oynasi) — u yerda muddat oyning aniq kuni, bu yerda esa
    * "yig'ilguncha" degan ochiq oyna.
    */
   yigimEslatmaSoat: 5,
